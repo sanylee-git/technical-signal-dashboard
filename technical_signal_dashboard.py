@@ -199,6 +199,10 @@ _KOSDAQ_BASKET = [
 ]
 
 PERIOD_OPTIONS = {
+    "1일":     1,
+    "3일":     3,
+    "1주일":   5,
+    "2주일":   10,
     "1개월":   21,
     "3개월":   63,
     "6개월":   126,
@@ -1063,12 +1067,12 @@ def make_detail_chart(ohlcv, name, period_days,
 
     # ── 레이아웃
     fig.update_layout(
-        height=860,
+        height=900,
         title=dict(text=f"<b>{name}</b>", font=dict(size=14, color="#EDEDED"), x=0,
-                   y=1.0, yanchor="top"),
-        legend=dict(orientation="h", yanchor="top", y=0.955, xanchor="right", x=1,
+                   y=0.99, yanchor="top"),
+        legend=dict(orientation="h", yanchor="bottom", y=0.94, xanchor="right", x=1,
                     font=dict(size=10), bgcolor="rgba(0,0,0,0)", traceorder="normal"),
-        **_base_layout(margin=dict(l=10, r=10, t=95, b=10)),
+        **_base_layout(margin=dict(l=10, r=10, t=130, b=10)),
     )
     fig.update_xaxes(**_axis_kw())
     fig.update_yaxes(**_axis_kw())
