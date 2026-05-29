@@ -949,7 +949,7 @@ def make_detail_chart(ohlcv, name, period_days,
         rows=3, cols=1,
         row_heights=[0.50, 0.25, 0.25],
         shared_xaxes=False,
-        vertical_spacing=0.02,
+        vertical_spacing=0.08,
         subplot_titles=["", f"동적 RSI (0.10/0.90 Percentile, {rsi_lookback}{'봉' if intraday_session else 'd'})", f"RSI 밴드  매수 {rsi_buy_center-rsi_band}↓플래그 → {rsi_buy_center+rsi_band}↑확정  /  매도 {rsi_sell_center+rsi_band}↑플래그 → {rsi_sell_center-rsi_band}↓확정"],
     )
 
@@ -1063,17 +1063,21 @@ def make_detail_chart(ohlcv, name, period_days,
 
     # ── 레이아웃
     fig.update_layout(
-        height=740,
-        title=dict(text=f"<b>{name}</b>", font=dict(size=14, color="#EDEDED"), x=0),
-        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
-                    font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
-        **_base_layout(),
+        height=820,
+        title=dict(text=f"<b>{name}</b>", font=dict(size=14, color="#EDEDED"), x=0,
+                   y=0.98, yanchor="top"),
+        legend=dict(orientation="h", yanchor="top", y=0.97, xanchor="right", x=1,
+                    font=dict(size=10), bgcolor="rgba(0,0,0,0)", traceorder="normal"),
+        **_base_layout(margin=dict(l=10, r=10, t=70, b=10)),
     )
     fig.update_xaxes(**_axis_kw())
     fig.update_yaxes(**_axis_kw())
     # X축 연동 (matches='x': 모든 서브플롯 X 동기화, Y는 각자 독립 스케일)
     fig.update_xaxes(matches='x')
     fig.update_xaxes(showticklabels=False, row=2, col=1)
+    # X축 날짜 레이블 기울기 제거
+    fig.update_xaxes(tickangle=0, row=1, col=1)
+    fig.update_xaxes(tickangle=0, row=3, col=1)
     # RSI 차트 Y축: 고정 범위 + 20단위 눈금
     fig.update_yaxes(range=[0, 100], dtick=20, row=2, col=1)
     fig.update_yaxes(range=[0, 100], dtick=20, row=3, col=1)
