@@ -1016,9 +1016,11 @@ def make_detail_chart(ohlcv, name, period_days,
     fig.add_trace(go.Scatter(x=disp, y=rsi[disp],
         line=dict(color="#787EE7", width=1.5), showlegend=False), row=2, col=1)
     fig.add_trace(go.Scatter(x=disp, y=dyn_upper[disp],
-        name="동적 상단 (90th)", line=dict(color="#FFD700", width=1, dash='dash')), row=2, col=1)
+        name="동적 상단 (90th)", line=dict(color="#FFD700", width=1, dash='dash'),
+        showlegend=False), row=2, col=1)
     fig.add_trace(go.Scatter(x=disp, y=dyn_lower[disp],
-        name="동적 하단 (10th)", line=dict(color="#4BFFB3", width=1, dash='dash')), row=2, col=1)
+        name="동적 하단 (10th)", line=dict(color="#4BFFB3", width=1, dash='dash'),
+        showlegend=False), row=2, col=1)
     fig.add_hline(y=50, line_color="rgba(255,255,255,0.08)", line_width=0.7,
                   line_dash="dot", row=2, col=1)
 
@@ -1070,9 +1072,9 @@ def make_detail_chart(ohlcv, name, period_days,
         height=900,
         title=dict(text=f"<b>{name}</b>", font=dict(size=14, color="#EDEDED"), x=0,
                    y=0.99, yanchor="top"),
-        legend=dict(orientation="h", yanchor="bottom", y=0.94, xanchor="right", x=1,
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1,
                     font=dict(size=10), bgcolor="rgba(0,0,0,0)", traceorder="normal"),
-        **_base_layout(margin=dict(l=10, r=10, t=130, b=10)),
+        **_base_layout(margin=dict(l=10, r=10, t=150, b=10)),
     )
     fig.update_xaxes(**_axis_kw())
     fig.update_yaxes(**_axis_kw())
