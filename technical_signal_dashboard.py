@@ -1063,12 +1063,12 @@ def make_detail_chart(ohlcv, name, period_days,
 
     # ── 레이아웃
     fig.update_layout(
-        height=820,
+        height=860,
         title=dict(text=f"<b>{name}</b>", font=dict(size=14, color="#EDEDED"), x=0,
-                   y=0.98, yanchor="top"),
-        legend=dict(orientation="h", yanchor="top", y=0.97, xanchor="right", x=1,
+                   y=1.0, yanchor="top"),
+        legend=dict(orientation="h", yanchor="top", y=0.955, xanchor="right", x=1,
                     font=dict(size=10), bgcolor="rgba(0,0,0,0)", traceorder="normal"),
-        **_base_layout(margin=dict(l=10, r=10, t=70, b=10)),
+        **_base_layout(margin=dict(l=10, r=10, t=95, b=10)),
     )
     fig.update_xaxes(**_axis_kw())
     fig.update_yaxes(**_axis_kw())
@@ -2056,7 +2056,7 @@ def main():
 
         # ── 분봉 차트 ──────────────────────────────────────
         else:
-            _disp_opts = {3: "3일", 5: "5일", 10: "10일", 20: "20일", 30: "30일"}
+            _disp_opts = {1: "1일", 3: "3일", 5: "5일", 7: "1주일", 10: "10일", 14: "2주일", 20: "20일", 30: "30일"}
             intra_disp_days = st.select_slider(
                 "표시기간", options=list(_disp_opts.keys()),
                 value=5, format_func=lambda x: _disp_opts[x],
