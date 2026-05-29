@@ -973,33 +973,19 @@ def make_detail_chart(ohlcv, name, period_days,
     fig.add_trace(go.Scatter(x=disp, y=close[disp],
         name=name, line=dict(color="#EDEDED", width=1.5)), row=1, col=1)
 
-    # 동적+BB 확정 ★ (초록=매수, 빨강=매도)
-    if len(dyn_buy_idx) > 0:
-        fig.add_trace(go.Scatter(x=dyn_buy_idx, y=close[dyn_buy_idx],
-            mode='markers',
-            marker=dict(symbol='star', color='#4BFFB3', size=10,
-                        line=dict(color='rgba(75,255,179,0.4)', width=1)),
-            name="★ 동적+BB 매수"), row=1, col=1)
-    if len(dyn_sell_idx) > 0:
-        fig.add_trace(go.Scatter(x=dyn_sell_idx, y=close[dyn_sell_idx],
-            mode='markers',
-            marker=dict(symbol='star', color='#FF4B6E', size=10,
-                        line=dict(color='rgba(255,75,110,0.4)', width=1)),
-            name="★ 동적+BB 매도"), row=1, col=1)
-
-    # 밴드+BB 확정 ● (초록=매수, 빨강=매도)
-    if len(band_buy_idx) > 0:
-        fig.add_trace(go.Scatter(x=band_buy_idx, y=close[band_buy_idx],
-            mode='markers',
-            marker=dict(symbol='circle-open', color='#4BFFB3', size=12,
-                        line=dict(color='#4BFFB3', width=2.5)),
-            name="● 밴드+BB 매수"), row=1, col=1)
-    if len(band_sell_idx) > 0:
-        fig.add_trace(go.Scatter(x=band_sell_idx, y=close[band_sell_idx],
-            mode='markers',
-            marker=dict(symbol='circle-open', color='#FF4B6E', size=12,
-                        line=dict(color='#FF4B6E', width=2.5)),
-            name="● 밴드+BB 매도"), row=1, col=1)
+    # 동적+BB 확정 ★ / 밴드+BB 확정 ● — 시그널 없어도 레전드 항목은 항상 표시
+    for _idx, _color, _outline, _sym, _sz, _label in [
+        (dyn_buy_idx,  '#4BFFB3', 'rgba(75,255,179,0.4)',  'star',        10, "★ 동적+BB 매수"),
+        (dyn_sell_idx, '#FF4B6E', 'rgba(255,75,110,0.4)',  'star',        10, "★ 동적+BB 매도"),
+        (band_buy_idx, '#4BFFB3', '#4BFFB3',               'circle-open', 12, "● 밴드+BB 매수"),
+        (band_sell_idx,'#FF4B6E', '#FF4B6E',               'circle-open', 12, "● 밴드+BB 매도"),
+    ]:
+        _x = _idx if len(_idx) > 0 else []
+        _y = close[_idx] if len(_idx) > 0 else []
+        fig.add_trace(go.Scatter(x=_x, y=_y, mode='markers',
+            marker=dict(symbol=_sym, color=_color, size=_sz,
+                        line=dict(color=_outline, width=1 if _sym == 'star' else 2.5)),
+            name=_label), row=1, col=1)
 
     # ══════════════════════════════════════════
     # ROW 2: 동적 RSI
