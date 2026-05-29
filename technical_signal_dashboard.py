@@ -1692,9 +1692,37 @@ def main():
             f"<p style='font-size:11px;color:#555;margin:0 0 12px;'>기준일 {datetime.now().strftime('%Y-%m-%d')}</p>",
             unsafe_allow_html=True,
         )
+
+        # ── 차트 모드 (사이드바 최상단 — period 기본값에 영향)
+        _intra_interval_map = {"5분": "5m", "15분": "15m", "30분": "30m", "60분": "60m"}
+        _intra_bars_per_day = {"5m": 78, "15m": 26, "30m": 13, "60m": 7}
+        st.markdown("**🕯 차트 모드**")
+        chart_mode = st.radio(
+            "차트모드", ["일봉", "분봉"], horizontal=True,
+            label_visibility="collapsed", key="chart_mode",
+        )
+        if chart_mode == "분봉":
+            intra_interval_label = st.radio(
+                "분봉", list(_intra_interval_map.keys()), horizontal=True,
+                label_visibility="collapsed", key="intra_interval",
+            )
+            yf_interval = _intra_interval_map[intra_interval_label]
+        else:
+            intra_interval_label = None
+            yf_interval = None
+
+        st.divider()
+
+        # ── 차트 기간 (모드 전환 시 기본값 자동 변경)
+        _period_keys = list(PERIOD_OPTIONS.keys())
+        _default_period = "3일" if chart_mode == "분봉" else "3개월"
+        if st.session_state.get('_prev_chart_mode_period') != chart_mode:
+            st.session_state['sidebar_period'] = _default_period
+            st.session_state['_prev_chart_mode_period'] = chart_mode
         st.markdown("**📅 차트 기간**")
         period_name = st.radio(
-            "기간", list(PERIOD_OPTIONS.keys()), index=1,
+            "기간", _period_keys,
+            key='sidebar_period',
             label_visibility="collapsed",
         )
         period_days = PERIOD_OPTIONS[period_name]
@@ -1885,26 +1913,6 @@ def main():
 
         tickers_tuple = tuple(f['code'] for f in favorites)
 
-        # ── 차트 모드 선택 (스캐너 + 차트 공용) ───────────────────────
-        _intra_interval_map = {"5분": "5m", "15분": "15m", "30분": "30m", "60분": "60m"}
-        _intra_bars_per_day = {"5m": 78, "15m": 26, "30m": 13, "60m": 7}
-        _mode_hdr_col, _intra_hdr_col = st.columns([1, 3])
-        with _mode_hdr_col:
-            chart_mode = st.radio(
-                "차트모드", ["일봉", "분봉"], horizontal=True,
-                label_visibility="collapsed", key="chart_mode",
-            )
-        if chart_mode == "분봉":
-            with _intra_hdr_col:
-                intra_interval_label = st.radio(
-                    "분봉", list(_intra_interval_map.keys()), horizontal=True,
-                    label_visibility="collapsed", key="intra_interval",
-                )
-            yf_interval = _intra_interval_map[intra_interval_label]
-        else:
-            intra_interval_label = None
-            yf_interval = None
-
         with st.spinner("📡 데이터 로딩..."):
             if chart_mode == "분봉":
                 closes = fetch_intraday_batch(tickers_tuple, yf_interval)
@@ -2060,20 +2068,14 @@ def main():
 
         # ── 분봉 차트 ──────────────────────────────────────
         else:
-            _disp_opts = {1: "1일", 3: "3일", 5: "5일", 7: "1주일", 10: "10일", 14: "2주일", 20: "20일", 30: "30일"}
-            intra_disp_days = st.select_slider(
-                "표시기간", options=list(_disp_opts.keys()),
-                value=5, format_func=lambda x: _disp_opts[x],
-                label_visibility="collapsed", key="intra_disp_days",
-            )
             _ticker = selected_fav['code']
-            with st.spinner(f"분봉 로딩... ({intra_interval_label}, 최근 60일 기준)"):
+            with st.spinner(f"분봉 로딩... ({intra_interval_label}, {period_name} 기준)"):
                 ohlcv_intra = fetch_intraday(_ticker, yf_interval)
 
             if ohlcv_intra.empty:
                 st.warning(f"⚠️ {selected_name} 분봉 데이터를 가져올 수 없습니다.")
             else:
-                _disp_bars = _intra_bars_per_day[yf_interval] * intra_disp_days
+                _disp_bars = _intra_bars_per_day[yf_interval] * period_days
                 _session   = (15.5, 9.0) if _ticker.endswith(('.KS', '.KQ')) else None
                 fig_intra  = make_detail_chart(
                     ohlcv_intra, f"{selected_name} ({intra_interval_label})", period_days,
