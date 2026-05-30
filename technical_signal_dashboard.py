@@ -1652,20 +1652,18 @@ def _slope_score_all(df_slice):
     cap_s, cap_lbl, _, cap_dir = _consec_slope(col('시총가중'))
     results["시총가중"] = {"score": cap_s, "raw": last('시총가중'), "label": cap_lbl}
 
-    # ── 2. 균일가중 (대형주 쏠림: 시총 상승 방향인데 균일 하락 방향)
+    # ── 2. 균일가중 (대형주 쏠림: 시총 상승인데 균일 하락 → 라벨 경고만, 점수는 기울기 그대로)
     eqw_s, eqw_lbl, _, eqw_dir = _consec_slope(col('균일가중'))
     if cap_dir > 0 and eqw_dir < 0:
-        eqw_s = min(eqw_s, -1)
-        eqw_lbl += " (대형주 쏠림)"
+        eqw_lbl += " ⚡쏠림"
     results["균일가중"] = {"score": eqw_s, "raw": last('균일가중'), "label": eqw_lbl}
 
-    # ── 3. ADL ★ — 이미 계산된 ADL_MA10 사용, 다이버전스 체크
+    # ── 3. ADL ★ — ADL_MA10 기울기 기반, 다이버전스 시 라벨 경고만 (점수 강제 오버라이드 제거)
     adl_series = col('ADL_MA10') if 'ADL_MA10' in df_slice.columns else col('ADL')
     adl_smooth = 'ADL_MA10' in df_slice.columns
     adl_s, adl_lbl, _, adl_dir = _consec_slope(adl_series, already_smooth=adl_smooth)
     if cap_dir > 0 and adl_dir < 0:
-        adl_s = -2
-        adl_lbl = "다이버전스! (지수↑ ADL↓)"
+        adl_lbl += " ⚡지수↑ADL↓"
     results["ADL"] = {"score": adl_s, "raw": last('ADL'), "label": adl_lbl}
 
     # ── 4. 서머레이션 ★
