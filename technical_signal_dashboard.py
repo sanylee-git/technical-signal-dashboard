@@ -1536,36 +1536,8 @@ def get_market_internals(market, lookback_days=60):
 
 
 # ============================================================
-# 시장 강도 점수 시스템 — 임계값 설정 (시장별 오버라이드 가능)
+# 시장 강도 점수 시스템 — MA10 기울기 연속성 기반
 # ============================================================
-_SCORE_CFG_DEFAULT = {
-    # 시총가중/균일가중: 5일 수익률(%)
-    "idx_5d":   {"vbull": 3.0, "bull": 0.5, "bear": -0.5, "vbear": -3.0},
-    # ADL 5일 변화량 (절대값, 전체 종목 수로 나눈 z-score 대신 단순 방향)
-    "adl_5d":   {"vbull": 0.0, "bull": 0.0, "bear": 0.0, "vbear": 0.0},  # direction only
-    # 서머레이션 절대값
-    "summ":     {"vbull": 500, "bull": 100, "bear": -100, "vbear": -500},
-    # HV20 절대 레벨
-    "hv20_lvl": {"low": 13, "mid": 20, "high": 27, "extreme": 35},
-    # HV20 5일 변화율(%) — 상승이면 공포 증가
-    "hv20_5d":  {"rising_fast": 25, "rising": 8, "falling": -8},
-    # 상승비율MA20
-    "adv_ma20": {"vbull": 60, "bull": 50, "neutral": 45, "bear": 40},
-    # 20MA 상위 비율
-    "ma20pct":  {"vbull": 65, "bull": 50, "bear": 35, "vbear": 20},
-    # 100MA 상위 비율
-    "ma100pct": {"vbull": 70, "bull": 50, "weak": 40, "vbear": 30},
-    # NH 비율
-    "nh":       {"vbull": 20, "bull": 10, "neutral": 5, "bear": 2},
-}
-
-_SCORE_CFG = {
-    "_default": _SCORE_CFG_DEFAULT,
-    "코스피":   {**_SCORE_CFG_DEFAULT, "hv20_lvl": {"low": 11, "mid": 17, "high": 23, "extreme": 30}},
-    "코스닥":   {**_SCORE_CFG_DEFAULT, "hv20_lvl": {"low": 13, "mid": 20, "high": 28, "extreme": 38}},
-    "S&P 500":  {**_SCORE_CFG_DEFAULT, "hv20_lvl": {"low": 15, "mid": 20, "high": 28, "extreme": 40}},
-    "나스닥 100": {**_SCORE_CFG_DEFAULT, "hv20_lvl": {"low": 16, "mid": 22, "high": 30, "extreme": 42}},
-}
 
 # 핵심 지표 가중치 2배, 나머지 1배
 _SCORE_WEIGHTS = {
@@ -1578,175 +1550,120 @@ _SCORE_WEIGHTS = {
 _SCORE_MAX = sum(w * 2 for w in _SCORE_WEIGHTS.values())  # 26
 
 
-def _get_cfg(market_name):
-    return _SCORE_CFG.get(market_name, _SCORE_CFG["_default"])
+def _consec_slope(series, invert=False, already_smooth=False):
+    """
+    MA10 기울기 연속성으로 -2~+2 점수 반환.
+      1일 연속 = 0 (임시)
+      2일 연속 = ±1 (플래그)
+      3일+ 연속 = ±2 (확정)
+    invert=True: 하락이 좋음 (HV20/VIX)
+    already_smooth=True: 이미 이동평균된 시리즈면 MA10 재계산 없이 직접 사용
+    Returns (score, label, n_consecutive, effective_direction)
+    """
+    if series is None:
+        return 0, "데이터 없음", 0, 0
+    valid = series.dropna()
+    if len(valid) < 4:
+        return 0, "데이터 부족", 0, 0
+
+    smoothed = valid if already_smooth else valid.rolling(10, min_periods=3).mean().dropna()
+    if len(smoothed) < 2:
+        return 0, "데이터 부족", 0, 0
+
+    # 최근 4값 → 최대 3개 기울기 부호 추출
+    tail = smoothed.iloc[-4:] if len(smoothed) >= 4 else smoothed
+    signs = []
+    for i in range(1, len(tail)):
+        diff = float(tail.iloc[i]) - float(tail.iloc[i - 1])
+        signs.append(0 if abs(diff) < 1e-9 else (1 if diff > 0 else -1))
+
+    if not signs:
+        return 0, "데이터 부족", 0, 0
+
+    latest = signs[-1]
+    if latest == 0:
+        return 0, "횡보", 0, 0
+
+    consec = 1
+    for i in range(len(signs) - 2, -1, -1):
+        if signs[i] == latest:
+            consec += 1
+        else:
+            break
+
+    score = 2 if consec >= 3 else (1 if consec == 2 else 0)
+    effective = latest if not invert else -latest
+    score *= effective
+
+    dir_kr = "상승" if effective > 0 else "하락"
+    tag = "확정" if consec >= 3 else ("플래그" if consec == 2 else "임시")
+    lbl = f"임시 ({dir_kr} 1일)" if score == 0 else f"{dir_kr} {consec}일 ({tag})"
+    return score, lbl, consec, effective
 
 
-def _clamp_score(v):
-    return max(-2, min(2, int(round(v))))
-
-
-def _score_single_day(row, df_slice, cfg):
-    """단일 행 + 슬라이스(최근 5행)로 각 지표 점수 계산.
+def _slope_score_all(df_slice):
+    """
+    MA10 기울기 연속성 기반 9개 지표 점수 계산.
+    df_slice: 해당 일자까지의 전체 데이터프레임 슬라이스
     반환: dict[지표명] = {"score": int, "raw": float, "label": str}
     """
-    n5 = df_slice  # 최근 5행 (현재 포함)
     results = {}
 
-    def safe(col):
+    def col(name):
+        return df_slice[name] if name in df_slice.columns else None
+
+    def last(name):
         try:
-            v = row[col]
+            v = df_slice[name].iloc[-1]
             return float(v) if pd.notna(v) else None
         except Exception:
             return None
 
-    def slope5(col):
-        """5일 수익률(%)"""
-        try:
-            cur = float(row[col])
-            ref = float(n5[col].iloc[0])
-            if ref == 0:
-                return None
-            return (cur - ref) / abs(ref) * 100
-        except Exception:
-            return None
-
     # ── 1. 시총가중
-    r = slope5('시총가중')
-    c = cfg["idx_5d"]
-    if r is None:
-        s, lbl = 0, "데이터 없음"
-    elif r >= c["vbull"]: s, lbl = +2, f"5일 +{r:.1f}%"
-    elif r >= c["bull"]:  s, lbl = +1, f"5일 +{r:.1f}%"
-    elif r >= c["bear"]:  s, lbl = 0,  f"5일 {r:.1f}%"
-    elif r >= c["vbear"]: s, lbl = -1, f"5일 {r:.1f}%"
-    else:                 s, lbl = -2, f"5일 {r:.1f}%"
-    results["시총가중"] = {"score": s, "raw": r, "label": lbl}
+    cap_s, cap_lbl, _, cap_dir = _consec_slope(col('시총가중'))
+    results["시총가중"] = {"score": cap_s, "raw": last('시총가중'), "label": cap_lbl}
 
-    # ── 2. 균일가중 (+ 시총과 다이버전스 체크)
-    r2 = slope5('균일가중')
-    r_cap = slope5('시총가중')
-    c = cfg["idx_5d"]
-    if r2 is None:
-        s2, lbl2 = 0, "데이터 없음"
-    elif r2 >= c["vbull"]: s2, lbl2 = +2, f"5일 +{r2:.1f}%"
-    elif r2 >= c["bull"]:  s2, lbl2 = +1, f"5일 +{r2:.1f}%"
-    elif r2 >= c["bear"]:  s2, lbl2 = 0,  f"5일 {r2:.1f}%"
-    elif r2 >= c["vbear"]: s2, lbl2 = -1, f"5일 {r2:.1f}%"
-    else:                  s2, lbl2 = -2, f"5일 {r2:.1f}%"
-    # 시총 오르는데 균일 하락 → 소수 대형주만 견인, 점수 0 이하로 클램프
-    if r_cap is not None and r2 is not None and r_cap > 0.5 and r2 < -0.5:
-        s2 = min(s2, -1)
-        lbl2 += " (대형주 쏠림)"
-    results["균일가중"] = {"score": s2, "raw": r2, "label": lbl2}
+    # ── 2. 균일가중 (대형주 쏠림: 시총 상승 방향인데 균일 하락 방향)
+    eqw_s, eqw_lbl, _, eqw_dir = _consec_slope(col('균일가중'))
+    if cap_dir > 0 and eqw_dir < 0:
+        eqw_s = min(eqw_s, -1)
+        eqw_lbl += " (대형주 쏠림)"
+    results["균일가중"] = {"score": eqw_s, "raw": last('균일가중'), "label": eqw_lbl}
 
-    # ── 3. ADL (핵심, weight=2)
-    adl_now = safe('ADL')
-    adl_5d  = float(n5['ADL'].iloc[0]) if adl_now is not None else None
-    cap_5d  = slope5('시총가중')
-    if adl_now is None or adl_5d is None:
-        s3, lbl3 = 0, "데이터 없음"
-    else:
-        adl_chg = adl_now - adl_5d
-        cap_up = cap_5d is not None and cap_5d > 0.3
-        if adl_chg > 0 and cap_up:
-            s3, lbl3 = +2, f"5일 +{adl_chg:.0f} (지수와 동반)"
-        elif adl_chg > 0:
-            s3, lbl3 = +1, f"5일 +{adl_chg:.0f}"
-        elif abs(adl_chg) < abs(adl_5d) * 0.02:
-            s3, lbl3 = 0,  "횡보"
-        elif adl_chg < 0 and cap_up:
-            # 지수 상승 + ADL 하락 = 위험한 다이버전스
-            s3, lbl3 = -2, f"5일 {adl_chg:.0f} (지수와 다이버전스!)"
-        else:
-            s3, lbl3 = -1, f"5일 {adl_chg:.0f}"
-    results["ADL"] = {"score": s3, "raw": adl_now, "label": lbl3}
+    # ── 3. ADL ★ — 이미 계산된 ADL_MA10 사용, 다이버전스 체크
+    adl_series = col('ADL_MA10') if 'ADL_MA10' in df_slice.columns else col('ADL')
+    adl_smooth = 'ADL_MA10' in df_slice.columns
+    adl_s, adl_lbl, _, adl_dir = _consec_slope(adl_series, already_smooth=adl_smooth)
+    if cap_dir > 0 and adl_dir < 0:
+        adl_s = -2
+        adl_lbl = "다이버전스! (지수↑ ADL↓)"
+    results["ADL"] = {"score": adl_s, "raw": last('ADL'), "label": adl_lbl}
 
-    # ── 4. 서머레이션 (핵심, weight=2)
-    summ = safe('서머레이션')
-    c = cfg["summ"]
-    if summ is None:
-        s4, lbl4 = 0, "데이터 없음"
-    elif summ >= c["vbull"]: s4, lbl4 = +2, f"{summ:+.0f}"
-    elif summ >= c["bull"]:  s4, lbl4 = +1, f"{summ:+.0f}"
-    elif summ >= c["bear"]:  s4, lbl4 = 0,  f"{summ:+.0f} (중립)"
-    elif summ >= c["vbear"]: s4, lbl4 = -1, f"{summ:+.0f}"
-    else:                    s4, lbl4 = -2, f"{summ:+.0f}"
-    results["서머레이션"] = {"score": s4, "raw": summ, "label": lbl4}
+    # ── 4. 서머레이션 ★
+    summ_s, summ_lbl, _, _ = _consec_slope(col('서머레이션'))
+    results["서머레이션"] = {"score": summ_s, "raw": last('서머레이션'), "label": summ_lbl}
 
-    # ── 5. HV20 (절대 레벨 + 5일 방향)
-    hv = safe('VIX')
-    lv = cfg["hv20_lvl"]
-    dv = cfg["hv20_5d"]
-    if hv is None:
-        s5, lbl5 = 0, "데이터 없음"
-    else:
-        # 레벨 기반 기본 점수 (낮을수록 긍정)
-        if hv < lv["low"]:      base = +1
-        elif hv < lv["mid"]:    base = 0
-        elif hv < lv["high"]:   base = -1
-        else:                   base = -2
-        # 5일 방향 조정
-        hv_5d_ref = float(n5['VIX'].iloc[0]) if n5['VIX'].notna().any() else None
-        if hv_5d_ref and hv_5d_ref > 0:
-            hv_chg_pct = (hv - hv_5d_ref) / hv_5d_ref * 100
-            if hv_chg_pct >= dv["rising_fast"]: adj = -1
-            elif hv_chg_pct >= dv["rising"]:    adj = 0
-            elif hv_chg_pct <= dv["falling"]:   adj = +1
-            else:                               adj = 0
-            lbl5 = f"{hv:.1f} (5일 {hv_chg_pct:+.0f}%)"
-        else:
-            adj, lbl5 = 0, f"{hv:.1f}"
-        s5 = _clamp_score(base + adj)
-    results["HV20"] = {"score": s5, "raw": hv, "label": lbl5 if hv is not None else "데이터 없음"}
+    # ── 5. HV20/VIX — 하락이 좋음 (invert=True)
+    hv_s, hv_lbl, _, _ = _consec_slope(col('VIX'), invert=True)
+    results["HV20"] = {"score": hv_s, "raw": last('VIX'), "label": hv_lbl}
 
-    # ── 6. 상승비율MA20
-    adv = safe('상승비율MA20')
-    c = cfg["adv_ma20"]
-    if adv is None:
-        s6, lbl6 = 0, "데이터 없음"
-    elif adv >= c["vbull"]: s6, lbl6 = +2, f"{adv:.1f}%"
-    elif adv >= c["bull"]:  s6, lbl6 = +1, f"{adv:.1f}%"
-    elif adv >= c["neutral"]: s6, lbl6 = 0, f"{adv:.1f}%"
-    elif adv >= c["bear"]:  s6, lbl6 = -1, f"{adv:.1f}%"
-    else:                   s6, lbl6 = -2, f"{adv:.1f}%"
-    results["상승비율MA20"] = {"score": s6, "raw": adv, "label": lbl6}
+    # ── 6. 상승비율MA20 — 이미 MA20 적용된 시리즈, 직접 기울기 사용
+    adv_s, adv_lbl, _, _ = _consec_slope(col('상승비율MA20'), already_smooth=True)
+    results["상승비율MA20"] = {"score": adv_s, "raw": last('상승비율MA20'), "label": adv_lbl}
 
-    # ── 7. 20MA 상위 (핵심, weight=2)
-    m20 = safe('20MA상위')
-    c = cfg["ma20pct"]
-    if m20 is None:
-        s7, lbl7 = 0, "데이터 없음"
-    elif m20 >= c["vbull"]: s7, lbl7 = +2, f"{m20:.1f}%"
-    elif m20 >= c["bull"]:  s7, lbl7 = +1, f"{m20:.1f}%"
-    elif m20 >= c["bear"]:  s7, lbl7 = 0,  f"{m20:.1f}%"
-    elif m20 >= c["vbear"]: s7, lbl7 = -1, f"{m20:.1f}%"
-    else:                   s7, lbl7 = -2, f"{m20:.1f}%"
-    results["20MA상위"] = {"score": s7, "raw": m20, "label": lbl7}
+    # ── 7. 20MA상위 ★
+    m20_s, m20_lbl, _, _ = _consec_slope(col('20MA상위'))
+    results["20MA상위"] = {"score": m20_s, "raw": last('20MA상위'), "label": m20_lbl}
 
-    # ── 8. 100MA 상위 (핵심, weight=2)
-    m100 = safe('100MA상위')
-    c = cfg["ma100pct"]
-    if m100 is None:
-        s8, lbl8 = 0, "데이터 없음"
-    elif m100 >= c["vbull"]: s8, lbl8 = +2, f"{m100:.1f}%"
-    elif m100 >= c["bull"]:  s8, lbl8 = +1, f"{m100:.1f}%"
-    elif m100 >= c["weak"]:  s8, lbl8 = 0,  f"{m100:.1f}%"
-    elif m100 >= c["vbear"]: s8, lbl8 = -1, f"{m100:.1f}%"
-    else:                    s8, lbl8 = -2, f"{m100:.1f}%"
-    results["100MA상위"] = {"score": s8, "raw": m100, "label": lbl8}
+    # ── 8. 100MA상위 ★
+    m100_s, m100_lbl, _, _ = _consec_slope(col('100MA상위'))
+    results["100MA상위"] = {"score": m100_s, "raw": last('100MA상위'), "label": m100_lbl}
 
-    # ── 9. NH비율
-    nh = safe('NH비율')
-    c = cfg["nh"]
-    if nh is None:
-        s9, lbl9 = 0, "데이터 없음"
-    elif nh >= c["vbull"]: s9, lbl9 = +2, f"{nh:.1f}%"
-    elif nh >= c["bull"]:  s9, lbl9 = +1, f"{nh:.1f}%"
-    elif nh >= c["neutral"]: s9, lbl9 = 0, f"{nh:.1f}%"
-    elif nh >= c["bear"]:  s9, lbl9 = -1, f"{nh:.1f}%"
-    else:                  s9, lbl9 = -2, f"{nh:.1f}%"
-    results["NH비율"] = {"score": s9, "raw": nh, "label": lbl9}
+    # ── 9. NH비율 — 이미 계산된 NH비율MA10 사용
+    nh_series = col('NH비율MA10') if 'NH비율MA10' in df_slice.columns else col('NH비율')
+    nh_smooth = 'NH비율MA10' in df_slice.columns
+    nh_s, nh_lbl, _, _ = _consec_slope(nh_series, already_smooth=nh_smooth)
+    results["NH비율"] = {"score": nh_s, "raw": last('NH비율'), "label": nh_lbl}
 
     return results
 
@@ -1772,33 +1689,26 @@ def classify_phase(score):
 def get_phase_status(df, market_name):
     """
     최근 3거래일 점수를 계산해 국면 확정 여부 반환.
-    반환: (score_today, phase_today, status)
+    반환: (score_today, indicator_scores, phase_today, status)
       status: "확정" | "플래그" | "임시"
     """
-    cfg = _get_cfg(market_name)
     n = len(df)
     if n < 5:
-        # 슬라이스 최소 5행 필요
-        row = df.iloc[-1]
-        sc = _score_single_day(row, df, cfg)
+        sc = _slope_score_all(df)
         score = compute_market_score(sc)
         phase, _ = classify_phase(score)
         return score, sc, phase, "임시"
 
     scores_hist = []
     for i in range(min(3, n)):
-        idx = -(i + 1)
-        row = df.iloc[idx]
-        start = max(0, n + idx - 4)
-        slice5 = df.iloc[start: n + idx + 1]
-        if len(slice5) < 2:
+        slice_i = df.iloc[: n - i]
+        if len(slice_i) < 5:
             continue
-        sc_i = _score_single_day(row, slice5, cfg)
+        sc_i = _slope_score_all(slice_i)
         scores_hist.append((compute_market_score(sc_i), sc_i))
 
     if not scores_hist:
-        row = df.iloc[-1]
-        sc = _score_single_day(row, df.iloc[-5:], cfg)
+        sc = _slope_score_all(df)
         score = compute_market_score(sc)
         phase, _ = classify_phase(score)
         return score, sc, phase, "임시"
@@ -1814,7 +1724,8 @@ def get_phase_status(df, market_name):
         elif phases[0] == phases[1]:
             return score_today, sc_today, phase_today, "플래그"
     elif len(scores_hist) == 2:
-        p0, p1 = classify_phase(scores_hist[0][0])[0], classify_phase(scores_hist[1][0])[0]
+        p0 = classify_phase(scores_hist[0][0])[0]
+        p1 = classify_phase(scores_hist[1][0])[0]
         if p0 == p1:
             return score_today, sc_today, phase_today, "플래그"
 
