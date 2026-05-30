@@ -1547,7 +1547,7 @@ def make_market_chart(df, market_name):
     has_summ  = df['서머레이션'].notna().any()
     x0, x1   = df.index[0], df.index[-1]
 
-    # 지수(시총가중) 배경 오버레이 — 보조 Y축(오른쪽) 사용, 독립 스케일
+    # 지수(시총가중) 배경 오버레이 — 보조 Y축(오른쪽), 중앙 고정
     def _idx_overlay(fig, row, col):
         idx = df['시총가중'].dropna()
         if idx.empty:
@@ -1557,6 +1557,12 @@ def make_market_chart(df, market_name):
             line=dict(color="rgba(255,255,255,0.22)", width=1.1),
             showlegend=False, hoverinfo='skip',
         ), row=row, col=col, secondary_y=True)
+        # Plotly auto-range는 양수 데이터를 [0, max]로 스냅해 인덱스가 최상단에 몰림.
+        # 데이터 중심(mean) ± 3σ 범위로 명시 설정 → 인덱스가 항상 차트 중앙 1/3에 위치
+        _m = float(idx.mean())
+        _h = max(float(idx.max()) - _m, _m - float(idx.min()), 0.5)
+        fig.update_yaxes(range=[_m - _h * 3, _m + _h * 3],
+                         row=row, col=col, secondary_y=True)
 
     def _hl(y, color, dash='dot', width=0.9):
         return go.Scatter(
