@@ -1293,11 +1293,13 @@ def get_market_internals(market, lookback_days=60):
         if basket is None:
             return None, f"{market} 종목 리스트 조회 실패"
         index_yf_code = _INDEX_CODE.get(market, "^KS11")
-        vix_code      = "^VKOSPI" if market in ("코스피", "코스닥") else "^VIX"
+        use_hv20 = market in ("코스피", "코스닥")   # ^VKOSPI는 Yahoo에 없음 → 지수로 HV20 계산
+        vix_code = None if use_hv20 else "^VIX"
 
         end_dt   = datetime.now()
-        # 200일선 계산을 위해 항상 충분한 히스토리 확보 (200 거래일 ≈ 300 캘린더일)
-        extra    = max(lookback_days + 320, lookback_days * 2 + 10)
+        # 200일선(200td) + 52주 신고가(252td) 계산을 위해 충분한 히스토리 확보
+        # (lookback_days + 252td) × 1.5 달력일 + 여유
+        extra    = max(int((lookback_days + 252) * 1.5) + 30, lookback_days + 430)
         start_dt = end_dt - timedelta(days=extra)
         yf_start = start_dt.strftime("%Y-%m-%d")
         yf_end   = (end_dt + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -1310,27 +1312,26 @@ def get_market_internals(market, lookback_days=60):
             return None, f"지수 데이터 없음 ({index_yf_code})"
         cap_close = idx_df['Close'].dropna()
 
-        # ── VIX / VKOSPI (yf.download 실패 시 Ticker.history 재시도)
+        # ── VIX / VKOSPI (한국은 ^VKOSPI 없음 → 나중에 HV20으로 대체)
         vix_series = pd.Series(dtype=float)
-        for _vc in [vix_code]:
+        if vix_code:
             try:
                 vix_df = _normalize_yf_ohlcv(
-                    yf.download(_vc, start=yf_start, end=yf_end,
+                    yf.download(vix_code, start=yf_start, end=yf_end,
                                 progress=False, auto_adjust=True))
                 if not vix_df.empty and 'Close' in vix_df.columns:
                     vix_series = vix_df['Close'].dropna()
-                    break
             except Exception:
                 pass
-        if vix_series.empty:
-            try:
-                _t = yf.Ticker(vix_code)
-                _h = _t.history(start=yf_start, end=yf_end, auto_adjust=True)
-                if not _h.empty and 'Close' in _h.columns:
-                    _h.index = _strip_tz(_h.index)
-                    vix_series = _h['Close'].dropna()
-            except Exception:
-                pass
+            if vix_series.empty:
+                try:
+                    _t = yf.Ticker(vix_code)
+                    _h = _t.history(start=yf_start, end=yf_end, auto_adjust=True)
+                    if not _h.empty and 'Close' in _h.columns:
+                        _h.index = _strip_tz(_h.index)
+                        vix_series = _h['Close'].dropna()
+                except Exception:
+                    pass
 
         # ── 전체 종목 종가 다운로드 (청크 100개씩)
         chunk_size = 100
@@ -1365,13 +1366,15 @@ def get_market_internals(market, lookback_days=60):
         pct_above_200 = (above_200.sum(axis=1) / total_valid.sum(axis=1) * 100).round(1)
         pct_above_50  = (above_50.sum(axis=1)  / total_valid.sum(axis=1) * 100).round(1)
 
-        # ── 52주 신고가/신저가 비율: NH / (NH + NL) × 100
-        roll_high_252 = closes_full.rolling(252, min_periods=126).max()
-        roll_low_252  = closes_full.rolling(252, min_periods=126).min()
-        nh_count      = (closes_full >= roll_high_252).sum(axis=1)
-        nl_count      = (closes_full <= roll_low_252).sum(axis=1)
-        nh_nl_sum     = (nh_count + nl_count).replace(0, float('nan'))
-        nh_ratio      = (nh_count / nh_nl_sum * 100).round(1)
+        # ── 52주 신고가 비율: NH / 전체_유효_종목 × 100
+        # min_periods=252: 만 1년 미만 데이터 종목 제외 → 정확한 52주 고저가 사용
+        roll_high_252  = closes_full.rolling(252, min_periods=252).max()
+        roll_low_252   = closes_full.rolling(252, min_periods=252).min()
+        # 분모: 52주 히스토리가 있고 오늘 종가도 유효한 종목 수
+        valid_for_nh   = roll_high_252.notna() & closes_full.notna()
+        nh_count       = (closes_full >= roll_high_252).sum(axis=1)
+        nh_total       = valid_for_nh.sum(axis=1).replace(0, float('nan'))
+        nh_ratio       = (nh_count / nh_total * 100).round(1)  # 전체 대비 신고가 비율
 
         # ── 맥클렐란: 전체 기간 EMA가 정확하도록 full 데이터로 계산
         daily_chg_full = closes_full.diff() / closes_full.shift(1)
@@ -1386,10 +1389,13 @@ def get_market_internals(market, lookback_days=60):
         # ── 표시 구간으로 트림
         closes_df = closes_full.iloc[-lookback_days:]
 
-        # 균일가중 지수
-        first_prices = closes_df.apply(
-            lambda col: col.dropna().iloc[0] if col.notna().any() else float('nan'))
-        ew_index = closes_df.div(first_prices).mul(100).mean(axis=1)
+        # 균일가중 지수: 첫날 유효한 종목만 사용해 일관된 기준점 보장
+        start_valid  = closes_df.iloc[0].notna()
+        ew_cols      = closes_df.loc[:, start_valid]
+        if ew_cols.empty:
+            ew_cols = closes_df
+        first_prices = ew_cols.iloc[0]
+        ew_index     = ew_cols.div(first_prices).mul(100).mean(axis=1)
 
         # 시총가중 지수 정렬
         cap_aligned    = cap_close.reindex(closes_df.index, method='ffill')
@@ -1405,6 +1411,12 @@ def get_market_internals(market, lookback_days=60):
         # ADL (표시 구간 누적)
         net_adv = (advancing - declining).astype(float)
         adl     = net_adv.cumsum()
+
+        # ── 한국 시장: ^VKOSPI 없음 → 지수 20일 역사적 변동성으로 대체
+        if use_hv20 and vix_series.empty:
+            _ret  = cap_close.pct_change()
+            _hv20 = (_ret.rolling(20, min_periods=10).std() * (252 ** 0.5) * 100).round(2)
+            vix_series = _hv20.dropna()
 
         # 표시 구간 트림
         mcclellan      = mcclellan_full.reindex(closes_df.index).round(1)
@@ -1477,7 +1489,7 @@ def _market_sentiment_html(df, market_name):
          f"{float(latest['50MA상위']):.0f}%" if pd.notna(latest.get('50MA상위')) else "N/A"),
         ("200MA상위", _val_bull('200MA상위', 50),
          f"{float(latest['200MA상위']):.0f}%" if pd.notna(latest['200MA상위']) else "N/A"),
-        ("52주신고가", _val_bull('NH비율', 50),
+        ("52주신고가", _val_bull('NH비율', 20),
          f"{float(latest['NH비율']):.0f}%" if pd.notna(latest.get('NH비율')) else "N/A"),
     ]
 
@@ -1494,7 +1506,7 @@ def _market_sentiment_html(df, market_name):
     else:              label, accent = "강한 약세",   "#FF4B6E"
 
     bar_w = int(pct * 100)
-    vix_lbl = "VKOSPI" if market_name in ("코스피", "코스닥") else "VIX"
+    vix_lbl = "변동성(HV20)" if market_name in ("코스피", "코스닥") else "VIX"
     # VIX 라벨 교체
     sigs_display = []
     for nm, bull, val in sigs:
@@ -1526,7 +1538,8 @@ def _market_sentiment_html(df, market_name):
 
 
 def make_market_chart(df, market_name):
-    vix_label = "VKOSPI" if market_name in ("코스피", "코스닥") else "VIX"
+    is_korean = market_name in ("코스피", "코스닥")
+    vix_label = "역사적 변동성(HV20)" if is_korean else "VIX"
     has_vix   = df['VIX'].notna().any()
     has_200   = df['200MA상위'].notna().any()
     has_50    = '50MA상위' in df.columns and df['50MA상위'].notna().any()
@@ -1534,24 +1547,16 @@ def make_market_chart(df, market_name):
     has_summ  = df['서머레이션'].notna().any()
     x0, x1   = df.index[0], df.index[-1]
 
-    # 지수(시총가중) 오버레이: y_data 범위에 맞게 스케일해서 투명 배경선으로 추가
-    def _idx_overlay(fig, y_series, row, col):
-        idx = df['시총가중'].reindex(y_series.index, method='ffill').dropna()
-        ys  = y_series.dropna()
-        if idx.empty or ys.empty:
+    # 지수(시총가중) 배경 오버레이 — 보조 Y축(오른쪽) 사용, 독립 스케일
+    def _idx_overlay(fig, row, col):
+        idx = df['시총가중'].dropna()
+        if idx.empty:
             return
-        y_min, y_max = float(ys.min()), float(ys.max())
-        y_rng = y_max - y_min
-        if y_rng == 0:
-            return
-        i_min, i_max = float(idx.min()), float(idx.max())
-        i_rng = i_max - i_min if i_max != i_min else 1.0
-        scaled = (idx - i_min) / i_rng * y_rng * 0.75 + y_min + y_rng * 0.125
         fig.add_trace(go.Scatter(
-            x=scaled.index, y=scaled,
-            line=dict(color="rgba(255,255,255,0.07)", width=1.2),
+            x=idx.index, y=idx,
+            line=dict(color="rgba(255,255,255,0.22)", width=1.1),
             showlegend=False, hoverinfo='skip',
-        ), row=row, col=col)
+        ), row=row, col=col, secondary_y=True)
 
     def _hl(y, color, dash='dot', width=0.9):
         return go.Scatter(
@@ -1560,14 +1565,16 @@ def make_market_chart(df, market_name):
             showlegend=False, hoverinfo='skip',
         )
 
+    _specs = [[{"secondary_y": True}, {"secondary_y": True}]] * 4
     fig = make_subplots(
         rows=4, cols=2,
+        specs=_specs,
         row_heights=[0.22, 0.22, 0.28, 0.28],
         subplot_titles=[
             "시총가중 vs 균일가중 (기준=100)",
             "시총가중 ÷ 균일가중 비율",
             "ADL — 등락 누적선",
-            "52주 신고가 비율 (신고가/(신고가+신저가) × 100)",
+            "52주 신고가 비율 (% of 전체 유효 종목)",
             "맥클렐란 서머레이션 인덱스",
             f"{vix_label} — 공포지수",
             "상승비율 & 20일 이동평균",
@@ -1585,14 +1592,13 @@ def make_market_chart(df, market_name):
 
     # ── Row 1 right: 비율 + 지수 배경
     ratio = (df['시총가중'] / df['균일가중']).round(4)
-    _idx_overlay(fig, ratio, 1, 2)
+    _idx_overlay(fig, 1, 2)
     fig.add_trace(go.Scatter(x=df.index, y=ratio,
         line=dict(color="#787EE7", width=1.5), showlegend=False), row=1, col=2)
     fig.add_trace(_hl(float(ratio.mean()), "rgba(255,255,255,0.12)", 'dot'), row=1, col=2)
 
     # ── Row 2 left: ADL + 지수 배경
-    adl_s = df['ADL'].dropna()
-    _idx_overlay(fig, adl_s, 2, 1)
+    _idx_overlay(fig, 2, 1)
     fig.add_trace(go.Scatter(
         x=df.index, y=df['ADL'],
         line=dict(color="#787EE7", width=1.8),
@@ -1604,20 +1610,23 @@ def make_market_chart(df, market_name):
     # ── Row 2 right: 52주 신고가 비율 + 지수 배경
     if has_nh:
         nh = df['NH비율'].dropna()
-        _idx_overlay(fig, nh, 2, 2)
+        _idx_overlay(fig, 2, 2)
         fig.add_trace(go.Scatter(
             x=nh.index, y=nh,
             line=dict(color="#DDA0DD", width=1.8),
             showlegend=False,
         ), row=2, col=2)
-        for lvl, c in [(70, "rgba(75,255,179,0.45)"),
-                       (50, "rgba(255,255,255,0.12)"),
-                       (30, "rgba(255,75,110,0.45)")]:
+        # NH/total 기준: 30%=강세, 15%=중립, 5%=약세
+        for lvl, c in [(30, "rgba(75,255,179,0.45)"),
+                       (15, "rgba(255,255,255,0.12)"),
+                       (5,  "rgba(255,75,110,0.45)")]:
             fig.add_trace(_hl(lvl, c), row=2, col=2)
-        fig.update_yaxes(range=[0, 100], row=2, col=2)
+        # Y 범위: 데이터 기반 동적 범위 (0 ~ max+여유)
+        nh_max = max(float(nh.max()), 30) * 1.2 if not nh.empty else 40
+        fig.update_yaxes(range=[0, nh_max], row=2, col=2)
     else:
         fig.add_annotation(
-            text="52주 데이터 부족", x=0.5, y=0.5,
+            text="52주 데이터 부족 (기간 늘리기)", x=0.5, y=0.5,
             xref="x4 domain", yref="y4 domain",
             showarrow=False, font=dict(color="#555", size=11),
         )
@@ -1625,12 +1634,11 @@ def make_market_chart(df, market_name):
     # ── Row 3 left: 서머레이션 + 지수 배경
     if has_summ:
         summ = df['서머레이션'].dropna()
-        _idx_overlay(fig, summ, 3, 1)
+        _idx_overlay(fig, 3, 1)
         summ_color = ["#4BFFB3" if v >= 0 else "#FF4B6E" for v in summ]
         fig.add_trace(go.Bar(x=summ.index, y=summ,
             marker_color=summ_color, showlegend=False), row=3, col=1)
         fig.add_trace(_hl(0, "rgba(255,255,255,0.20)", 'solid', 1.0), row=3, col=1)
-        # ±참조선: 데이터 실제 범위의 70% 기준 (바스켓 크기 무관하게 의미 있게)
         summ_ref = max(abs(float(summ.max())), abs(float(summ.min())), 50) * 0.70
         for lvl, c in [(summ_ref, "rgba(255,75,110,0.40)"),
                        (-summ_ref, "rgba(75,255,179,0.40)")]:
@@ -1638,21 +1646,23 @@ def make_market_chart(df, market_name):
         summ_bound = max(abs(float(summ.max())), abs(float(summ.min())), 50) * 1.25
         fig.update_yaxes(range=[-summ_bound, summ_bound], row=3, col=1)
 
-    # ── Row 3 right: VIX/VKOSPI + 지수 배경
+    # ── Row 3 right: VIX / HV20 + 지수 배경
     if has_vix:
         vix = df['VIX'].dropna()
-        _idx_overlay(fig, vix, 3, 2)
+        _idx_overlay(fig, 3, 2)
         fig.add_trace(go.Scatter(
             x=vix.index, y=vix,
             line=dict(color="#FFB347", width=1.8),
             showlegend=False,
         ), row=3, col=2)
-        vix_center = 25.0
-        half = max(abs(float(vix.max()) - vix_center),
-                   abs(vix_center - float(vix.min())), 6) * 1.3
-        fig.update_yaxes(range=[vix_center - half, vix_center + half], row=3, col=2)
-        for lvl, c in [(20, "rgba(75,255,179,0.45)"), (25, "rgba(255,255,255,0.10)"),
-                       (30, "rgba(255,75,110,0.45)")]:
+        # 동적 중심: 데이터 중앙값 기준, 고정 참조선 유지
+        vix_med  = float(vix.median())
+        vix_ref  = [15, 20, 25] if is_korean else [20, 25, 30]
+        vix_clrs = ["rgba(75,255,179,0.45)", "rgba(255,255,255,0.10)", "rgba(255,75,110,0.45)"]
+        half = max(abs(float(vix.max()) - vix_med),
+                   abs(vix_med - float(vix.min())), 5) * 1.4
+        fig.update_yaxes(range=[vix_med - half, vix_med + half], row=3, col=2)
+        for lvl, c in zip(vix_ref, vix_clrs):
             fig.add_trace(_hl(lvl, c), row=3, col=2)
     else:
         fig.add_annotation(
@@ -1661,12 +1671,11 @@ def make_market_chart(df, market_name):
             showarrow=False, font=dict(color="#555", size=11),
         )
 
-    # ── Row 4 left: 상승비율 & MA20 + 지수 배경
-    adv_s = df['상승비율'].dropna()
-    _idx_overlay(fig, adv_s, 4, 1)
+    # ── Row 4 left: 상승비율 & MA20 + 지수 배경 (0~100 전체 범위)
+    _idx_overlay(fig, 4, 1)
     fig.add_trace(go.Scatter(
         x=df.index, y=df['상승비율'],
-        name="상승비율", line=dict(color="rgba(120,126,231,0.35)", width=1),
+        name="상승비율", line=dict(color="rgba(120,126,231,0.18)", width=1),
     ), row=4, col=1)
     if df['상승비율MA20'].notna().any():
         fig.add_trace(go.Scatter(
@@ -1677,12 +1686,12 @@ def make_market_chart(df, market_name):
                    (50, "rgba(255,255,255,0.12)"),
                    (30, "rgba(255,75,110,0.45)")]:
         fig.add_trace(_hl(lvl, c), row=4, col=1)
-    fig.update_yaxes(range=[30, 70], row=4, col=1)
+    fig.update_yaxes(range=[0, 100], row=4, col=1)
 
     # ── Row 4 right: 200MA 상위 + 50MA 상위 오버레이 + 지수 배경
     if has_200:
         p200 = df['200MA상위'].dropna()
-        _idx_overlay(fig, p200, 4, 2)
+        _idx_overlay(fig, 4, 2)
         fig.add_trace(go.Scatter(
             x=p200.index, y=p200,
             name="200MA 상위", line=dict(color="#C8C850", width=1.8),
@@ -1693,9 +1702,7 @@ def make_market_chart(df, market_name):
                 x=p50.index, y=p50,
                 name="50MA 상위", line=dict(color="#87CEEB", width=1.5, dash='dot'),
             ), row=4, col=2)
-        all_vals = p200
-        if has_50:
-            all_vals = pd.concat([p200, p50])
+        all_vals = pd.concat([p200, df['50MA상위'].dropna()]) if has_50 else p200
         center = 50.0
         half = max(abs(float(all_vals.max()) - center),
                    abs(center - float(all_vals.min())), 10) * 1.3
@@ -1713,6 +1720,14 @@ def make_market_chart(df, market_name):
     )
     fig.update_xaxes(**_axis_kw())
     fig.update_yaxes(**_axis_kw())
+    # 보조 Y축(오른쪽 지수선): 눈금 숨기고 스타일만 유지
+    for _r in range(1, 5):
+        for _c in range(1, 3):
+            fig.update_yaxes(
+                showticklabels=False, showgrid=False,
+                zeroline=False, showline=False,
+                row=_r, col=_c, secondary_y=True,
+            )
     fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
     for ann in fig.layout.annotations:
         ann.font.color = "#777"
@@ -2253,7 +2268,7 @@ def main():
             p200_val = latest['200MA상위']
             p50_val  = latest.get('50MA상위')
             adl_chg  = float(latest['ADL'] - prev['ADL'])
-            vix_lbl  = "VKOSPI" if market_choice in ("코스피", "코스닥") else "VIX"
+            vix_lbl  = "변동성(HV20)" if market_choice in ("코스피", "코스닥") else "VIX"
 
             row1 = "".join([
                 _mkt_card("시총가중",
@@ -2357,10 +2372,10 @@ def main():
 </tr>
 <tr>
   <td><b>52주 신고가 비율</b></td>
-  <td>오늘 1년 내 최고가를 찍은 종목 수 ÷ (최고가+최저가 종목 합산) × 100. 진짜 강세인지 확인하는 모멘텀 지표</td>
-  <td class="bull">70% 이상 = 강한 상승 모멘텀</td>
-  <td class="bear">30% 이하 = 하락 모멘텀 우위</td>
-  <td>50% 위면 신고가 종목이 신저가보다 많다는 뜻 = 상승 흐름. 지수가 오르는데 신고가 비율이 낮으면 일부 종목만 끌어올리는 불안한 장</td>
+  <td>오늘 1년(52주) 내 최고가를 찍은 종목 수 ÷ 전체 유효 종목 수 × 100. 진짜 상승 모멘텀이 있는지 확인</td>
+  <td class="bull">30% 이상 = 강한 상승 모멘텀</td>
+  <td class="bear">5% 이하 = 신고가 거의 없음 (약세 신호)</td>
+  <td>지수가 오르는데 신고가 비율이 낮으면 소수 대형주만 끌어올리는 불안한 장. 역대 최고가 갱신 구간에서 30%+ 유지되면 진짜 상승장</td>
 </tr>
 <tr>
   <td><b>50일선 상위 비율</b></td>
@@ -2377,11 +2392,11 @@ def main():
   <td>0선 위면 강세장, 아래면 약세장. 0선을 뚫고 올라오면 장세 전환 신호. 0선 위에서 하락 전환하면 조정 경고</td>
 </tr>
 <tr>
-  <td><b>VIX / VKOSPI (공포지수)</b></td>
-  <td>투자자들이 얼마나 겁먹고 있나. 숫자 높을수록 공포 심리 강함</td>
-  <td class="bull">30 이상 → 공포 극대 = 바닥 근처일 수도</td>
-  <td class="bear">20 이하에서 갑자기 급등 → 조정 시작 신호</td>
-  <td>20 이하 = 안심, 20~30 = 주의, 30 이상 = 공포. 역설적으로 <b>모두가 겁먹을 때가 매수 타이밍</b>인 경우가 많음</td>
+  <td><b>VIX / 역사적변동성(HV20)</b></td>
+  <td>투자자들이 얼마나 겁먹고 있나. 미국=VIX(옵션 내재변동성), 한국=HV20(지수 20일 실현변동성). 숫자 클수록 불안</td>
+  <td class="bull">급등 후 빠르게 내려올 때 → 공포 해소 = 반등 신호</td>
+  <td class="bear">낮은 수준에서 갑자기 급등 → 조정 시작 신호</td>
+  <td>미국 VIX: 20 이하=안심, 20~30=주의, 30 이상=공포. 한국 HV20: 15 이하=안심, 20 이상=주의, 25 이상=경계. <b>공포 극대일 때가 역발상 매수 타이밍</b>인 경우 많음</td>
 </tr>
 <tr>
   <td><b>상승비율 MA20</b></td>
