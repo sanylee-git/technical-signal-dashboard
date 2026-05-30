@@ -1425,6 +1425,7 @@ def get_market_internals(market, lookback_days=60):
         pct_200_trim   = pct_above_200.reindex(closes_df.index)
         pct_50_trim    = pct_above_50.reindex(closes_df.index)
         nh_ratio_trim  = nh_ratio.reindex(closes_df.index)
+        nh_ratio_ma20_trim = nh_ratio.rolling(20, min_periods=5).mean().round(1).reindex(closes_df.index)
         vix_aligned    = (vix_series.reindex(closes_df.index, method='ffill')
                           if not vix_series.empty
                           else pd.Series(float('nan'), index=closes_df.index))
@@ -1444,6 +1445,7 @@ def get_market_internals(market, lookback_days=60):
             '200MA상위':   pct_200_trim,
             '50MA상위':    pct_50_trim,
             'NH비율':      nh_ratio_trim,
+            'NH비율MA20':   nh_ratio_ma20_trim,
         }).dropna(subset=['균일가중'])
 
         return result, None
@@ -1544,6 +1546,7 @@ def make_market_chart(df, market_name):
     has_200   = df['200MA상위'].notna().any()
     has_50    = '50MA상위' in df.columns and df['50MA상위'].notna().any()
     has_nh    = 'NH비율' in df.columns and df['NH비율'].notna().any()
+    has_nh_ma = 'NH비율MA20' in df.columns and df['NH비율MA20'].notna().any()
     has_summ  = df['서머레이션'].notna().any()
     x0, x1   = df.index[0], df.index[-1]
 
@@ -1588,7 +1591,7 @@ def make_market_chart(df, market_name):
             "ADL — 등락 누적선",
             "52주 신고가 비율 (% of 전체 유효 종목)",
             "맥클렐란 서머레이션 인덱스",
-            f"{vix_label} — 공포지수",
+            f"{vix_label}  (↑높을수록 공포)",
             "상승비율 & MA20  (50 중심 루트 스트레치)",
             "이동평균선 상위 종목 비율 (50일 / 200일)",
         ],
@@ -1633,8 +1636,16 @@ def make_market_chart(df, market_name):
                        (15, "rgba(255,255,255,0.12)"),
                        (5,  "rgba(255,75,110,0.45)")]:
             fig.add_trace(_hl(lvl, c), row=2, col=2)
-        # Y 범위: 데이터 기반 동적 범위 (0 ~ max+여유)
-        nh_max = max(float(nh.max()), 30) * 1.2 if not nh.empty else 40
+        if has_nh_ma:
+            nh_ma = df['NH비율MA20'].dropna()
+            fig.add_trace(go.Scatter(
+                x=nh_ma.index, y=nh_ma,
+                name="NH MA20", line=dict(color="#E8B8FF", width=1.8, dash='dot'),
+                showlegend=False,
+            ), row=2, col=2)
+        # Y 범위: MA20도 포함해서 최댓값 결정
+        _nh_all = pd.concat([nh, df['NH비율MA20'].dropna()]) if has_nh_ma else nh
+        nh_max = max(float(_nh_all.max()), 30) * 1.2 if not _nh_all.empty else 40
         fig.update_yaxes(range=[0, nh_max], row=2, col=2)
     else:
         fig.add_annotation(
@@ -1644,18 +1655,32 @@ def make_market_chart(df, market_name):
         )
 
     # ── Row 3 left: 서머레이션 + 지수 배경
+    # Bar 대신 Scatter fill 사용 → 한국 공휴일 gap 없이 깔끔하게 렌더링
+    # 양수(강세 기간)=초록 영역, 음수(약세 기간)=빨간 영역
     if has_summ:
-        summ = df['서머레이션'].dropna()
+        summ = df['서머레이션']  # NaN 포함 (connectgaps=False로 gap 처리)
         _idx_overlay(fig, 3, 1)
-        summ_color = ["#4BFFB3" if v >= 0 else "#FF4B6E" for v in summ]
-        fig.add_trace(go.Bar(x=summ.index, y=summ,
-            marker_color=summ_color, showlegend=False), row=3, col=1)
+        summ_pos = summ.where(summ >= 0, 0)
+        summ_neg = summ.where(summ <= 0, 0)
+        fig.add_trace(go.Scatter(
+            x=summ.index, y=summ_pos,
+            fill='tozeroy', fillcolor="rgba(75,255,179,0.20)",
+            line=dict(color="rgba(75,255,179,0.55)", width=0.8),
+            showlegend=False, connectgaps=False,
+        ), row=3, col=1)
+        fig.add_trace(go.Scatter(
+            x=summ.index, y=summ_neg,
+            fill='tozeroy', fillcolor="rgba(255,75,110,0.20)",
+            line=dict(color="rgba(255,75,110,0.55)", width=0.8),
+            showlegend=False, connectgaps=False,
+        ), row=3, col=1)
         fig.add_trace(_hl(0, "rgba(255,255,255,0.20)", 'solid', 1.0), row=3, col=1)
-        summ_ref = max(abs(float(summ.max())), abs(float(summ.min())), 50) * 0.70
+        _summ_valid = summ.dropna()
+        summ_ref = max(abs(float(_summ_valid.max())), abs(float(_summ_valid.min())), 50) * 0.70
         for lvl, c in [(summ_ref, "rgba(255,75,110,0.40)"),
                        (-summ_ref, "rgba(75,255,179,0.40)")]:
             fig.add_trace(_hl(lvl, c, 'dot'), row=3, col=1)
-        summ_bound = max(abs(float(summ.max())), abs(float(summ.min())), 50) * 1.25
+        summ_bound = max(abs(float(_summ_valid.max())), abs(float(_summ_valid.min())), 50) * 1.25
         fig.update_yaxes(range=[-summ_bound, summ_bound], row=3, col=1)
 
     # ── Row 3 right: VIX / HV20 + 지수 배경
@@ -1732,11 +1757,23 @@ def make_market_chart(df, market_name):
                 x=p50.index, y=p50,
                 name="50MA 상위", line=dict(color="#87CEEB", width=1.5, dash='dot'),
             ), row=4, col=2)
-        all_vals = pd.concat([p200, df['50MA상위'].dropna()]) if has_50 else p200
+        spread_50_200 = pd.Series(dtype=float)
+        if has_50:
+            spread_50_200 = (df['50MA상위'] - df['200MA상위']).dropna()
+        _ma_all_vals = pd.concat(
+            [p200] + ([p50] if has_50 else []) + ([spread_50_200] if not spread_50_200.empty else [])
+        )
         center = 50.0
-        half = max(abs(float(all_vals.max()) - center),
-                   abs(center - float(all_vals.min())), 10) * 1.3
+        half = max(abs(float(_ma_all_vals.max()) - center),
+                   abs(center - float(_ma_all_vals.min())), 10) * 1.3
         fig.update_yaxes(range=[center - half, center + half], row=4, col=2)
+        if not spread_50_200.empty:
+            fig.add_trace(go.Scatter(
+                x=spread_50_200.index, y=spread_50_200,
+                name="50-200 편차", line=dict(color="rgba(255,165,0,0.7)", width=1.0),
+                fill='tozeroy', fillcolor="rgba(255,165,0,0.07)",
+            ), row=4, col=2)
+            fig.add_trace(_hl(0, "rgba(255,165,0,0.25)", 'dot'), row=4, col=2)
         for lvl, c in [(70, "rgba(75,255,179,0.45)"),
                        (50, "rgba(255,255,255,0.12)"),
                        (30, "rgba(255,75,110,0.45)")]:
