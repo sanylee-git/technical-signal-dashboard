@@ -1705,7 +1705,7 @@ def make_market_chart(df, market_name):
     if 'ADL_MA20' in df.columns and df['ADL_MA20'].notna().any():
         fig.add_trace(go.Scatter(
             x=df.index, y=df['ADL_MA20'],
-            name="ADL MA20", line=dict(color="#787EE7", width=1.8),
+            name="ADL MA20", line=dict(color="#787EE7", width=1.8, dash='dot'),
             showlegend=False,
         ), row=2, col=1)
     fig.add_trace(_hl(0, "rgba(255,255,255,0.15)", 'dot'), row=2, col=1)
