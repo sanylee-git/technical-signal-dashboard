@@ -1491,7 +1491,7 @@ def get_market_internals(market, lookback_days=60):
         # ADL (표시 구간 누적)
         net_adv  = (advancing - declining).astype(float)
         adl      = net_adv.cumsum()
-        adl_ma20 = adl.rolling(20, min_periods=5).mean()
+        adl_ma10 = adl.rolling(10, min_periods=3).mean()
 
         # ── 한국 시장: ^VKOSPI 없음 → 지수 20일 역사적 변동성으로 대체
         if use_hv20 and vix_series.empty:
@@ -1506,7 +1506,7 @@ def get_market_internals(market, lookback_days=60):
         pct_100_trim   = pct_above_100.reindex(closes_df.index)
         pct_20_trim    = pct_above_20.reindex(closes_df.index)
         nh_ratio_trim  = nh_ratio.reindex(closes_df.index)
-        nh_ratio_ma20_trim = nh_ratio.rolling(20, min_periods=5).mean().round(1).reindex(closes_df.index)
+        nh_ratio_ma10_trim = nh_ratio.rolling(10, min_periods=3).mean().round(1).reindex(closes_df.index)
         vix_aligned    = (vix_series.reindex(closes_df.index, method='ffill')
                           if not vix_series.empty
                           else pd.Series(float('nan'), index=closes_df.index))
@@ -1520,14 +1520,14 @@ def get_market_internals(market, lookback_days=60):
             '상승비율':    adv_ratio,
             '상승비율MA20': adv_ratio_ma20,
             'ADL':         adl,
-            'ADL_MA20':    adl_ma20,
+            'ADL_MA10':    adl_ma10,
             '맥클렐란':    mcclellan,
             '서머레이션':  summation,
             'VIX':         vix_aligned,
             '100MA상위':   pct_100_trim,
             '20MA상위':    pct_20_trim,
             'NH비율':      nh_ratio_trim,
-            'NH비율MA20':   nh_ratio_ma20_trim,
+            'NH비율MA10':   nh_ratio_ma10_trim,
         }).dropna(subset=['균일가중'])
 
         return result, None
@@ -1920,7 +1920,7 @@ def render_market_score_ui(df, market_name):
       </div>
       <div style="display:flex;justify-content:space-between;font-size:9px;
                   color:#444;margin-top:4px;">
-        <span>-100</span><span>강세장</span><span>+100</span>
+        <span>약세 -100</span><span>│ 중립 0 │</span><span>+100 강세</span>
       </div>
     </div>
   </div>
@@ -1941,14 +1941,16 @@ def render_market_score_ui(df, market_name):
         "NH비율": "NH비율",
     }
     score_colors = {2: "#00FF7F", 1: "#4BFFB3", 0: "#888", -1: "#FF8C69", -2: "#FF4B6E"}
-    bar_widths   = {2: 100, 1: 60, 0: 0, -1: 60, -2: 100}
+    # -2~+2를 -100~+100으로 표시 (× 50)
+    score_display = {2: +100, 1: +50, 0: 0, -1: -50, -2: -100}
+    bar_widths    = {2: 100, 1: 50, 0: 0, -1: 50, -2: 100}
 
     for name, info in indicator_scores.items():
-        s   = info["score"]
-        lbl = info["label"]
-        c   = score_colors.get(s, "#888")
-        w   = _SCORE_WEIGHTS.get(name, 1)
-        bw  = bar_widths.get(s, 0)
+        s      = info["score"]
+        lbl    = info["label"]
+        c      = score_colors.get(s, "#888")
+        disp   = score_display.get(s, 0)
+        bw     = bar_widths.get(s, 0)
         is_pos = s > 0
         bar_html = (
             f'<div style="width:{bw}%;height:100%;background:{c};border-radius:2px;'
@@ -1960,8 +1962,8 @@ def render_market_score_ui(df, market_name):
             f'border-bottom:1px solid rgba(255,255,255,0.04);">'
             f'<div style="width:110px;font-size:10px;color:#888;flex-shrink:0;">'
             f'{label_map.get(name, name)}</div>'
-            f'<div style="width:24px;font-size:12px;font-weight:700;color:{c};'
-            f'text-align:center;flex-shrink:0;">{s:+d}</div>'
+            f'<div style="width:40px;font-size:11px;font-weight:700;color:{c};'
+            f'text-align:right;flex-shrink:0;">{disp:+d}</div>'
             f'<div style="flex:1;display:flex;align-items:center;">'
             f'<div style="width:50%;height:6px;background:rgba(255,75,110,0.08);'
             f'border-radius:2px 0 0 2px;overflow:hidden;">'
@@ -1979,7 +1981,7 @@ def render_market_score_ui(df, market_name):
 <div style="background:#0c0c0e;border:1px solid rgba(255,255,255,0.06);
             border-radius:8px;padding:10px 14px;margin-bottom:10px;">
   <div style="font-size:10px;color:#555;margin-bottom:6px;">
-    지표별 점수 &nbsp;★ = 가중치 2배 핵심 지표 &nbsp;|&nbsp; 최대 ±{_SCORE_MAX}점 → 정규화 ±100
+    지표별 점수 (-100 ~ +100) &nbsp;★ = 가중치 2배 핵심 지표
   </div>
   {"".join(score_rows)}
 </div>
@@ -2082,7 +2084,7 @@ def make_market_chart(df, market_name):
     has_200   = df['100MA상위'].notna().any()
     has_50    = '20MA상위' in df.columns and df['20MA상위'].notna().any()
     has_nh    = 'NH비율' in df.columns and df['NH비율'].notna().any()
-    has_nh_ma = 'NH비율MA20' in df.columns and df['NH비율MA20'].notna().any()
+    has_nh_ma = 'NH비율MA10' in df.columns and df['NH비율MA10'].notna().any()
     has_summ  = df['서머레이션'].notna().any()
     x0, x1   = df.index[0], df.index[-1]
 
@@ -2156,10 +2158,10 @@ def make_market_chart(df, market_name):
         fill='tozeroy', fillcolor="rgba(120,126,231,0.06)",
         showlegend=False,
     ), row=2, col=1)
-    if 'ADL_MA20' in df.columns and df['ADL_MA20'].notna().any():
+    if 'ADL_MA10' in df.columns and df['ADL_MA10'].notna().any():
         fig.add_trace(go.Scatter(
-            x=df.index, y=df['ADL_MA20'],
-            name="ADL MA20", line=dict(color="#787EE7", width=1.8, dash='dot'),
+            x=df.index, y=df['ADL_MA10'],
+            name="ADL MA10", line=dict(color="#787EE7", width=1.8, dash='dot'),
             showlegend=False,
         ), row=2, col=1)
     fig.add_trace(_hl(0, "rgba(255,255,255,0.15)", 'dot'), row=2, col=1)
@@ -2179,14 +2181,14 @@ def make_market_chart(df, market_name):
                        (5,  "rgba(255,75,110,0.45)")]:
             fig.add_trace(_hl(lvl, c), row=2, col=2)
         if has_nh_ma:
-            nh_ma = df['NH비율MA20'].dropna()
+            nh_ma = df['NH비율MA10'].dropna()
             fig.add_trace(go.Scatter(
                 x=nh_ma.index, y=nh_ma,
-                name="NH MA20", line=dict(color="#E8B8FF", width=1.8, dash='dot'),
+                name="NH MA10", line=dict(color="#E8B8FF", width=1.8, dash='dot'),
                 showlegend=False,
             ), row=2, col=2)
         # Y 범위: MA20도 포함해서 최댓값 결정
-        _nh_all = pd.concat([nh, df['NH비율MA20'].dropna()]) if has_nh_ma else nh
+        _nh_all = pd.concat([nh, df['NH비율MA10'].dropna()]) if has_nh_ma else nh
         nh_max = max(float(_nh_all.max()), 30) * 1.2 if not _nh_all.empty else 40
         fig.update_yaxes(range=[0, nh_max], row=2, col=2)
     else:
