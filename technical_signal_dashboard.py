@@ -1539,18 +1539,19 @@ def get_market_internals(market, lookback_days=60):
 # 시장 강도 점수 시스템 — MA10 기울기 연속성 기반
 # ============================================================
 
-# 핵심 지표 가중치 2배, 나머지 1배
+# 핵심★ 2배: ADL, 100MA상위 / 나머지 1배
 _SCORE_WEIGHTS = {
-    "시총가중":    1, "균일가중": 1,
-    "ADL":        2, "서머레이션": 2,
-    "HV20":       1, "상승비율MA20": 1,
-    "20MA상위":   2, "100MA상위": 2,
-    "NH비율":     1,
+    "시총가중":   1, "균일가중": 1,
+    "ADL":       2, "서머레이션": 1,
+    "HV20":      1, "상승비율":  1,
+    "20MA상위":  1, "100MA상위": 2,
+    "NH비율":    1,
 }
-_SCORE_MAX = sum(w * 2 for w in _SCORE_WEIGHTS.values())  # 26
+# 가중치·연속일수(최대 2점) 기반 최대 점수 자동 계산
+_SCORE_MAX = sum(w * 2 for w in _SCORE_WEIGHTS.values())  # 22
 
 
-def _consec_slope(series, invert=False, already_smooth=False):
+def _consec_slope(series, invert=False, already_smooth=False, deadband=0.0):
     """
     MA10 기울기 연속성으로 점수 반환.
       1일 연속 = ±0.5 (임시)
@@ -1558,6 +1559,7 @@ def _consec_slope(series, invert=False, already_smooth=False):
       3일+ 연속 = ±2  (확정)
     invert=True: 하락이 좋음 (HV20/VIX)
     already_smooth=True: 이미 이동평균된 시리즈면 MA10 재계산 없이 직접 사용
+    deadband: 이 값 이하의 절대 변화는 횡보로 처리 (노이즈 제거)
     Returns (score, label, n_consecutive, effective_direction)
     """
     if series is None:
@@ -1575,7 +1577,7 @@ def _consec_slope(series, invert=False, already_smooth=False):
     signs = []
     for i in range(1, len(tail)):
         diff = float(tail.iloc[i]) - float(tail.iloc[i - 1])
-        signs.append(0 if abs(diff) < 1e-9 else (1 if diff > 0 else -1))
+        signs.append(0 if abs(diff) <= deadband else (1 if diff > 0 else -1))
 
     if not signs:
         return 0, "데이터 부족", 0, 0
@@ -1686,10 +1688,12 @@ def _slope_score_all(df_slice):
     hv_s, hv_lbl, _, _ = _consec_slope(col('VIX'), invert=True)
     results["HV20"] = {"score": hv_s, "raw": last('VIX'), "label": hv_lbl}
 
-    # ── 6. 상승비율MA20 — 이미 MA20 적용된 시리즈, 직접 기울기 사용
+    # ── 6. 상승비율 — raw 데이터에 MA10 적용 (available), deadband 0.3%로 노이즈 제거
+    adv_src = col('상승비율') if col('상승비율') is not None else col('상승비율MA20')
+    adv_already = col('상승비율') is None  # raw 없으면 MA20 그대로
     adv_raw = last('상승비율MA20')
-    adv_s, adv_lbl, _, _ = _consec_slope(col('상승비율MA20'), already_smooth=True)
-    results["상승비율MA20"] = {
+    adv_s, adv_lbl, _, _ = _consec_slope(adv_src, already_smooth=adv_already, deadband=0.3)
+    results["상승비율"] = {
         "score": adv_s, "raw": adv_raw, "label": adv_lbl,
         "level_html": _ratio_level_html("상승비율MA20", adv_raw),
     }
@@ -1743,48 +1747,22 @@ def classify_phase(score):
 
 def get_phase_status(df, market_name):
     """
-    최근 3거래일 점수를 계산해 국면 확정 여부 반환.
-    반환: (score_today, indicator_scores, phase_today, status)
-      status: "확정" | "플래그" | "임시"
+    오늘 점수로 국면 표시. 어제와 같은 국면이면 '유지', 다르면 '전환'.
+    반환: (score_today, indicator_scores, phase_today, continuity_label)
     """
     n = len(df)
-    if n < 5:
-        sc = _slope_score_all(df)
-        score = compute_market_score(sc)
-        phase, _ = classify_phase(score)
-        return score, sc, phase, "임시"
-
-    scores_hist = []
-    for i in range(min(3, n)):
-        slice_i = df.iloc[: n - i]
-        if len(slice_i) < 5:
-            continue
-        sc_i = _slope_score_all(slice_i)
-        scores_hist.append((compute_market_score(sc_i), sc_i))
-
-    if not scores_hist:
-        sc = _slope_score_all(df)
-        score = compute_market_score(sc)
-        phase, _ = classify_phase(score)
-        return score, sc, phase, "임시"
-
-    score_today = scores_hist[0][0]
-    sc_today    = scores_hist[0][1]
+    sc_today = _slope_score_all(df)
+    score_today = compute_market_score(sc_today)
     phase_today, _ = classify_phase(score_today)
 
-    if len(scores_hist) >= 3:
-        phases = [classify_phase(s)[0] for s, _ in scores_hist]
-        if phases[0] == phases[1] == phases[2]:
-            return score_today, sc_today, phase_today, "확정"
-        elif phases[0] == phases[1]:
-            return score_today, sc_today, phase_today, "플래그"
-    elif len(scores_hist) == 2:
-        p0 = classify_phase(scores_hist[0][0])[0]
-        p1 = classify_phase(scores_hist[1][0])[0]
-        if p0 == p1:
-            return score_today, sc_today, phase_today, "플래그"
+    # 어제 점수 (참고용 연속성 라벨만)
+    continuity = "첫날"
+    if n >= 6:
+        sc_prev = _slope_score_all(df.iloc[: n - 1])
+        phase_prev, _ = classify_phase(compute_market_score(sc_prev))
+        continuity = "유지 중" if phase_prev == phase_today else "전환"
 
-    return score_today, sc_today, phase_today, "임시"
+    return score_today, sc_today, phase_today, continuity
 
 
 def _build_interpretation(indicator_scores, total_score, market_name):
@@ -1795,7 +1773,7 @@ def _build_interpretation(indicator_scores, total_score, market_name):
     display_names = {
         "시총가중": "시총가중 지수", "균일가중": "균일가중 지수",
         "ADL": "ADL 등락선", "서머레이션": "맥클렐란 서머레이션",
-        "HV20": vix_lbl, "상승비율MA20": "상승비율MA20",
+        "HV20": vix_lbl, "상승비율": "상승비율",
         "20MA상위": "20MA 상위비율", "100MA상위": "100MA 상위비율",
         "NH비율": "52주 신고가 비율",
     }
@@ -1901,9 +1879,9 @@ def render_market_score_ui(df, market_name):
     score_rows = []
     label_map = {
         "시총가중": "시총가중", "균일가중": "균일가중",
-        "ADL": "ADL ★", "서머레이션": "서머레이션 ★",
-        "HV20": f"{vix_lbl}", "상승비율MA20": "상승비율MA20",
-        "20MA상위": "20MA상위 ★", "100MA상위": "100MA상위 ★",
+        "ADL": "ADL ★", "서머레이션": "서머레이션",
+        "HV20": f"{vix_lbl}", "상승비율": "상승비율",
+        "20MA상위": "20MA상위", "100MA상위": "100MA상위 ★",
         "NH비율": "NH비율",
     }
     # 점수 -2~+2 (0.5 단계 포함) → 색상·표시값·바 너비
