@@ -1547,7 +1547,19 @@ def make_market_chart(df, market_name):
     has_summ  = df['서머레이션'].notna().any()
     x0, x1   = df.index[0], df.index[-1]
 
-    # 지수(시총가중) 배경 오버레이 — 보조 Y축(오른쪽), 중앙 고정
+    # 보조 Y축 범위: 시총가중 전체 데이터 기준으로 한 번만 계산
+    # (update_yaxes를 _idx_overlay 내부에서 호출하면 이후 global update_yaxes에 덮어씌워짐)
+    _idx_full = df['시총가중'].dropna()
+    if not _idx_full.empty:
+        _i_min = float(_idx_full.min())
+        _i_max = float(_idx_full.max())
+        _i_pad = max((_i_max - _i_min) * 0.12, 1.0)
+        _idx_yr: list = [_i_min - _i_pad, _i_max + _i_pad]
+    else:
+        _idx_yr = [90, 110]
+
+    # 지수(시총가중) 배경 오버레이 — 보조 Y축(오른쪽), 트레이스만 추가
+    # 범위는 함수 밖에서 한 번에 설정 (global update_yaxes 이후에 적용해야 덮어씌워지지 않음)
     def _idx_overlay(fig, row, col):
         idx = df['시총가중'].dropna()
         if idx.empty:
@@ -1557,12 +1569,6 @@ def make_market_chart(df, market_name):
             line=dict(color="rgba(255,255,255,0.22)", width=1.1),
             showlegend=False, hoverinfo='skip',
         ), row=row, col=col, secondary_y=True)
-        # Plotly auto-range는 양수 데이터를 [0, max]로 스냅해 인덱스가 최상단에 몰림.
-        # 데이터 중심(mean) ± 3σ 범위로 명시 설정 → 인덱스가 항상 차트 중앙 1/3에 위치
-        _m = float(idx.mean())
-        _h = max(float(idx.max()) - _m, _m - float(idx.min()), 0.5)
-        fig.update_yaxes(range=[_m - _h * 3, _m + _h * 3],
-                         row=row, col=col, secondary_y=True)
 
     def _hl(y, color, dash='dot', width=0.9):
         return go.Scatter(
@@ -1744,10 +1750,12 @@ def make_market_chart(df, market_name):
     )
     fig.update_xaxes(**_axis_kw())
     fig.update_yaxes(**_axis_kw())
-    # 보조 Y축(오른쪽 지수선): 눈금 숨기고 스타일만 유지
+    # 보조 Y축: global update_yaxes 이후에 range를 덮어써야 초기화 방지
+    # range를 여기서 마지막으로 설정해야 Plotly가 덮어쓰지 않음
     for _r in range(1, 5):
         for _c in range(1, 3):
             fig.update_yaxes(
+                range=_idx_yr,
                 showticklabels=False, showgrid=False,
                 zeroline=False, showline=False,
                 row=_r, col=_c, secondary_y=True,
