@@ -1583,7 +1583,7 @@ def make_market_chart(df, market_name):
             "52주 신고가 비율 (% of 전체 유효 종목)",
             "맥클렐란 서머레이션 인덱스",
             f"{vix_label} — 공포지수",
-            "상승비율 & 20일 이동평균",
+            "상승비율 & MA20  (50 중심 루트 스트레치)",
             "이동평균선 상위 종목 비율 (50일 / 200일)",
         ],
         vertical_spacing=0.09,
@@ -1677,21 +1677,39 @@ def make_market_chart(df, market_name):
             showarrow=False, font=dict(color="#555", size=11),
         )
 
-    # ── Row 4 left: 상승비율 & MA20 + 지수 배경 (0~100 전체 범위)
+    # ── Row 4 left: 상승비율 & MA20 — 50 중심 루트 스트레치
+    # 공식: 50 + sign(x-50) × √|x-50| × 10  →  40→18, 50→50, 60→82 등
+    def _stretch50(s):
+        dev = s - 50
+        _sign = dev.map(lambda v: 1 if v > 0 else (-1 if v < 0 else 0))
+        return (50 + _sign * (dev.abs() ** 0.5) * 10).clip(0, 100)
+
+    # 참조값(원본): 40, 50, 60 → 변환 후 위치 계산
+    _ref_raw = [40, 50, 60]
+    _ref_trn = [float(50 + (1 if r > 50 else -1 if r < 50 else 0) * ((abs(r - 50)) ** 0.5) * 10)
+                for r in _ref_raw]  # ≈ [18.4, 50, 81.6]
+
+    adv_s = _stretch50(df['상승비율'])
     _idx_overlay(fig, 4, 1)
     fig.add_trace(go.Scatter(
-        x=df.index, y=df['상승비율'],
+        x=df.index, y=adv_s,
         name="상승비율", line=dict(color="rgba(120,126,231,0.18)", width=1),
+        customdata=df['상승비율'],
+        hovertemplate="%{customdata:.1f}%<extra>상승비율</extra>",
     ), row=4, col=1)
     if df['상승비율MA20'].notna().any():
+        ma20_s = _stretch50(df['상승비율MA20'])
         fig.add_trace(go.Scatter(
-            x=df.index, y=df['상승비율MA20'],
+            x=df.index, y=ma20_s,
             name="MA20", line=dict(color="#787EE7", width=2),
+            customdata=df['상승비율MA20'],
+            hovertemplate="%{customdata:.1f}%<extra>MA20</extra>",
         ), row=4, col=1)
-    for lvl, c in [(70, "rgba(75,255,179,0.45)"),
-                   (50, "rgba(255,255,255,0.12)"),
-                   (30, "rgba(255,75,110,0.45)")]:
-        fig.add_trace(_hl(lvl, c), row=4, col=1)
+    for lvl_t, c in zip(_ref_trn,
+                        ["rgba(255,75,110,0.45)",
+                         "rgba(255,255,255,0.12)",
+                         "rgba(75,255,179,0.45)"]):
+        fig.add_trace(_hl(lvl_t, c), row=4, col=1)
     fig.update_yaxes(range=[0, 100], row=4, col=1)
 
     # ── Row 4 right: 200MA 상위 + 50MA 상위 오버레이 + 지수 배경
