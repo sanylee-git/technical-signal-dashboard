@@ -1535,6 +1535,460 @@ def get_market_internals(market, lookback_days=60):
         return None, traceback.format_exc()
 
 
+# ============================================================
+# 시장 강도 점수 시스템 — 임계값 설정 (시장별 오버라이드 가능)
+# ============================================================
+_SCORE_CFG_DEFAULT = {
+    # 시총가중/균일가중: 5일 수익률(%)
+    "idx_5d":   {"vbull": 3.0, "bull": 0.5, "bear": -0.5, "vbear": -3.0},
+    # ADL 5일 변화량 (절대값, 전체 종목 수로 나눈 z-score 대신 단순 방향)
+    "adl_5d":   {"vbull": 0.0, "bull": 0.0, "bear": 0.0, "vbear": 0.0},  # direction only
+    # 서머레이션 절대값
+    "summ":     {"vbull": 500, "bull": 100, "bear": -100, "vbear": -500},
+    # HV20 절대 레벨
+    "hv20_lvl": {"low": 13, "mid": 20, "high": 27, "extreme": 35},
+    # HV20 5일 변화율(%) — 상승이면 공포 증가
+    "hv20_5d":  {"rising_fast": 25, "rising": 8, "falling": -8},
+    # 상승비율MA20
+    "adv_ma20": {"vbull": 60, "bull": 50, "neutral": 45, "bear": 40},
+    # 20MA 상위 비율
+    "ma20pct":  {"vbull": 65, "bull": 50, "bear": 35, "vbear": 20},
+    # 100MA 상위 비율
+    "ma100pct": {"vbull": 70, "bull": 50, "weak": 40, "vbear": 30},
+    # NH 비율
+    "nh":       {"vbull": 20, "bull": 10, "neutral": 5, "bear": 2},
+}
+
+_SCORE_CFG = {
+    "_default": _SCORE_CFG_DEFAULT,
+    "코스피":   {**_SCORE_CFG_DEFAULT, "hv20_lvl": {"low": 11, "mid": 17, "high": 23, "extreme": 30}},
+    "코스닥":   {**_SCORE_CFG_DEFAULT, "hv20_lvl": {"low": 13, "mid": 20, "high": 28, "extreme": 38}},
+    "S&P 500":  {**_SCORE_CFG_DEFAULT, "hv20_lvl": {"low": 15, "mid": 20, "high": 28, "extreme": 40}},
+    "나스닥 100": {**_SCORE_CFG_DEFAULT, "hv20_lvl": {"low": 16, "mid": 22, "high": 30, "extreme": 42}},
+}
+
+# 핵심 지표 가중치 2배, 나머지 1배
+_SCORE_WEIGHTS = {
+    "시총가중":    1, "균일가중": 1,
+    "ADL":        2, "서머레이션": 2,
+    "HV20":       1, "상승비율MA20": 1,
+    "20MA상위":   2, "100MA상위": 2,
+    "NH비율":     1,
+}
+_SCORE_MAX = sum(w * 2 for w in _SCORE_WEIGHTS.values())  # 26
+
+
+def _get_cfg(market_name):
+    return _SCORE_CFG.get(market_name, _SCORE_CFG["_default"])
+
+
+def _clamp_score(v):
+    return max(-2, min(2, int(round(v))))
+
+
+def _score_single_day(row, df_slice, cfg):
+    """단일 행 + 슬라이스(최근 5행)로 각 지표 점수 계산.
+    반환: dict[지표명] = {"score": int, "raw": float, "label": str}
+    """
+    n5 = df_slice  # 최근 5행 (현재 포함)
+    results = {}
+
+    def safe(col):
+        try:
+            v = row[col]
+            return float(v) if pd.notna(v) else None
+        except Exception:
+            return None
+
+    def slope5(col):
+        """5일 수익률(%)"""
+        try:
+            cur = float(row[col])
+            ref = float(n5[col].iloc[0])
+            if ref == 0:
+                return None
+            return (cur - ref) / abs(ref) * 100
+        except Exception:
+            return None
+
+    # ── 1. 시총가중
+    r = slope5('시총가중')
+    c = cfg["idx_5d"]
+    if r is None:
+        s, lbl = 0, "데이터 없음"
+    elif r >= c["vbull"]: s, lbl = +2, f"5일 +{r:.1f}%"
+    elif r >= c["bull"]:  s, lbl = +1, f"5일 +{r:.1f}%"
+    elif r >= c["bear"]:  s, lbl = 0,  f"5일 {r:.1f}%"
+    elif r >= c["vbear"]: s, lbl = -1, f"5일 {r:.1f}%"
+    else:                 s, lbl = -2, f"5일 {r:.1f}%"
+    results["시총가중"] = {"score": s, "raw": r, "label": lbl}
+
+    # ── 2. 균일가중 (+ 시총과 다이버전스 체크)
+    r2 = slope5('균일가중')
+    r_cap = slope5('시총가중')
+    c = cfg["idx_5d"]
+    if r2 is None:
+        s2, lbl2 = 0, "데이터 없음"
+    elif r2 >= c["vbull"]: s2, lbl2 = +2, f"5일 +{r2:.1f}%"
+    elif r2 >= c["bull"]:  s2, lbl2 = +1, f"5일 +{r2:.1f}%"
+    elif r2 >= c["bear"]:  s2, lbl2 = 0,  f"5일 {r2:.1f}%"
+    elif r2 >= c["vbear"]: s2, lbl2 = -1, f"5일 {r2:.1f}%"
+    else:                  s2, lbl2 = -2, f"5일 {r2:.1f}%"
+    # 시총 오르는데 균일 하락 → 소수 대형주만 견인, 점수 0 이하로 클램프
+    if r_cap is not None and r2 is not None and r_cap > 0.5 and r2 < -0.5:
+        s2 = min(s2, -1)
+        lbl2 += " (대형주 쏠림)"
+    results["균일가중"] = {"score": s2, "raw": r2, "label": lbl2}
+
+    # ── 3. ADL (핵심, weight=2)
+    adl_now = safe('ADL')
+    adl_5d  = float(n5['ADL'].iloc[0]) if adl_now is not None else None
+    cap_5d  = slope5('시총가중')
+    if adl_now is None or adl_5d is None:
+        s3, lbl3 = 0, "데이터 없음"
+    else:
+        adl_chg = adl_now - adl_5d
+        cap_up = cap_5d is not None and cap_5d > 0.3
+        if adl_chg > 0 and cap_up:
+            s3, lbl3 = +2, f"5일 +{adl_chg:.0f} (지수와 동반)"
+        elif adl_chg > 0:
+            s3, lbl3 = +1, f"5일 +{adl_chg:.0f}"
+        elif abs(adl_chg) < abs(adl_5d) * 0.02:
+            s3, lbl3 = 0,  "횡보"
+        elif adl_chg < 0 and cap_up:
+            # 지수 상승 + ADL 하락 = 위험한 다이버전스
+            s3, lbl3 = -2, f"5일 {adl_chg:.0f} (지수와 다이버전스!)"
+        else:
+            s3, lbl3 = -1, f"5일 {adl_chg:.0f}"
+    results["ADL"] = {"score": s3, "raw": adl_now, "label": lbl3}
+
+    # ── 4. 서머레이션 (핵심, weight=2)
+    summ = safe('서머레이션')
+    c = cfg["summ"]
+    if summ is None:
+        s4, lbl4 = 0, "데이터 없음"
+    elif summ >= c["vbull"]: s4, lbl4 = +2, f"{summ:+.0f}"
+    elif summ >= c["bull"]:  s4, lbl4 = +1, f"{summ:+.0f}"
+    elif summ >= c["bear"]:  s4, lbl4 = 0,  f"{summ:+.0f} (중립)"
+    elif summ >= c["vbear"]: s4, lbl4 = -1, f"{summ:+.0f}"
+    else:                    s4, lbl4 = -2, f"{summ:+.0f}"
+    results["서머레이션"] = {"score": s4, "raw": summ, "label": lbl4}
+
+    # ── 5. HV20 (절대 레벨 + 5일 방향)
+    hv = safe('VIX')
+    lv = cfg["hv20_lvl"]
+    dv = cfg["hv20_5d"]
+    if hv is None:
+        s5, lbl5 = 0, "데이터 없음"
+    else:
+        # 레벨 기반 기본 점수 (낮을수록 긍정)
+        if hv < lv["low"]:      base = +1
+        elif hv < lv["mid"]:    base = 0
+        elif hv < lv["high"]:   base = -1
+        else:                   base = -2
+        # 5일 방향 조정
+        hv_5d_ref = float(n5['VIX'].iloc[0]) if n5['VIX'].notna().any() else None
+        if hv_5d_ref and hv_5d_ref > 0:
+            hv_chg_pct = (hv - hv_5d_ref) / hv_5d_ref * 100
+            if hv_chg_pct >= dv["rising_fast"]: adj = -1
+            elif hv_chg_pct >= dv["rising"]:    adj = 0
+            elif hv_chg_pct <= dv["falling"]:   adj = +1
+            else:                               adj = 0
+            lbl5 = f"{hv:.1f} (5일 {hv_chg_pct:+.0f}%)"
+        else:
+            adj, lbl5 = 0, f"{hv:.1f}"
+        s5 = _clamp_score(base + adj)
+    results["HV20"] = {"score": s5, "raw": hv, "label": lbl5 if hv is not None else "데이터 없음"}
+
+    # ── 6. 상승비율MA20
+    adv = safe('상승비율MA20')
+    c = cfg["adv_ma20"]
+    if adv is None:
+        s6, lbl6 = 0, "데이터 없음"
+    elif adv >= c["vbull"]: s6, lbl6 = +2, f"{adv:.1f}%"
+    elif adv >= c["bull"]:  s6, lbl6 = +1, f"{adv:.1f}%"
+    elif adv >= c["neutral"]: s6, lbl6 = 0, f"{adv:.1f}%"
+    elif adv >= c["bear"]:  s6, lbl6 = -1, f"{adv:.1f}%"
+    else:                   s6, lbl6 = -2, f"{adv:.1f}%"
+    results["상승비율MA20"] = {"score": s6, "raw": adv, "label": lbl6}
+
+    # ── 7. 20MA 상위 (핵심, weight=2)
+    m20 = safe('20MA상위')
+    c = cfg["ma20pct"]
+    if m20 is None:
+        s7, lbl7 = 0, "데이터 없음"
+    elif m20 >= c["vbull"]: s7, lbl7 = +2, f"{m20:.1f}%"
+    elif m20 >= c["bull"]:  s7, lbl7 = +1, f"{m20:.1f}%"
+    elif m20 >= c["bear"]:  s7, lbl7 = 0,  f"{m20:.1f}%"
+    elif m20 >= c["vbear"]: s7, lbl7 = -1, f"{m20:.1f}%"
+    else:                   s7, lbl7 = -2, f"{m20:.1f}%"
+    results["20MA상위"] = {"score": s7, "raw": m20, "label": lbl7}
+
+    # ── 8. 100MA 상위 (핵심, weight=2)
+    m100 = safe('100MA상위')
+    c = cfg["ma100pct"]
+    if m100 is None:
+        s8, lbl8 = 0, "데이터 없음"
+    elif m100 >= c["vbull"]: s8, lbl8 = +2, f"{m100:.1f}%"
+    elif m100 >= c["bull"]:  s8, lbl8 = +1, f"{m100:.1f}%"
+    elif m100 >= c["weak"]:  s8, lbl8 = 0,  f"{m100:.1f}%"
+    elif m100 >= c["vbear"]: s8, lbl8 = -1, f"{m100:.1f}%"
+    else:                    s8, lbl8 = -2, f"{m100:.1f}%"
+    results["100MA상위"] = {"score": s8, "raw": m100, "label": lbl8}
+
+    # ── 9. NH비율
+    nh = safe('NH비율')
+    c = cfg["nh"]
+    if nh is None:
+        s9, lbl9 = 0, "데이터 없음"
+    elif nh >= c["vbull"]: s9, lbl9 = +2, f"{nh:.1f}%"
+    elif nh >= c["bull"]:  s9, lbl9 = +1, f"{nh:.1f}%"
+    elif nh >= c["neutral"]: s9, lbl9 = 0, f"{nh:.1f}%"
+    elif nh >= c["bear"]:  s9, lbl9 = -1, f"{nh:.1f}%"
+    else:                  s9, lbl9 = -2, f"{nh:.1f}%"
+    results["NH비율"] = {"score": s9, "raw": nh, "label": lbl9}
+
+    return results
+
+
+def compute_market_score(indicator_scores):
+    """가중 합산 후 -100~+100 정규화"""
+    total = 0
+    for name, info in indicator_scores.items():
+        w = _SCORE_WEIGHTS.get(name, 1)
+        total += info["score"] * w
+    return round(total / _SCORE_MAX * 100)
+
+
+def classify_phase(score):
+    """점수 → (국면명, 색상코드)"""
+    if score >= 65:    return "강한 강세장",   "#00FF7F"
+    elif score >= 30:  return "강세 우위",     "#4BFFB3"
+    elif score >= -30: return "중립 / 혼조",   "#C8C850"
+    elif score >= -65: return "약세 우위",     "#FF8C69"
+    else:              return "강한 약세장",   "#FF4B6E"
+
+
+def get_phase_status(df, market_name):
+    """
+    최근 3거래일 점수를 계산해 국면 확정 여부 반환.
+    반환: (score_today, phase_today, status)
+      status: "확정" | "플래그" | "임시"
+    """
+    cfg = _get_cfg(market_name)
+    n = len(df)
+    if n < 5:
+        # 슬라이스 최소 5행 필요
+        row = df.iloc[-1]
+        sc = _score_single_day(row, df, cfg)
+        score = compute_market_score(sc)
+        phase, _ = classify_phase(score)
+        return score, sc, phase, "임시"
+
+    scores_hist = []
+    for i in range(min(3, n)):
+        idx = -(i + 1)
+        row = df.iloc[idx]
+        start = max(0, n + idx - 4)
+        slice5 = df.iloc[start: n + idx + 1]
+        if len(slice5) < 2:
+            continue
+        sc_i = _score_single_day(row, slice5, cfg)
+        scores_hist.append((compute_market_score(sc_i), sc_i))
+
+    if not scores_hist:
+        row = df.iloc[-1]
+        sc = _score_single_day(row, df.iloc[-5:], cfg)
+        score = compute_market_score(sc)
+        phase, _ = classify_phase(score)
+        return score, sc, phase, "임시"
+
+    score_today = scores_hist[0][0]
+    sc_today    = scores_hist[0][1]
+    phase_today, _ = classify_phase(score_today)
+
+    if len(scores_hist) >= 3:
+        phases = [classify_phase(s)[0] for s, _ in scores_hist]
+        if phases[0] == phases[1] == phases[2]:
+            return score_today, sc_today, phase_today, "확정"
+        elif phases[0] == phases[1]:
+            return score_today, sc_today, phase_today, "플래그"
+    elif len(scores_hist) == 2:
+        p0, p1 = classify_phase(scores_hist[0][0])[0], classify_phase(scores_hist[1][0])[0]
+        if p0 == p1:
+            return score_today, sc_today, phase_today, "플래그"
+
+    return score_today, sc_today, phase_today, "임시"
+
+
+def _build_interpretation(indicator_scores, total_score, market_name):
+    """점수 기여도 높은 지표로 동적 해석 문구 생성"""
+    is_korean = market_name in ("코스피", "코스닥")
+    vix_lbl = "HV20" if is_korean else "VIX"
+
+    display_names = {
+        "시총가중": "시총가중 지수", "균일가중": "균일가중 지수",
+        "ADL": "ADL 등락선", "서머레이션": "맥클렐란 서머레이션",
+        "HV20": vix_lbl, "상승비율MA20": "상승비율MA20",
+        "20MA상위": "20MA 상위비율", "100MA상위": "100MA 상위비율",
+        "NH비율": "52주 신고가 비율",
+    }
+
+    # 기여도 = score × weight (부호 있음)
+    contributions = []
+    for name, info in indicator_scores.items():
+        w = _SCORE_WEIGHTS.get(name, 1)
+        contrib = info["score"] * w
+        contributions.append((name, contrib, info["label"]))
+
+    pos = sorted([x for x in contributions if x[1] > 0], key=lambda x: -x[1])
+    neg = sorted([x for x in contributions if x[1] < 0], key=lambda x: x[1])
+
+    pos_parts, neg_parts = [], []
+    for name, contrib, lbl in pos[:2]:
+        pos_parts.append(f"{display_names.get(name, name)} {lbl}")
+    for name, contrib, lbl in neg[:2]:
+        neg_parts.append(f"{display_names.get(name, name)} {lbl}")
+
+    if not pos_parts and not neg_parts:
+        return "지표들이 혼재하여 방향성 판단이 어렵습니다."
+
+    lines = []
+    if pos_parts:
+        lines.append("▲ " + ", ".join(pos_parts))
+    if neg_parts:
+        lines.append("▼ " + ", ".join(neg_parts))
+
+    if total_score >= 65:
+        suffix = "전반적으로 강한 상승 구조입니다."
+    elif total_score >= 30:
+        suffix = "강세 우위이나 일부 지표 주의가 필요합니다." if neg_parts else "강세 흐름이 지속되고 있습니다."
+    elif total_score >= -30:
+        suffix = "방향성이 혼재된 중립 구간입니다."
+    elif total_score >= -65:
+        suffix = "약세 우위이며 리스크 관리가 필요합니다."
+    else:
+        suffix = "대부분 지표가 약세를 가리킵니다."
+
+    return "  |  ".join(lines) + f"  →  {suffix}"
+
+
+def render_market_score_ui(df, market_name):
+    """시장 강도 점수 UI 렌더링 (기존 sentiment html 대체)"""
+    if df is None or len(df) < 5:
+        return
+
+    score, indicator_scores, phase, status = get_phase_status(df, market_name)
+    _, color = classify_phase(score)
+    is_korean = market_name in ("코스피", "코스닥")
+    vix_lbl = "HV20" if is_korean else "VIX"
+
+    status_color = {"확정": "#4BFFB3", "플래그": "#C8C850", "임시": "#888"}
+    status_icon  = {"확정": "✔", "플래그": "⚑", "임시": "○"}
+    s_color = status_color.get(status, "#888")
+    s_icon  = status_icon.get(status, "○")
+
+    # 점수 바 (0~100 위치로 변환: -100→0, 0→50, +100→100)
+    bar_pos = int((score + 100) / 2)
+    bar_color = color
+
+    interp = _build_interpretation(indicator_scores, score, market_name)
+
+    # ── 헤더 카드
+    header_html = f"""
+<div style="background:#0f1117;border:1px solid {color}40;border-radius:10px;
+            padding:14px 18px 12px;margin-bottom:10px;">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+    <div style="font-size:28px;font-weight:800;color:{color};letter-spacing:-0.5px;
+                font-variant-numeric:tabular-nums;">
+      {score:+d}
+    </div>
+    <div>
+      <div style="font-size:14px;font-weight:700;color:{color};">{phase}</div>
+      <div style="font-size:11px;color:{s_color};margin-top:1px;">
+        {s_icon} {status} 국면
+      </div>
+    </div>
+    <div style="flex:1;min-width:160px;">
+      <div style="position:relative;background:rgba(255,255,255,0.06);
+                  border-radius:4px;height:8px;overflow:visible;">
+        <div style="position:absolute;left:{bar_pos}%;top:50%;transform:translate(-50%,-50%);
+                    width:12px;height:12px;background:{bar_color};border-radius:50%;
+                    box-shadow:0 0 6px {bar_color}88;"></div>
+        <div style="position:absolute;left:50%;top:-4px;width:1px;height:16px;
+                    background:rgba(255,255,255,0.2);"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:9px;
+                  color:#444;margin-top:4px;">
+        <span>-100</span><span>강세장</span><span>+100</span>
+      </div>
+    </div>
+  </div>
+  <div style="font-size:11px;color:#888;margin-top:10px;line-height:1.6;
+              border-top:1px solid rgba(255,255,255,0.05);padding-top:8px;">
+    {interp}
+  </div>
+</div>
+"""
+
+    # ── 지표별 점수 행
+    score_rows = []
+    label_map = {
+        "시총가중": "시총가중", "균일가중": "균일가중",
+        "ADL": "ADL ★", "서머레이션": "서머레이션 ★",
+        "HV20": f"{vix_lbl}", "상승비율MA20": "상승비율MA20",
+        "20MA상위": "20MA상위 ★", "100MA상위": "100MA상위 ★",
+        "NH비율": "NH비율",
+    }
+    score_colors = {2: "#00FF7F", 1: "#4BFFB3", 0: "#888", -1: "#FF8C69", -2: "#FF4B6E"}
+    bar_widths   = {2: 100, 1: 60, 0: 0, -1: 60, -2: 100}
+
+    for name, info in indicator_scores.items():
+        s   = info["score"]
+        lbl = info["label"]
+        c   = score_colors.get(s, "#888")
+        w   = _SCORE_WEIGHTS.get(name, 1)
+        bw  = bar_widths.get(s, 0)
+        is_pos = s > 0
+        bar_html = (
+            f'<div style="width:{bw}%;height:100%;background:{c};border-radius:2px;'
+            f'{"margin-left:auto;" if not is_pos else ""}"></div>'
+        ) if s != 0 else ""
+
+        score_rows.append(
+            f'<div style="display:flex;align-items:center;gap:8px;padding:3px 0;'
+            f'border-bottom:1px solid rgba(255,255,255,0.04);">'
+            f'<div style="width:110px;font-size:10px;color:#888;flex-shrink:0;">'
+            f'{label_map.get(name, name)}</div>'
+            f'<div style="width:24px;font-size:12px;font-weight:700;color:{c};'
+            f'text-align:center;flex-shrink:0;">{s:+d}</div>'
+            f'<div style="flex:1;display:flex;align-items:center;">'
+            f'<div style="width:50%;height:6px;background:rgba(255,75,110,0.08);'
+            f'border-radius:2px 0 0 2px;overflow:hidden;">'
+            f'{"" if is_pos or s==0 else bar_html}</div>'
+            f'<div style="width:50%;height:6px;background:rgba(75,255,179,0.08);'
+            f'border-radius:0 2px 2px 0;overflow:hidden;">'
+            f'{"" if not is_pos or s==0 else bar_html}</div>'
+            f'</div>'
+            f'<div style="width:100px;font-size:9px;color:#555;text-align:right;'
+            f'flex-shrink:0;">{lbl}</div>'
+            f'</div>'
+        )
+
+    detail_html = f"""
+<div style="background:#0c0c0e;border:1px solid rgba(255,255,255,0.06);
+            border-radius:8px;padding:10px 14px;margin-bottom:10px;">
+  <div style="font-size:10px;color:#555;margin-bottom:6px;">
+    지표별 점수 &nbsp;★ = 가중치 2배 핵심 지표 &nbsp;|&nbsp; 최대 ±{_SCORE_MAX}점 → 정규화 ±100
+  </div>
+  {"".join(score_rows)}
+</div>
+"""
+
+    import streamlit as st
+    st.markdown(header_html + detail_html, unsafe_allow_html=True)
+
+
 def _market_sentiment_html(df, market_name):
     """8개 지표 기반 시장 강세/약세 종합 요약 HTML"""
     if df is None or len(df) < 6:
@@ -2393,11 +2847,8 @@ def main():
             latest = market_df.iloc[-1]
             prev = market_df.iloc[-2] if len(market_df) >= 2 else latest
 
-            # ── 시장 감성 요약 (맨 위)
-            st.markdown(
-                _market_sentiment_html(market_df, market_choice),
-                unsafe_allow_html=True,
-            )
+            # ── 시장 강도 점수 (기존 감성 요약 대체)
+            render_market_score_ui(market_df, market_choice)
 
             # ── 소형 메트릭 카드 (신호 스캐너와 동일 스타일)
             def _mkt_card(label, value, delta="", accent="#787EE7"):
