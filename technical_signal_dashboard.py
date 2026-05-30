@@ -183,36 +183,60 @@ STOCK_SEARCH_LIST = [
     {"code": "TSM", "name": "TSMC"},
 ]
 
-# 시장 내부지표용 대형주 바스켓 (pykrx API 호환 불가로 yfinance 대체)
+# 최후 fallback 바스켓 — pykrx / Wikipedia 둘 다 실패했을 때만 사용
+# 한국은 시총 상위 종목, 미국은 Wikipedia 성공 시 전체가 사용되므로 fallback은 참고용
 _KOSPI_BASKET = [
-    "005930.KS", "000660.KS", "207940.KS", "005380.KS", "000270.KS",
-    "068270.KS", "035420.KS", "051910.KS", "028260.KS", "012330.KS",
-    "066570.KS", "003550.KS", "035720.KS", "086790.KS", "055550.KS",
-    "105560.KS", "032830.KS", "003490.KS", "034730.KS", "015760.KS",
-    "009150.KS", "000810.KS", "010130.KS", "024110.KS", "096770.KS",
+    "005930.KS","000660.KS","207940.KS","005380.KS","000270.KS","068270.KS",
+    "035420.KS","051910.KS","028260.KS","012330.KS","066570.KS","003550.KS",
+    "035720.KS","086790.KS","055550.KS","105560.KS","032830.KS","003490.KS",
+    "034730.KS","015760.KS","009150.KS","000810.KS","010130.KS","024110.KS",
+    "096770.KS","033780.KS","018260.KS","010950.KS","011200.KS","006400.KS",
+    "008770.KS","047050.KS","316140.KS","000100.KS","161390.KS","003670.KS",
+    "004020.KS","009540.KS","010140.KS","011070.KS","000720.KS","011780.KS",
+    "036460.KS","030200.KS","017670.KS","051600.KS","016360.KS","069960.KS",
+    "271560.KS","004170.KS",
 ]
 _KOSDAQ_BASKET = [
-    "247540.KQ", "086520.KQ", "196170.KQ", "214150.KQ", "039030.KQ",
-    "357780.KQ", "066970.KQ", "121600.KQ", "145020.KQ", "178920.KQ",
-    "041510.KQ", "035900.KQ", "122870.KQ", "263720.KQ", "112040.KQ",
-    "091990.KQ", "058470.KQ", "236200.KQ", "048410.KQ", "060310.KQ",
+    "247540.KQ","086520.KQ","196170.KQ","214150.KQ","039030.KQ","357780.KQ",
+    "066970.KQ","121600.KQ","145020.KQ","178920.KQ","041510.KQ","035900.KQ",
+    "122870.KQ","263720.KQ","112040.KQ","091990.KQ","058470.KQ","236200.KQ",
+    "048410.KQ","060310.KQ","041960.KQ","323410.KQ","206950.KQ","240810.KQ",
+    "950130.KQ","096530.KQ","000250.KQ","285130.KQ","086900.KQ","228760.KQ",
 ]
-# Wikipedia 스크래핑 실패 시 사용하는 대표 종목 바스켓 (시총 상위 60개)
+# S&P 500 fallback — Wikipedia 실패 시. 시총 상위 ~200종
 _SP500_BASKET = [
-    "AAPL","MSFT","NVDA","AMZN","GOOGL","META","TSLA","AVGO","BRK-B","JPM",
-    "LLY","V","UNH","XOM","MA","COST","JNJ","HD","PG","ABBV",
-    "MRK","BAC","CRM","CVX","NFLX","KO","ORCL","AMD","PEP","TMO",
-    "WMT","ACN","MCD","IBM","CSCO","TXN","QCOM","INTC","CAT","GE",
+    "AAPL","MSFT","NVDA","AMZN","GOOGL","GOOG","META","TSLA","AVGO","BRK-B",
+    "JPM","LLY","V","UNH","XOM","MA","COST","JNJ","HD","PG",
+    "ABBV","MRK","BAC","CRM","CVX","NFLX","KO","ORCL","AMD","PEP",
+    "TMO","WMT","ACN","MCD","IBM","CSCO","TXN","QCOM","CAT","GE",
     "DHR","ABT","AMGN","NOW","INTU","GS","BLK","AMAT","SPGI","DE",
     "HON","LMT","ELV","MDT","RTX","SYK","ISRG","AXP","SCHW","DUK",
+    "SO","NEE","BMY","GILD","CI","CB","MMC","PLD","AMT","COP",
+    "SLB","USB","BK","MS","TJX","MDLZ","ADI","REGN","VRTX","ZTS",
+    "CME","AON","ITW","MO","CCI","SHW","MMM","FDX","NSC","UNP",
+    "CSX","NKE","SBUX","MCO","ADBE","PANW","KLAC","LRCX","MU","MRVL",
+    "CDNS","SNPS","APH","TEL","TT","ETN","PH","ROK","SRE","D",
+    "EXC","XEL","WM","RSG","CTAS","PAYX","ADP","ORLY","ROST","TGT",
+    "DLTR","DG","EBAY","PYPL","ETSY","SQ","COIN","BKNG","MAR","HLT",
+    "MGM","WYNN","LVS","EW","BSX","BDX","IDXX","IQV","CRL","DXCM",
+    "A","ILMN","MRNA","BIIB","REGN","HUM","CVS","MCK","CAH","ABC",
+    "WBA","RAD","GEHC","HCA","UHS","THC","CNC","MOH","WCG","ANTM",
+    "AFL","MET","PRU","AIG","ALL","TRV","HIG","LNC","PFG","GL",
+    "PNC","TFC","CFG","KEY","FHN","SNV","CMA","ZION","RF","FITB",
+    "MTB","WAL","PACW","FRC","SIVB","VZ","T","TMUS","LUMN","DISH",
 ]
+# NASDAQ-100 fallback — Wikipedia 실패 시. 전체 101종 최대한 포함
 _NDX_BASKET = [
-    "AAPL","MSFT","NVDA","AMZN","META","GOOGL","TSLA","AVGO","COST","NFLX",
-    "AMD","ADBE","QCOM","CSCO","PEP","AMGN","INTC","TXN","INTU","HON",
+    "AAPL","MSFT","NVDA","AMZN","META","GOOGL","GOOG","TSLA","AVGO","COST",
+    "NFLX","AMD","ADBE","QCOM","CSCO","PEP","AMGN","INTU","TXN","HON",
     "AMAT","SBUX","GILD","MDLZ","REGN","VRTX","MU","KLAC","LRCX","ADI",
-    "PANW","MRVL","CDNS","SNPS","CTAS","ORLY","FTNT","CHTR","MNST","ROST",
-    "PAYX","PCAR","ADP","CPRT","KDP","MELI","CEG","DXCM","IDXX","PYPL",
-    "ZS","ON","ILMN","VRSK","FAST","GEHC","EXC","FANG","WBD","TTWO",
+    "PANW","MRVL","CDNS","SNPS","CTAS","ORLY","FTNT","MNST","ROST","PAYX",
+    "PCAR","ADP","CPRT","KDP","MELI","CEG","DXCM","IDXX","PYPL","ZS",
+    "ON","ILMN","VRSK","FAST","GEHC","EXC","FANG","WBD","TTWO","ASML",
+    "TEAM","CRWD","DASH","TTD","BIIB","ANSS","APP","WDAY","MCHP","AEP",
+    "CCEP","CTSH","FSLR","ODFL","LULU","EA","BKR","XEL","DLTR","ENPH",
+    "ALGN","MRNA","AZN","ABNB","GFS","CHTR","ARM","CSX","NXPI","ROP",
+    "SMCI","INTC","ISRG","LBTYA","PDD","SGEN","SPLK","MTCH","DDOG","ZI",
 ]
 
 PERIOD_OPTIONS = {
@@ -1230,53 +1254,84 @@ _INDEX_CODE = {
 
 
 @st.cache_data(ttl=7200)
+@st.cache_data(ttl=86400)
 def get_full_ticker_list(market):
     """전체 종목 코드 조회.
-    한국: KRX KIND 상장법인목록 (requests)
-    미국: Wikipedia S&P 500 / NASDAQ-100 구성 종목
-    실패 시 None 반환."""
-    try:
-        import requests, io, re, warnings
-        warnings.filterwarnings("ignore")
+    한국: pykrx(1순위) → KRX KIND 스크래핑(2순위) → fallback 바스켓
+    미국: Wikipedia(1순위, flavor 없이 html.parser) → fallback 내장 전체 리스트
+    """
+    import io, warnings
+    warnings.filterwarnings("ignore")
 
-        # ── 미국 시장 ──────────────────────────────────────────
-        if market == "S&P 500":
+    # ── 한국 시장 ──────────────────────────────────────────────
+    if market in ("코스피", "코스닥"):
+        suffix  = ".KS" if market == "코스피" else ".KQ"
+        krx_mkt = "KOSPI" if market == "코스피" else "KOSDAQ"
+
+        # 1순위: pykrx — 가장 신뢰성 높음 (이미 의존성으로 설치됨)
+        if PYKRX_AVAILABLE:
+            try:
+                today = datetime.now().strftime("%Y%m%d")
+                raw = pykrx_stock.get_market_ticker_list(today, market=krx_mkt)
+                if raw is not None and len(raw) > 50:
+                    return [f"{t}{suffix}" for t in raw]
+            except Exception:
+                pass
+
+        # 2순위: KRX KIND 스크래핑
+        try:
+            import requests, re
+            mkt_type = "stockMkt" if market == "코스피" else "kosdaqMkt"
+            url = "http://kind.krx.co.kr/corpgeneral/corpList.do"
+            params  = {"method": "download", "searchType": "13", "marketType": mkt_type}
+            headers = {"User-Agent": "Mozilla/5.0", "Referer": "http://kind.krx.co.kr/"}
+            resp = requests.get(url, params=params, headers=headers, timeout=15)
+            resp.raise_for_status()
+            df_krx = pd.read_html(io.BytesIO(resp.content), encoding="euc-kr")[0]
+            codes = [str(int(c)).zfill(6) for c in df_krx["종목코드"]
+                     if re.match(r"^\d+$", str(c))]
+            tickers = [f"{c}{suffix}" for c in codes if len(c) == 6]
+            if len(tickers) > 50:
+                return tickers
+        except Exception:
+            pass
+
+        return None  # fallback 바스켓은 get_market_internals에서 처리
+
+    # ── 미국 시장 ──────────────────────────────────────────────
+    if market == "S&P 500":
+        try:
+            import requests
             r = requests.get(
                 "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
-                headers=_WIKI_HEADERS, verify=False, timeout=15)
-            tables = pd.read_html(io.StringIO(r.text), flavor="lxml")
+                headers=_WIKI_HEADERS, verify=False, timeout=20)
+            # flavor 지정 없음 → html.parser(기본) 사용, lxml 불필요
+            tables = pd.read_html(io.StringIO(r.text))
             tickers = (tables[0]["Symbol"]
                        .str.replace(".", "-", regex=False)
                        .dropna().tolist())
-            return tickers if len(tickers) > 10 else None
+            if len(tickers) > 400:
+                return tickers
+        except Exception:
+            pass
+        return _SP500_BASKET  # ~200종 내장 fallback
 
-        if market == "나스닥 100":
+    if market == "나스닥 100":
+        try:
+            import requests
             r = requests.get(
                 "https://en.wikipedia.org/wiki/Nasdaq-100",
-                headers=_WIKI_HEADERS, verify=False, timeout=15)
-            tables = pd.read_html(io.StringIO(r.text), flavor="lxml")
+                headers=_WIKI_HEADERS, verify=False, timeout=20)
+            tables = pd.read_html(io.StringIO(r.text))
             for t in tables:
                 for col in ["Ticker", "Symbol"]:
-                    if col in t.columns and len(t) > 50:
+                    if col in t.columns and len(t) > 90:
                         return t[col].dropna().tolist()
-            return None
+        except Exception:
+            pass
+        return _NDX_BASKET  # ~100종 내장 fallback
 
-        # ── 한국 시장 ──────────────────────────────────────────
-        mkt_type = "stockMkt" if market == "코스피" else "kosdaqMkt"
-        suffix   = ".KS"      if market == "코스피" else ".KQ"
-        url = "http://kind.krx.co.kr/corpgeneral/corpList.do"
-        params  = {"method": "download", "searchType": "13", "marketType": mkt_type}
-        headers = {"User-Agent": "Mozilla/5.0", "Referer": "http://kind.krx.co.kr/"}
-        resp = requests.get(url, params=params, headers=headers, timeout=15)
-        resp.raise_for_status()
-        df = pd.read_html(io.BytesIO(resp.content), encoding="euc-kr")[0]
-        codes = [str(int(c)).zfill(6) for c in df["종목코드"]
-                 if re.match(r"^\d+$", str(c))]
-        tickers = [f"{c}{suffix}" for c in codes if len(c) == 6]
-        return tickers if len(tickers) > 50 else None
-
-    except Exception:
-        return None
+    return None
 
 
 @st.cache_data(ttl=3600)
