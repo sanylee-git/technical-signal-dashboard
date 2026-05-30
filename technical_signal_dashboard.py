@@ -1109,29 +1109,19 @@ def signal_badges_html(dyn_buy, dyn_sell, band_buy, band_sell,
                        band_buy_flag=False, band_sell_flag=False,
                        dyn_holding=False, band_holding=False):
     parts = []
-    # 확정 신호 (오늘)
+    # 확정 신호 (★ 동적+BB 만 표시)
     if dyn_buy:
         parts.append(_badge("★ 동적+BB 매수", "#4BFFB3", "#0a2b1e", "rgba(75,255,179,0.3)"))
     if dyn_sell:
         parts.append(_badge("★ 동적+BB 매도", "#FF4B6E", "#2d0d1a", "rgba(255,75,110,0.25)"))
-    if band_buy:
-        parts.append(_badge("● 밴드+BB 매수", "#4BFFB3", "#0a2b1e", "rgba(75,255,179,0.2)"))
-    if band_sell:
-        parts.append(_badge("● 밴드+BB 매도", "#FF4B6E", "#250813", "rgba(255,75,110,0.15)"))
-    # 보유 중 (매수확정 후 매도확정 전)
+    # 보유 중
     if dyn_holding:
         parts.append(_badge("★ 보유 중", "#C8C850", "#1c1c08", "rgba(200,200,80,0.3)"))
-    if band_holding:
-        parts.append(_badge("● 보유 중", "#50C878", "#081c10", "rgba(80,200,120,0.25)"))
-    # Phase 1 플래그 (관심 시점)
+    # Phase 1 플래그
     if dyn_buy_flag and not dyn_buy:
         parts.append(_badge("★ 매수 플래그", "#7AAFD4", "#0a1520", "rgba(120,175,212,0.2)"))
     if dyn_sell_flag and not dyn_sell:
         parts.append(_badge("★ 매도 플래그", "#D47A9F", "#200a14", "rgba(212,120,160,0.2)"))
-    if band_buy_flag and not band_buy:
-        parts.append(_badge("● 매수 플래그", "#7AAFD4", "#0a1520", "rgba(120,175,212,0.15)"))
-    if band_sell_flag and not band_sell:
-        parts.append(_badge("● 매도 플래그", "#D47A9F", "#200a14", "rgba(212,120,160,0.15)"))
     if not parts:
         return '<span style="color:#333;font-size:12px;">─</span>'
     return " ".join(parts)
@@ -1986,13 +1976,6 @@ def main():
             ("보유 중",     f"{n_dyn_hold}",       "#C8C850"),
             ("매도 플래그", f"{n_dyn_sell_flag}",  "#D47A9F"),
             ("매도 신호",   f"{n_dyn_sell}",       "#FF4B6E"),
-        ]), unsafe_allow_html=True)
-        st.markdown(_mini_row("●", [
-            ("매수 플래그", f"{n_band_buy_flag}",  "#7AAFD4"),
-            ("매수 신호",   f"{n_band_buy}",        "#4BFFB3"),
-            ("보유 중",     f"{n_band_hold}",       "#50C878"),
-            ("매도 플래그", f"{n_band_sell_flag}",  "#D47A9F"),
-            ("매도 신호",   f"{n_band_sell}",       "#FF4B6E"),
         ]), unsafe_allow_html=True)
 
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
