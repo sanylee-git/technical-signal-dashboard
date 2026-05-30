@@ -1345,11 +1345,14 @@ def get_market_internals(market, lookback_days=60):
             return None, "유효 바스켓 종목 부족 (< 3개)"
         closes_full = closes_full[valid_cols].dropna(how='all')
 
-        # ── 200일선 상위 비율 (전체 데이터로 계산)
-        ma200       = closes_full.rolling(200, min_periods=100).mean()
-        above_200   = (closes_full > ma200)
-        total_valid = closes_full.notna()
+        # ── 200일선 / 50일선 상위 비율 (전체 데이터로 계산)
+        total_valid   = closes_full.notna()
+        ma200         = closes_full.rolling(200, min_periods=100).mean()
+        ma50          = closes_full.rolling(50,  min_periods=25).mean()
+        above_200     = (closes_full > ma200)
+        above_50      = (closes_full > ma50)
         pct_above_200 = (above_200.sum(axis=1) / total_valid.sum(axis=1) * 100).round(1)
+        pct_above_50  = (above_50.sum(axis=1)  / total_valid.sum(axis=1) * 100).round(1)
 
         # ── 맥클렐란: 전체 기간 EMA가 정확하도록 full 데이터로 계산
         daily_chg_full = closes_full.diff() / closes_full.shift(1)
@@ -1389,6 +1392,7 @@ def get_market_internals(market, lookback_days=60):
         summation      = summation_full.reindex(closes_df.index).round(1)
         adv_ratio_ma20 = adv_ratio.rolling(20, min_periods=5).mean().round(1)
         pct_200_trim   = pct_above_200.reindex(closes_df.index)
+        pct_50_trim    = pct_above_50.reindex(closes_df.index)
         vix_aligned    = (vix_series.reindex(closes_df.index, method='ffill')
                           if not vix_series.empty
                           else pd.Series(float('nan'), index=closes_df.index))
@@ -1406,6 +1410,7 @@ def get_market_internals(market, lookback_days=60):
             '서머레이션':  summation,
             'VIX':         vix_aligned,
             '200MA상위':   pct_200_trim,
+            '50MA상위':    pct_50_trim,
         }).dropna(subset=['균일가중'])
 
         return result, None
@@ -1441,14 +1446,14 @@ def _market_sentiment_html(df, market_name):
          f"{'↑' if _trend('균일가중', ago10) else '↓'}{latest['균일가중']:.1f}"),
         ("ADL", _trend('ADL', ago5),
          f"{'↑' if _trend('ADL', ago5) else '↓'}"),
-        ("오실레이터", float(latest['맥클렐란']) > 0,
-         f"{float(latest['맥클렐란']):+.0f}"),
         ("서머레이션", float(latest['서머레이션']) > 0,
          f"{float(latest['서머레이션']):+.0f}"),
-        ("VIX", _val_bull('VIX', 25, invert=True),       # VIX < 25 = bull
+        ("VIX", _val_bull('VIX', 25, invert=True),
          f"{float(latest['VIX']):.1f}" if pd.notna(latest['VIX']) else "N/A"),
         ("상승비율", _val_bull('상승비율MA20', 50),
          f"{float(latest['상승비율MA20']):.0f}%" if pd.notna(latest['상승비율MA20']) else "N/A"),
+        ("50MA상위", _val_bull('50MA상위', 50),
+         f"{float(latest['50MA상위']):.0f}%" if pd.notna(latest.get('50MA상위')) else "N/A"),
         ("200MA상위", _val_bull('200MA상위', 50),
          f"{float(latest['200MA상위']):.0f}%" if pd.notna(latest['200MA상위']) else "N/A"),
     ]
@@ -1501,11 +1506,30 @@ def make_market_chart(df, market_name):
     vix_label = "VKOSPI" if market_name in ("코스피", "코스닥") else "VIX"
     has_vix   = df['VIX'].notna().any()
     has_200   = df['200MA상위'].notna().any()
+    has_50    = '50MA상위' in df.columns and df['50MA상위'].notna().any()
     has_summ  = df['서머레이션'].notna().any()
     x0, x1   = df.index[0], df.index[-1]
 
-    def _hl(row, col, y, color, dash='dot', width=0.9):
-        """데이터 범위 안에서만 그리는 수평 참조선 (Scatter 방식 → y축 auto-scale 보호)"""
+    # 지수(시총가중) 오버레이: y_data 범위에 맞게 스케일해서 투명 배경선으로 추가
+    def _idx_overlay(fig, y_series, row, col):
+        idx = df['시총가중'].reindex(y_series.index, method='ffill').dropna()
+        ys  = y_series.dropna()
+        if idx.empty or ys.empty:
+            return
+        y_min, y_max = float(ys.min()), float(ys.max())
+        y_rng = y_max - y_min
+        if y_rng == 0:
+            return
+        i_min, i_max = float(idx.min()), float(idx.max())
+        i_rng = i_max - i_min if i_max != i_min else 1.0
+        scaled = (idx - i_min) / i_rng * y_rng * 0.75 + y_min + y_rng * 0.125
+        fig.add_trace(go.Scatter(
+            x=scaled.index, y=scaled,
+            line=dict(color="rgba(255,255,255,0.07)", width=1.2),
+            showlegend=False, hoverinfo='skip',
+        ), row=row, col=col)
+
+    def _hl(y, color, dash='dot', width=0.9):
         return go.Scatter(
             x=[x0, x1], y=[y, y], mode='lines',
             line=dict(color=color, width=width, dash=dash),
@@ -1519,7 +1543,7 @@ def make_market_chart(df, market_name):
             "시총가중 vs 균일가중 (기준=100)",
             "시총가중 ÷ 균일가중 비율",
             "ADL — 등락 누적선",
-            "맥클렐란 오실레이터",
+            "50일선 상위 종목 비율 (%)",
             "맥클렐란 서머레이션 인덱스",
             f"{vix_label} — 공포지수",
             "상승비율 & 20일 이동평균",
@@ -1535,77 +1559,75 @@ def make_market_chart(df, market_name):
     fig.add_trace(go.Scatter(x=df.index, y=df['균일가중'],
         name="균일가중", line=dict(color="#FFD700", width=1.5)), row=1, col=1)
 
-    # ── Row 1 right: 비율
+    # ── Row 1 right: 비율 + 지수 배경
     ratio = (df['시총가중'] / df['균일가중']).round(4)
+    _idx_overlay(fig, ratio, 1, 2)
     fig.add_trace(go.Scatter(x=df.index, y=ratio,
         line=dict(color="#787EE7", width=1.5), showlegend=False), row=1, col=2)
-    fig.add_trace(_hl(1, 2, float(ratio.mean()),
-        "rgba(255,255,255,0.12)", 'dot'), row=1, col=2)
+    fig.add_trace(_hl(float(ratio.mean()), "rgba(255,255,255,0.12)", 'dot'), row=1, col=2)
 
-    # ── Row 2 left: ADL
+    # ── Row 2 left: ADL + 지수 배경
+    adl_s = df['ADL'].dropna()
+    _idx_overlay(fig, adl_s, 2, 1)
     fig.add_trace(go.Scatter(
         x=df.index, y=df['ADL'],
         line=dict(color="#787EE7", width=1.8),
         fill='tozeroy', fillcolor="rgba(120,126,231,0.06)",
         showlegend=False,
     ), row=2, col=1)
-    fig.add_trace(_hl(2, 1, 0, "rgba(255,255,255,0.15)", 'dot'), row=2, col=1)
+    fig.add_trace(_hl(0, "rgba(255,255,255,0.15)", 'dot'), row=2, col=1)
 
-    # ── Row 2 right: 맥클렐란 오실레이터 (y축 데이터 기반 auto-scale)
-    mcc = df['맥클렐란'].dropna()
-    bar_colors = ["#4BFFB3" if v >= 0 else "#FF4B6E" for v in mcc]
-    fig.add_trace(go.Bar(x=mcc.index, y=mcc,
-        marker_color=bar_colors, showlegend=False), row=2, col=2)
-    fig.add_trace(_hl(2, 2, 0, "rgba(255,255,255,0.20)", 'solid', 1.0), row=2, col=2)
-    # ±60 참조선: 데이터가 해당 레벨에 근접할 때만 의미 있으므로 Scatter로 그려 축 강제 확장 방지
-    mcc_bound = max(abs(float(mcc.max())), abs(float(mcc.min())), 5) * 1.25
-    for lvl, c in [(60, "rgba(255,75,110,0.45)"), (-60, "rgba(75,255,179,0.45)")]:
+    # ── Row 2 right: 50일선 상위 비율 + 지수 배경
+    if has_50:
+        p50 = df['50MA상위'].dropna()
+        _idx_overlay(fig, p50, 2, 2)
         fig.add_trace(go.Scatter(
-            x=[x0, x1], y=[lvl, lvl], mode='lines',
-            line=dict(color=c, width=0.9, dash='dot'),
-            showlegend=False, hoverinfo='skip',
+            x=p50.index, y=p50,
+            line=dict(color="#87CEEB", width=1.8),
+            showlegend=False,
         ), row=2, col=2)
-    fig.update_yaxes(range=[-mcc_bound, mcc_bound], row=2, col=2)
+        for lvl, c in [(70, "rgba(75,255,179,0.45)"),
+                       (50, "rgba(255,255,255,0.12)"),
+                       (30, "rgba(255,75,110,0.45)")]:
+            fig.add_trace(_hl(lvl, c), row=2, col=2)
+        fig.update_yaxes(range=[20, 80], row=2, col=2)
 
-    # ── Row 3 left: 서머레이션 (y축 데이터 기반 auto-scale)
+    # ── Row 3 left: 서머레이션 + 지수 배경
     if has_summ:
         summ = df['서머레이션'].dropna()
+        _idx_overlay(fig, summ, 3, 1)
         summ_color = ["#4BFFB3" if v >= 0 else "#FF4B6E" for v in summ]
         fig.add_trace(go.Bar(x=summ.index, y=summ,
             marker_color=summ_color, showlegend=False), row=3, col=1)
-        fig.add_trace(_hl(3, 1, 0, "rgba(255,255,255,0.20)", 'solid', 1.0), row=3, col=1)
+        fig.add_trace(_hl(0, "rgba(255,255,255,0.20)", 'solid', 1.0), row=3, col=1)
+        # ±참조선: 데이터 실제 범위의 70% 기준 (바스켓 크기 무관하게 의미 있게)
+        summ_ref = max(abs(float(summ.max())), abs(float(summ.min())), 50) * 0.70
+        for lvl, c in [(summ_ref, "rgba(255,75,110,0.40)"),
+                       (-summ_ref, "rgba(75,255,179,0.40)")]:
+            fig.add_trace(_hl(lvl, c, 'dot'), row=3, col=1)
         summ_bound = max(abs(float(summ.max())), abs(float(summ.min())), 50) * 1.25
-        for lvl, c in [(1000, "rgba(255,75,110,0.45)"), (-1000, "rgba(75,255,179,0.45)")]:
-            fig.add_trace(go.Scatter(
-                x=[x0, x1], y=[lvl, lvl], mode='lines',
-                line=dict(color=c, width=0.9, dash='dot'),
-                showlegend=False, hoverinfo='skip',
-            ), row=3, col=1)
         fig.update_yaxes(range=[-summ_bound, summ_bound], row=3, col=1)
 
-    # ── Row 3 right: VIX — 라인만, 25 중심 y축
+    # ── Row 3 right: VIX + 지수 배경
     if has_vix:
         vix = df['VIX'].dropna()
+        _idx_overlay(fig, vix, 3, 2)
         fig.add_trace(go.Scatter(
             x=vix.index, y=vix,
             line=dict(color="#FFB347", width=1.8),
-            showlegend=False,                          # fill 제거
+            showlegend=False,
         ), row=3, col=2)
-        # 25 중심 대칭 y축
         vix_center = 25.0
         half = max(abs(float(vix.max()) - vix_center),
                    abs(vix_center - float(vix.min())), 6) * 1.3
         fig.update_yaxes(range=[vix_center - half, vix_center + half], row=3, col=2)
-        # 20/30 참조선
         for lvl, c in [(20, "rgba(75,255,179,0.45)"), (25, "rgba(255,255,255,0.10)"),
                        (30, "rgba(255,75,110,0.45)")]:
-            fig.add_trace(go.Scatter(
-                x=[x0, x1], y=[lvl, lvl], mode='lines',
-                line=dict(color=c, width=0.9, dash='dot'),
-                showlegend=False, hoverinfo='skip',
-            ), row=3, col=2)
+            fig.add_trace(_hl(lvl, c), row=3, col=2)
 
-    # ── Row 4 left: 상승비율 & MA20
+    # ── Row 4 left: 상승비율 & MA20 + 지수 배경
+    adv_s = df['상승비율'].dropna()
+    _idx_overlay(fig, adv_s, 4, 1)
     fig.add_trace(go.Scatter(
         x=df.index, y=df['상승비율'],
         name="상승비율", line=dict(color="rgba(120,126,231,0.35)", width=1),
@@ -1615,23 +1637,20 @@ def make_market_chart(df, market_name):
             x=df.index, y=df['상승비율MA20'],
             name="MA20", line=dict(color="#787EE7", width=2),
         ), row=4, col=1)
-    for lvl, c in [(60, "rgba(75,255,179,0.45)"),
+    for lvl, c in [(70, "rgba(75,255,179,0.45)"),
                    (50, "rgba(255,255,255,0.12)"),
-                   (40, "rgba(255,75,110,0.45)")]:
-        fig.add_trace(go.Scatter(
-            x=[x0, x1], y=[lvl, lvl], mode='lines',
-            line=dict(color=c, width=0.9, dash='dot'),
-            showlegend=False, hoverinfo='skip',
-        ), row=4, col=1)
-    fig.update_yaxes(range=[0, 100], row=4, col=1)
+                   (30, "rgba(255,75,110,0.45)")]:
+        fig.add_trace(_hl(lvl, c), row=4, col=1)
+    fig.update_yaxes(range=[30, 70], row=4, col=1)
 
-    # ── Row 4 right: 200MA 상위 비율 — 라인만, 50 중심 y축
+    # ── Row 4 right: 200MA 상위 비율 + 지수 배경
     if has_200:
         p200 = df['200MA상위'].dropna()
+        _idx_overlay(fig, p200, 4, 2)
         fig.add_trace(go.Scatter(
             x=p200.index, y=p200,
             line=dict(color="#C8C850", width=1.8),
-            showlegend=False,                          # fill 제거
+            showlegend=False,
         ), row=4, col=2)
         p200_center = 50.0
         half = max(abs(float(p200.max()) - p200_center),
@@ -1640,11 +1659,7 @@ def make_market_chart(df, market_name):
         for lvl, c in [(70, "rgba(75,255,179,0.45)"),
                        (50, "rgba(255,255,255,0.12)"),
                        (30, "rgba(255,75,110,0.45)")]:
-            fig.add_trace(go.Scatter(
-                x=[x0, x1], y=[lvl, lvl], mode='lines',
-                line=dict(color=c, width=0.9, dash='dot'),
-                showlegend=False, hoverinfo='skip',
-            ), row=4, col=2)
+            fig.add_trace(_hl(lvl, c), row=4, col=2)
 
     fig.update_layout(
         height=1100,
@@ -2188,11 +2203,11 @@ def main():
                 return (f'<div style="display:flex;gap:5px;margin-bottom:5px;">'
                         f'{cards_html}</div>')
 
-            mcc_val  = float(latest['맥클렐란'])
             summ_val = float(latest['서머레이션'])
             vix_val  = latest['VIX']
             ma20_val = latest['상승비율MA20']
             p200_val = latest['200MA상위']
+            p50_val  = latest.get('50MA상위')
             adl_chg  = float(latest['ADL'] - prev['ADL'])
             vix_lbl  = "VKOSPI" if market_choice in ("코스피", "코스닥") else "VIX"
 
@@ -2209,10 +2224,6 @@ def main():
                     f"{latest['ADL']:.0f}",
                     f"{adl_chg:+.0f}",
                     "#4BFFB3" if adl_chg >= 0 else "#FF4B6E"),
-                _mkt_card("오실레이터",
-                    f"{mcc_val:+.1f}",
-                    "과열" if mcc_val > 60 else ("침체" if mcc_val < -60 else "중립"),
-                    "#4BFFB3" if mcc_val > 0 else "#FF4B6E"),
                 _mkt_card("서머레이션",
                     f"{summ_val:+.0f}",
                     "강세구간" if summ_val > 0 else "약세구간",
@@ -2226,6 +2237,11 @@ def main():
                     f"{ma20_val:.1f}%" if pd.notna(ma20_val) else "—",
                     "",
                     "#4BFFB3" if (pd.notna(ma20_val) and float(ma20_val) > 50) else "#FF4B6E"),
+                _mkt_card("50MA 상위",
+                    f"{p50_val:.1f}%" if pd.notna(p50_val) else "—",
+                    "강세" if (pd.notna(p50_val) and float(p50_val) > 50)
+                    else "약세",
+                    "#87CEEB" if (pd.notna(p50_val) and float(p50_val) > 50) else "#FF4B6E"),
                 _mkt_card("200MA 상위",
                     f"{p200_val:.1f}%" if pd.notna(p200_val) else "—",
                     "강세장" if (pd.notna(p200_val) and float(p200_val) > 70)
@@ -2296,18 +2312,18 @@ def main():
   <td><b>가장 중요한 선행지표.</b> 지수보다 ADL이 먼저 꺾이면 조정이 곧 온다는 경고. ADL이 먼저 올라오면 반등 시작 신호</td>
 </tr>
 <tr>
-  <td><b>맥클렐란 오실레이터</b></td>
-  <td>ADL의 단기 평균 − 장기 평균. "요즘 오르는 종목이 갑자기 많아졌나, 줄었나" 측정</td>
-  <td class="bull">−60 이하 (너무 내려서 곧 반등)</td>
-  <td class="bear">+60 이상 (너무 올라서 곧 쉬어갈 수도)</td>
-  <td>0보다 위에서 유지되면 상승 흐름 지속 중. −60 이하면 역발상 매수 타이밍, +60 이상이면 차익실현 고려</td>
+  <td><b>50일선 상위 비율</b></td>
+  <td>50일(약 2달) 평균 가격보다 지금 비싼 종목이 몇 %인지. 중기 추세의 건강도를 빠르게 파악</td>
+  <td class="bull">50% 이상 = 중기 강세 흐름</td>
+  <td class="bear">50% 이하 = 중기 약세 흐름</td>
+  <td>200일선 상위 비율보다 민감하게 반응해서 추세 전환을 더 빨리 알려줌. 50%선을 뚫고 올라오면 단기 반등 확인 신호</td>
 </tr>
 <tr>
   <td><b>맥클렐란 서머레이션</b></td>
-  <td>위 오실레이터를 계속 더한 누적값. "지금 강세장인지 약세장인지" 큰 그림</td>
+  <td>단기·장기 평균 등락 차이를 계속 누적한 값. "지금 강세장인지 약세장인지" 큰 그림</td>
   <td class="bull">0 이상 (강세장 영역)</td>
   <td class="bear">0 이하 (약세장 영역)</td>
-  <td>0선 위면 강세장, 아래면 약세장. 0선을 뚫고 올라오면 장세 전환 신호. +1000 이상이면 강세 절정</td>
+  <td>0선 위면 강세장, 아래면 약세장. 0선을 뚫고 올라오면 장세 전환 신호. 0선 위에서 하락 전환하면 조정 경고</td>
 </tr>
 <tr>
   <td><b>VIX / VKOSPI (공포지수)</b></td>
