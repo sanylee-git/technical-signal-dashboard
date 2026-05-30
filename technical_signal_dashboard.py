@@ -197,6 +197,23 @@ _KOSDAQ_BASKET = [
     "041510.KQ", "035900.KQ", "122870.KQ", "263720.KQ", "112040.KQ",
     "091990.KQ", "058470.KQ", "236200.KQ", "048410.KQ", "060310.KQ",
 ]
+# Wikipedia 스크래핑 실패 시 사용하는 대표 종목 바스켓 (시총 상위 60개)
+_SP500_BASKET = [
+    "AAPL","MSFT","NVDA","AMZN","GOOGL","META","TSLA","AVGO","BRK-B","JPM",
+    "LLY","V","UNH","XOM","MA","COST","JNJ","HD","PG","ABBV",
+    "MRK","BAC","CRM","CVX","NFLX","KO","ORCL","AMD","PEP","TMO",
+    "WMT","ACN","MCD","IBM","CSCO","TXN","QCOM","INTC","CAT","GE",
+    "DHR","ABT","AMGN","NOW","INTU","GS","BLK","AMAT","SPGI","DE",
+    "HON","LMT","ELV","MDT","RTX","SYK","ISRG","AXP","SCHW","DUK",
+]
+_NDX_BASKET = [
+    "AAPL","MSFT","NVDA","AMZN","META","GOOGL","TSLA","AVGO","COST","NFLX",
+    "AMD","ADBE","QCOM","CSCO","PEP","AMGN","INTC","TXN","INTU","HON",
+    "AMAT","SBUX","GILD","MDLZ","REGN","VRTX","MU","KLAC","LRCX","ADI",
+    "PANW","MRVL","CDNS","SNPS","CTAS","ORLY","FTNT","CHTR","MNST","ROST",
+    "PAYX","PCAR","ADP","CPRT","KDP","MELI","CEG","DXCM","IDXX","PYPL",
+    "ZS","ON","ILMN","VRSK","FAST","GEHC","EXC","FANG","WBD","TTWO",
+]
 
 PERIOD_OPTIONS = {
     "1일":     1,
@@ -1266,9 +1283,13 @@ def get_full_ticker_list(market):
 def get_market_internals(market, lookback_days=60):
     try:
         full_tickers  = get_full_ticker_list(market)
-        _fallback     = _KOSPI_BASKET if market == "코스피" else _KOSDAQ_BASKET
-        basket        = full_tickers if full_tickers else (
-                            _fallback if market in ("코스피", "코스닥") else None)
+        _fallback_map = {
+            "코스피":   _KOSPI_BASKET,
+            "코스닥":   _KOSDAQ_BASKET,
+            "S&P 500":  _SP500_BASKET,
+            "나스닥 100": _NDX_BASKET,
+        }
+        basket = full_tickers if full_tickers else _fallback_map.get(market)
         if basket is None:
             return None, f"{market} 종목 리스트 조회 실패"
         index_yf_code = _INDEX_CODE.get(market, "^KS11")
@@ -2233,12 +2254,12 @@ def main():
                 config={"displayModeBar": False},
             )
 
-            with st.expander("📖 시장 지표 해석 가이드 — 처음 보는 분도 바로 활용 가능", expanded=False):
+            with st.expander("📖 지표 쉽게 이해하기", expanded=False):
                 st.markdown("""
 <style>
 .guide-table { width:100%; border-collapse:collapse; font-size:12px; }
-.guide-table th { background:#1a1a2e; color:#787EE7; padding:6px 10px; text-align:left; border-bottom:1px solid #2a2a3e; }
-.guide-table td { padding:5px 10px; border-bottom:1px solid #1e1e2e; vertical-align:top; line-height:1.5; }
+.guide-table th { background:#1a1a2e; color:#787EE7; padding:7px 10px; text-align:left; border-bottom:1px solid #2a2a3e; }
+.guide-table td { padding:6px 10px; border-bottom:1px solid #1e1e2e; vertical-align:top; line-height:1.6; }
 .guide-table tr:hover td { background:rgba(120,126,231,0.04); }
 .bull { color:#4BFFB3; font-weight:600; }
 .bear { color:#FF4B6E; font-weight:600; }
@@ -2247,86 +2268,83 @@ def main():
 
 <table class="guide-table">
 <tr>
-  <th>지표</th><th>측정 대상</th><th>🟢 강세 신호</th><th>🔴 약세 신호</th><th>활용법</th>
+  <th>지표 이름</th>
+  <th>한 줄 설명 (쉽게)</th>
+  <th>🟢 좋은 신호</th>
+  <th>🔴 나쁜 신호</th>
+  <th>결론 내리는 법</th>
 </tr>
 <tr>
   <td><b>시총가중 지수</b></td>
-  <td>대형주 중심 실질 시장</td>
-  <td class="bull">우상향</td>
-  <td class="bear">우하향</td>
-  <td>삼성전자·SK하이닉스 등 대형주가 시장을 끌어올리는지 확인</td>
+  <td>삼성·애플 같은 큰 회사 위주로 시장이 얼마나 올랐나</td>
+  <td class="bull">꾸준히 우상향</td>
+  <td class="bear">꺾이며 하락</td>
+  <td>우리가 흔히 보는 코스피·S&P500 과 같은 개념. 가장 기본 지표</td>
 </tr>
 <tr>
   <td><b>균일가중 지수</b></td>
-  <td>전체 종목 고른 참여</td>
-  <td class="bull">시총가중과 함께 상승</td>
-  <td class="bear">시총가중만 오르고 균일은 정체</td>
-  <td>두 지수가 같이 오르면 <span class="bull">폭넓은 강세장</span>. 괴리 커지면 <span class="bear">대형주 쏠림</span> 경계</td>
-</tr>
-<tr>
-  <td><b>시총÷균일 비율</b></td>
-  <td>대형주 vs 중소형주 힘 싸움</td>
-  <td class="bull">평균 이하 (중소형 강세)</td>
-  <td class="bear">평균 이상으로 급등 (대형 쏠림)</td>
-  <td>비율이 평균보다 높으면 일부 대형주만 끌어올리는 취약한 장세</td>
+  <td>큰 회사·작은 회사 모두 똑같이 1표씩 줬을 때의 시장. "골고루 오르나?" 확인용</td>
+  <td class="bull">시총가중과 함께 오름</td>
+  <td class="bear">시총가중만 오르고 이건 제자리</td>
+  <td>둘이 같이 오르면 건강한 장. 시총가중만 오르면 일부 대형주만 끌어올리는 불안한 장</td>
 </tr>
 <tr>
   <td><b>ADL (등락누적선)</b></td>
-  <td>시장 방향·건강도</td>
-  <td class="bull">우상향 추세</td>
-  <td class="bear">지수는 오르는데 ADL 하락 (다이버전스)</td>
-  <td><b>핵심 선행지표.</b> ADL이 지수보다 먼저 꺾이면 조정 임박 신호. 반대로 ADL이 먼저 올라오면 반등 초입</td>
+  <td>매일 오른 종목 수 − 내린 종목 수를 계속 더한 값. 시장이 진짜 건강한지 보여줌</td>
+  <td class="bull">계속 우상향</td>
+  <td class="bear">지수는 오르는데 ADL은 내려감 (위험 신호!)</td>
+  <td><b>가장 중요한 선행지표.</b> 지수보다 ADL이 먼저 꺾이면 조정이 곧 온다는 경고. ADL이 먼저 올라오면 반등 시작 신호</td>
 </tr>
 <tr>
   <td><b>맥클렐란 오실레이터</b></td>
-  <td>단기 과매수/과매도</td>
-  <td class="bull">-60 이하 → 역발상 매수 구간</td>
-  <td class="bear">+60 이상 → 단기 과열, 차익실현 주의</td>
-  <td>±60선을 절대 기준으로 사용. 0선 위에서 유지되면 상승 모멘텀 지속</td>
+  <td>ADL의 단기 평균 − 장기 평균. "요즘 오르는 종목이 갑자기 많아졌나, 줄었나" 측정</td>
+  <td class="bull">−60 이하 (너무 내려서 곧 반등)</td>
+  <td class="bear">+60 이상 (너무 올라서 곧 쉬어갈 수도)</td>
+  <td>0보다 위에서 유지되면 상승 흐름 지속 중. −60 이하면 역발상 매수 타이밍, +60 이상이면 차익실현 고려</td>
 </tr>
 <tr>
   <td><b>맥클렐란 서머레이션</b></td>
-  <td>중기 사이클 위치</td>
-  <td class="bull">0 이상 유지, +1000 이상 = 강세장</td>
-  <td class="bear">0 이하 전환 = 약세장 진입, -1000 이하 = 침체</td>
-  <td>오실레이터의 누적합. <b>내가 지금 강세장에 있는지 약세장에 있는지</b> 가장 빠르게 알려줌. 0선 돌파가 추세 전환 신호</td>
+  <td>위 오실레이터를 계속 더한 누적값. "지금 강세장인지 약세장인지" 큰 그림</td>
+  <td class="bull">0 이상 (강세장 영역)</td>
+  <td class="bear">0 이하 (약세장 영역)</td>
+  <td>0선 위면 강세장, 아래면 약세장. 0선을 뚫고 올라오면 장세 전환 신호. +1000 이상이면 강세 절정</td>
 </tr>
 <tr>
   <td><b>VIX / VKOSPI (공포지수)</b></td>
-  <td>시장 공포·불확실성</td>
-  <td class="bull">30 이상 → 극단 공포 = 역발상 매수 타이밍</td>
-  <td class="bear">20 이하 유지 후 급등 → 조정 전조</td>
-  <td>VIX 20 이하 = 시장 안도, 20~30 = 경계, 30 이상 = 공포 구간. <b>공포 극대 = 바닥 근처</b>가 역사적 경험</td>
+  <td>투자자들이 얼마나 겁먹고 있나. 숫자 높을수록 공포 심리 강함</td>
+  <td class="bull">30 이상 → 공포 극대 = 바닥 근처일 수도</td>
+  <td class="bear">20 이하에서 갑자기 급등 → 조정 시작 신호</td>
+  <td>20 이하 = 안심, 20~30 = 주의, 30 이상 = 공포. 역설적으로 <b>모두가 겁먹을 때가 매수 타이밍</b>인 경우가 많음</td>
 </tr>
 <tr>
-  <td><b>상승비율 & MA20</b></td>
-  <td>당일 시장 폭</td>
-  <td class="bull">MA20 > 60% 유지</td>
-  <td class="bear">MA20 < 40%로 하락</td>
-  <td>단일 일수치는 노이즈 많음. <b>20일 평균선</b>이 50% 위면 상승 추세 건강, 아래면 약세 흐름</td>
+  <td><b>상승비율 MA20</b></td>
+  <td>오늘 전체 종목 중 오른 종목이 몇 %인지를 20일 평균낸 것</td>
+  <td class="bull">60% 이상 유지</td>
+  <td class="bear">40% 이하로 내려감</td>
+  <td>50% 위면 "대부분 오르는 중", 아래면 "대부분 내리는 중". 하루치 수치는 변동 크니 20일 평균선만 봐도 충분</td>
 </tr>
 <tr>
   <td><b>200일선 상위 비율</b></td>
-  <td>장기 상승추세 종목 비율</td>
-  <td class="bull">70% 이상 = 전형적 강세장</td>
-  <td class="bear">30% 이하 = 약세장 확인, 20% 이하 = 침체 바닥권</td>
-  <td><b>"몇 % 종목이 장기 상승추세 위에 있나".</b> 하락장에서 30% 이하 도달 후 반등하면 강력한 바닥 신호</td>
+  <td>200일(약 10개월) 평균 가격보다 지금 비싼 종목이 몇 %인지</td>
+  <td class="bull">70% 이상 = 강세장</td>
+  <td class="bear">30% 이하 = 약세장 / 20% 이하 = 침체 바닥권</td>
+  <td>가장 직관적인 장기 건강도 지표. 30% 이하까지 내려간 뒤 반등하면 강력한 바닥 신호로 자주 활용됨</td>
 </tr>
 </table>
 
 <br>
 
-**🗺️ 지표 조합으로 시장 읽기 — 4가지 국면**
+**🗺️ 지표 조합으로 지금 어느 상황인지 판단하기**
 
-| 국면 | ADL | 서머레이션 | 200MA상위 | VIX | 대응 |
-|------|-----|-----------|-----------|-----|------|
-| **강세장 초입** | 반등 시작 | 0선 상향 돌파 | 30→50% 회복 | 30 이상 후 하락 | 적극 매수 구간 |
-| **강세장 중반** | 우상향 | +500 이상 | 60~80% | 20 이하 | 보유 유지, 추격 매수 자제 |
-| **강세장 말기** | 지수 대비 다이버전스 | +1000 이상 후 정체 | 70% 이상 | 15 이하 과신 | 비중 축소, 차익실현 준비 |
-| **약세장** | 우하향 | 0선 이하 | 30% 이하 | 30 이상 | 현금 비중 확대, 반등 시 매도 |
+| 시장 상황 | ADL | 서머레이션 | 200일선 상위 | 공포지수 | 내가 할 행동 |
+|---------|-----|----------|------------|---------|------------|
+| 🟢 **상승 시작** | 바닥 찍고 올라오는 중 | 0선 위로 뚫음 | 30%→50% 회복 중 | 30 이상에서 내려오는 중 | 적극적으로 매수할 타이밍 |
+| 🟢 **상승 중반** | 계속 우상향 | +500 이상 | 60~80% | 20 이하 (안심 구간) | 보유 유지. 추격 매수는 자제 |
+| 🟡 **상승 막바지** | 지수는 오르는데 ADL은 정체 | +1000 이상이지만 더 안 오름 | 70% 이상 | 15 이하 (과도한 안심) | 비중 줄이고 차익실현 준비 |
+| 🔴 **하락장** | 계속 우하향 | 0선 아래 | 30% 이하 | 30 이상 (공포) | 현금 비중 늘리기. 반등해도 매도 기회 |
 
-> **균일가중 지수**는 공식 지수가 아니라 전종목 종가로 직접 계산한 참고 지표입니다.
-> 데이터 기준일이 최신 거래일 기준이며, 첫 로딩 시 전체 종목 다운로드로 1~2분 소요됩니다.
+> 균일가중 지수는 공식 지수가 아니라 직접 계산한 참고용 지표입니다.
+> 첫 로딩 시 전체 종목 다운로드로 1~2분 소요됩니다.
                 """, unsafe_allow_html=True)
 
 
