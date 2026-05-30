@@ -1652,11 +1652,23 @@ def _slope_score_all(df_slice):
     cap_s, cap_lbl, _, cap_dir = _consec_slope(col('시총가중'))
     results["시총가중"] = {"score": cap_s, "raw": last('시총가중'), "label": cap_lbl}
 
-    # ── 2. 균일가중 (대형주 쏠림: 시총 상승인데 균일 하락 → 라벨 경고만, 점수는 기울기 그대로)
-    eqw_s, eqw_lbl, _, eqw_dir = _consec_slope(col('균일가중'))
-    if cap_dir > 0 and eqw_dir < 0:
-        eqw_lbl += " ⚡쏠림"
-    results["균일가중"] = {"score": eqw_s, "raw": last('균일가중'), "label": eqw_lbl}
+    # ── 2. 균일가중
+    eqw_s, eqw_lbl, _, _ = _consec_slope(col('균일가중'))
+
+    # 확산비율 = 균일가중 / 시총가중 → MA10 기울기로 쏠림/확산 판단 (라벨만, 점수 오버라이드 없음)
+    breadth_html = ""
+    cap_vals = col('시총가중')
+    eqw_vals = col('균일가중')
+    if cap_vals is not None and eqw_vals is not None:
+        ratio = eqw_vals / cap_vals.replace(0, float('nan'))
+        _, _, _, br_dir = _consec_slope(ratio)
+        if br_dir > 0:
+            breadth_html = '<br><span style="color:#4BFFB3;font-size:8px">↗ 장세 확산</span>'
+        elif br_dir < 0:
+            breadth_html = '<br><span style="color:#FF8C69;font-size:8px">⚡ 쏠림</span>'
+
+    results["균일가중"] = {"score": eqw_s, "raw": last('균일가중'), "label": eqw_lbl,
+                          "level_html": breadth_html}
 
     # ── 3. ADL ★ — ADL_MA10 기울기 기반, 다이버전스 시 라벨 경고만 (점수 강제 오버라이드 제거)
     adl_series = col('ADL_MA10') if 'ADL_MA10' in df_slice.columns else col('ADL')
