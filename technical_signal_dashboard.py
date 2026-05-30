@@ -2076,7 +2076,7 @@ def make_market_chart(df, market_name):
         row_heights=[0.22, 0.22, 0.28, 0.28],
         subplot_titles=[
             "시총가중 vs 균일가중 (기준=100)",
-            "시총가중 ÷ 균일가중 비율",
+            "확산비율 (균일가중 ÷ 시총가중)  ↑확산 ↓쏠림",
             "ADL — 등락 누적선",
             "52주 신고가 비율 (% of 전체 유효 종목)",
             "맥클렐란 서머레이션 인덱스",
@@ -2094,11 +2094,12 @@ def make_market_chart(df, market_name):
     fig.add_trace(go.Scatter(x=df.index, y=df['균일가중'],
         name="균일가중", line=dict(color="#FFD700", width=1.5)), row=1, col=1)
 
-    # ── Row 1 right: 비율 + 지수 배경
-    ratio = (df['시총가중'] / df['균일가중']).round(4)
+    # ── Row 1 right: 확산비율 (균일가중 ÷ 시총가중) + 지수 배경
+    # 비율 상승 = 균일가중 우세 = 장세 확산, 하락 = 시총가중 우세 = 대형주 쏠림
+    ratio = (df['균일가중'] / df['시총가중'].replace(0, float('nan'))).round(4)
     _idx_overlay(fig, 1, 2)
     fig.add_trace(go.Scatter(x=df.index, y=ratio,
-        line=dict(color="#787EE7", width=1.5), showlegend=False), row=1, col=2)
+        line=dict(color="#FFD700", width=1.5), showlegend=False), row=1, col=2)
     fig.add_trace(_hl(float(ratio.mean()), "rgba(255,255,255,0.12)", 'dot'), row=1, col=2)
 
     # ── Row 2 left: ADL + MA20 + 지수 배경
