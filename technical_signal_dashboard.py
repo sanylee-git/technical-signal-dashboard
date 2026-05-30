@@ -1552,10 +1552,10 @@ _SCORE_MAX = sum(w * 2 for w in _SCORE_WEIGHTS.values())  # 26
 
 def _consec_slope(series, invert=False, already_smooth=False):
     """
-    MA10 기울기 연속성으로 -2~+2 점수 반환.
-      1일 연속 = 0 (임시)
-      2일 연속 = ±1 (플래그)
-      3일+ 연속 = ±2 (확정)
+    MA10 기울기 연속성으로 점수 반환.
+      1일 연속 = ±0.5 (임시)
+      2일 연속 = ±1   (플래그)
+      3일+ 연속 = ±2  (확정)
     invert=True: 하락이 좋음 (HV20/VIX)
     already_smooth=True: 이미 이동평균된 시리즈면 MA10 재계산 없이 직접 사용
     Returns (score, label, n_consecutive, effective_direction)
@@ -1591,21 +1591,50 @@ def _consec_slope(series, invert=False, already_smooth=False):
         else:
             break
 
-    score = 2 if consec >= 3 else (1 if consec == 2 else 0)
+    # 1일=0.5(임시), 2일=1(플래그), 3일+=2(확정)
+    score = 2 if consec >= 3 else (1 if consec == 2 else 0.5)
     effective = latest if not invert else -latest
     score *= effective
 
     dir_kr = "상승" if effective > 0 else "하락"
     tag = "확정" if consec >= 3 else ("플래그" if consec == 2 else "임시")
-    lbl = f"임시 ({dir_kr} 1일)" if score == 0 else f"{dir_kr} {consec}일 ({tag})"
+    lbl = f"{dir_kr} {consec}일 ({tag})"
     return score, lbl, consec, effective
+
+
+# 비율 지표 레벨 경고 임계값 (낮을수록 악화 / 높을수록 과열)
+_RATIO_LEVELS = {
+    "20MA상위":     {"xlow": 15, "low": 30, "high": 70, "xhigh": 85},
+    "100MA상위":    {"xlow": 20, "low": 35, "high": 65, "xhigh": 80},
+    "상승비율MA20": {"xlow": 30, "low": 40, "high": 60, "xhigh": 75},
+    "NH비율":       {"xlow":  1, "low":  5, "high": 20, "xhigh": 35},
+}
+
+
+def _ratio_level_html(indicator_name, val):
+    """비율 지표 레벨 보조 경고 HTML 반환. 정상 범위면 빈 문자열."""
+    thr = _RATIO_LEVELS.get(indicator_name)
+    if thr is None or val is None:
+        return ""
+    v = float(val)
+    if v <= thr["xlow"]:
+        tag, color = "극저 ⚠", "#FF4B6E"
+    elif v <= thr["low"]:
+        tag, color = "저", "#FF8C69"
+    elif v >= thr["xhigh"]:
+        tag, color = "과열 ⚠", "#C8C850"
+    elif v >= thr["high"]:
+        tag, color = "고", "#4BFFB3"
+    else:
+        return ""
+    return f'<br><span style="color:{color};font-size:8px">{v:.0f}% ({tag})</span>'
 
 
 def _slope_score_all(df_slice):
     """
     MA10 기울기 연속성 기반 9개 지표 점수 계산.
     df_slice: 해당 일자까지의 전체 데이터프레임 슬라이스
-    반환: dict[지표명] = {"score": int, "raw": float, "label": str}
+    반환: dict[지표명] = {"score": float, "raw": float, "label": str, "level_html": str}
     """
     results = {}
 
@@ -1648,22 +1677,38 @@ def _slope_score_all(df_slice):
     results["HV20"] = {"score": hv_s, "raw": last('VIX'), "label": hv_lbl}
 
     # ── 6. 상승비율MA20 — 이미 MA20 적용된 시리즈, 직접 기울기 사용
+    adv_raw = last('상승비율MA20')
     adv_s, adv_lbl, _, _ = _consec_slope(col('상승비율MA20'), already_smooth=True)
-    results["상승비율MA20"] = {"score": adv_s, "raw": last('상승비율MA20'), "label": adv_lbl}
+    results["상승비율MA20"] = {
+        "score": adv_s, "raw": adv_raw, "label": adv_lbl,
+        "level_html": _ratio_level_html("상승비율MA20", adv_raw),
+    }
 
     # ── 7. 20MA상위 ★
+    m20_raw = last('20MA상위')
     m20_s, m20_lbl, _, _ = _consec_slope(col('20MA상위'))
-    results["20MA상위"] = {"score": m20_s, "raw": last('20MA상위'), "label": m20_lbl}
+    results["20MA상위"] = {
+        "score": m20_s, "raw": m20_raw, "label": m20_lbl,
+        "level_html": _ratio_level_html("20MA상위", m20_raw),
+    }
 
     # ── 8. 100MA상위 ★
+    m100_raw = last('100MA상위')
     m100_s, m100_lbl, _, _ = _consec_slope(col('100MA상위'))
-    results["100MA상위"] = {"score": m100_s, "raw": last('100MA상위'), "label": m100_lbl}
+    results["100MA상위"] = {
+        "score": m100_s, "raw": m100_raw, "label": m100_lbl,
+        "level_html": _ratio_level_html("100MA상위", m100_raw),
+    }
 
     # ── 9. NH비율 — 이미 계산된 NH비율MA10 사용
+    nh_raw = last('NH비율')
     nh_series = col('NH비율MA10') if 'NH비율MA10' in df_slice.columns else col('NH비율')
     nh_smooth = 'NH비율MA10' in df_slice.columns
     nh_s, nh_lbl, _, _ = _consec_slope(nh_series, already_smooth=nh_smooth)
-    results["NH비율"] = {"score": nh_s, "raw": last('NH비율'), "label": nh_lbl}
+    results["NH비율"] = {
+        "score": nh_s, "raw": nh_raw, "label": nh_lbl,
+        "level_html": _ratio_level_html("NH비율", nh_raw),
+    }
 
     return results
 
@@ -1851,22 +1896,29 @@ def render_market_score_ui(df, market_name):
         "20MA상위": "20MA상위 ★", "100MA상위": "100MA상위 ★",
         "NH비율": "NH비율",
     }
-    score_colors = {2: "#00FF7F", 1: "#4BFFB3", 0: "#888", -1: "#FF8C69", -2: "#FF4B6E"}
-    # -2~+2를 -100~+100으로 표시 (× 50)
-    score_display = {2: +100, 1: +50, 0: 0, -1: -50, -2: -100}
-    bar_widths    = {2: 100, 1: 50, 0: 0, -1: 50, -2: 100}
+    # 점수 -2~+2 (0.5 단계 포함) → 색상·표시값·바 너비
+    score_colors = {
+        2: "#00FF7F", 1: "#4BFFB3", 0.5: "#88FFD0",
+        0: "#888",
+        -0.5: "#FFBBA0", -1: "#FF8C69", -2: "#FF4B6E",
+    }
+    # 각 점수를 -100~+100 정수로 표시 (×50)
+    score_display = {2: 100, 1: 50, 0.5: 25, 0: 0, -0.5: -25, -1: -50, -2: -100}
+    bar_widths    = {2: 100, 1: 50, 0.5: 25, 0: 0, -0.5: 25,  -1: 50,  -2: 100}
 
     for name, info in indicator_scores.items():
-        s      = info["score"]
-        lbl    = info["label"]
-        c      = score_colors.get(s, "#888")
-        disp   = score_display.get(s, 0)
-        bw     = bar_widths.get(s, 0)
-        is_pos = s > 0
+        s          = info["score"]
+        lbl        = info["label"]
+        level_html = info.get("level_html", "")
+        c          = score_colors.get(s, "#888")
+        disp       = score_display.get(s, 0)
+        bw         = bar_widths.get(s, 0)
+        is_pos     = s > 0
         bar_html = (
             f'<div style="width:{bw}%;height:100%;background:{c};border-radius:2px;'
             f'{"margin-left:auto;" if not is_pos else ""}"></div>'
         ) if s != 0 else ""
+        disp_str = f"+{disp}" if disp > 0 else str(disp)
 
         score_rows.append(
             f'<div style="display:flex;align-items:center;gap:8px;padding:3px 0;'
@@ -1874,7 +1926,7 @@ def render_market_score_ui(df, market_name):
             f'<div style="width:110px;font-size:10px;color:#888;flex-shrink:0;">'
             f'{label_map.get(name, name)}</div>'
             f'<div style="width:40px;font-size:11px;font-weight:700;color:{c};'
-            f'text-align:right;flex-shrink:0;">{disp:+d}</div>'
+            f'text-align:right;flex-shrink:0;">{disp_str}</div>'
             f'<div style="flex:1;display:flex;align-items:center;">'
             f'<div style="width:50%;height:6px;background:rgba(255,75,110,0.08);'
             f'border-radius:2px 0 0 2px;overflow:hidden;">'
@@ -1883,8 +1935,8 @@ def render_market_score_ui(df, market_name):
             f'border-radius:0 2px 2px 0;overflow:hidden;">'
             f'{"" if not is_pos or s==0 else bar_html}</div>'
             f'</div>'
-            f'<div style="width:100px;font-size:9px;color:#555;text-align:right;'
-            f'flex-shrink:0;">{lbl}</div>'
+            f'<div style="width:110px;font-size:9px;color:#555;text-align:right;'
+            f'flex-shrink:0;line-height:1.4;">{lbl}{level_html}</div>'
             f'</div>'
         )
 
