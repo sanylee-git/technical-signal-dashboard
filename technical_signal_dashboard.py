@@ -1978,6 +1978,13 @@ def main():
             ("매도 신호",   f"{n_dyn_sell}",       "#FF4B6E"),
         ]), unsafe_allow_html=True)
 
+        fav_names = [f['name'] for f in favorites]
+        selected_name = st.selectbox(
+            "종목 선택", fav_names, index=0,
+            label_visibility="collapsed",
+        )
+        selected_fav = next((f for f in favorites if f['name'] == selected_name), favorites[0])
+
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
         st.markdown(render_signal_table(signal_rows), unsafe_allow_html=True)
 
@@ -1987,13 +1994,6 @@ def main():
             <p style='font-size:10px;color:#444;text-transform:uppercase;
                       letter-spacing:1.5px;margin:0 0 6px;'>DETAIL CHART</p>
         """, unsafe_allow_html=True)
-
-        fav_names = [f['name'] for f in favorites]
-        selected_name = st.selectbox(
-            "종목 선택", fav_names, index=0,
-            label_visibility="collapsed",
-        )
-        selected_fav = next((f for f in favorites if f['name'] == selected_name), favorites[0])
 
         # ── 일봉 차트 ──────────────────────────────────────
         if chart_mode == "일봉":
