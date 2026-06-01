@@ -26,8 +26,10 @@ warnings.filterwarnings('ignore')
 try:
     from pykrx import stock as pykrx_stock
     PYKRX_AVAILABLE = True
-except ImportError:
+    _PYKRX_IMPORT_ERR = None
+except Exception as _e:
     PYKRX_AVAILABLE = False
+    _PYKRX_IMPORT_ERR = f"{type(_e).__name__}: {_e}"
 
 
 # ============================================================
@@ -724,7 +726,7 @@ def fetch_intraday(ticker, interval):
     # ── 2차 fallback: pykrx (한국 종목 전용)
     if ticker.endswith(('.KS', '.KQ')):
         if not PYKRX_AVAILABLE:
-            errors.append("pykrx: 미설치")
+            errors.append(f"pykrx: 미설치 ({_PYKRX_IMPORT_ERR or '이유 불명'})")
         else:
             try:
                 krx_code = ticker.replace('.KS', '').replace('.KQ', '')
