@@ -698,13 +698,15 @@ def _fetch_intraday_pykrx(krx_code: str, interval: str, lookback_days: int = 10)
 def fetch_intraday(ticker, interval):
     """분봉 OHLCV (5m/15m/30m/60m). TTL=60s → 새로고침 시 최신 분봉 반영.
     yfinance 실패 시 한국 종목은 pykrx로 자동 재시도.
+    반환: (DataFrame, error_str | None)
     """
+    errors = []
+
     # ── 1차: yfinance
     try:
         raw = yf.download(ticker, period='60d', interval=interval, progress=False)
         df = _normalize_yf_ohlcv(raw)
         if not df.empty:
-            # KS/KQ: UTC-naive → KST-naive 변환
             if ticker.endswith(('.KS', '.KQ')):
                 try:
                     df.index = (pd.to_datetime(df.index)
@@ -714,16 +716,26 @@ def fetch_intraday(ticker, interval):
                 except Exception:
                     pass
             cols = [c for c in ['Open', 'High', 'Low', 'Close', 'Volume'] if c in df.columns]
-            return df[cols].copy()
-    except Exception:
-        pass
+            return df[cols].copy(), None
+        errors.append(f"yfinance: 빈 결과 (rows={len(raw) if not raw.empty else 0})")
+    except Exception as e:
+        errors.append(f"yfinance: {type(e).__name__}: {e}")
 
     # ── 2차 fallback: pykrx (한국 종목 전용)
-    if PYKRX_AVAILABLE and ticker.endswith(('.KS', '.KQ')):
-        krx_code = ticker.replace('.KS', '').replace('.KQ', '')
-        return _fetch_intraday_pykrx(krx_code, interval)
+    if ticker.endswith(('.KS', '.KQ')):
+        if not PYKRX_AVAILABLE:
+            errors.append("pykrx: 미설치")
+        else:
+            try:
+                krx_code = ticker.replace('.KS', '').replace('.KQ', '')
+                df_pkrx = _fetch_intraday_pykrx(krx_code, interval)
+                if not df_pkrx.empty:
+                    return df_pkrx, None
+                errors.append(f"pykrx: 빈 결과 (code={krx_code})")
+            except Exception as e:
+                errors.append(f"pykrx: {type(e).__name__}: {e}")
 
-    return pd.DataFrame()
+    return pd.DataFrame(), " | ".join(errors)
 
 
 @st.cache_data(ttl=60)
@@ -735,7 +747,7 @@ def fetch_intraday_batch(tickers_tuple, interval):
     frames = {}
     for ticker in tickers:
         try:
-            df = fetch_intraday(ticker, interval)
+            df, _ = fetch_intraday(ticker, interval)
             if not df.empty and 'Close' in df.columns:
                 frames[ticker] = df['Close']
         except Exception:
@@ -2753,10 +2765,12 @@ def main():
         else:
             _ticker = selected_fav['code']
             with st.spinner(f"분봉 로딩... ({intra_interval_label}, {period_name} 기준)"):
-                ohlcv_intra = fetch_intraday(_ticker, yf_interval)
+                ohlcv_intra, intra_err = fetch_intraday(_ticker, yf_interval)
 
             if ohlcv_intra.empty:
                 st.warning(f"⚠️ {selected_name} 분봉 데이터를 가져올 수 없습니다.")
+                if intra_err:
+                    st.code(intra_err, language=None)
             else:
                 _disp_bars = _intra_bars_per_day[yf_interval] * period_days
                 _session   = (15.5, 9.0) if _ticker.endswith(('.KS', '.KQ')) else None
