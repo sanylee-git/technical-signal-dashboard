@@ -650,28 +650,80 @@ def fetch_close_batch(tickers_tuple, start_str, end_str):
     return result
 
 
+def _fetch_intraday_pykrx(krx_code: str, interval: str, lookback_days: int = 10) -> pd.DataFrame:
+    """pykrx로 한국 종목 분봉 조회 (yfinance fallback용).
+    1분봉을 target interval로 리샘플링해 OHLCV 반환.
+    """
+    if not PYKRX_AVAILABLE:
+        return pd.DataFrame()
+    _col_map = {'시가': 'Open', '고가': 'High', '저가': 'Low', '종가': 'Close', '거래량': 'Volume'}
+    _resample = {'5m': '5min', '15m': '15min', '30m': '30min', '60m': '60min'}
+    rule = _resample.get(interval, '5min')
+
+    frames = []
+    today = datetime.now().date()
+    d = today
+    found = 0
+    for _ in range(lookback_days * 3):  # 주말·공휴일 고려
+        if found >= lookback_days:
+            break
+        if d.weekday() >= 5:
+            d -= timedelta(days=1)
+            continue
+        try:
+            df_1m = pykrx_stock.get_market_ohlcv_by_minute(d.strftime('%Y%m%d'), krx_code)
+            if df_1m is not None and not df_1m.empty:
+                df_1m = df_1m.rename(columns=_col_map)
+                df_1m.index = pd.to_datetime(df_1m.index)
+                frames.append(df_1m)
+                found += 1
+        except Exception:
+            pass
+        d -= timedelta(days=1)
+
+    if not frames:
+        return pd.DataFrame()
+
+    combined = pd.concat(frames[::-1])  # oldest first
+    ohlcv = (combined
+             .resample(rule, label='right', closed='right')
+             .agg(Open=('Open', 'first'), High=('High', 'max'),
+                  Low=('Low', 'min'), Close=('Close', 'last'),
+                  Volume=('Volume', 'sum'))
+             .dropna(subset=['Close']))
+    return ohlcv[['Open', 'High', 'Low', 'Close', 'Volume']]
+
+
 @st.cache_data(ttl=60)
 def fetch_intraday(ticker, interval):
-    """분봉 OHLCV (5m/15m/30m/60m). TTL=60s → 새로고침 시 최신 분봉 반영."""
+    """분봉 OHLCV (5m/15m/30m/60m). TTL=60s → 새로고침 시 최신 분봉 반영.
+    yfinance 실패 시 한국 종목은 pykrx로 자동 재시도.
+    """
+    # ── 1차: yfinance
     try:
         raw = yf.download(ticker, period='60d', interval=interval, progress=False)
         df = _normalize_yf_ohlcv(raw)
-        if df.empty:
-            return pd.DataFrame()
-        # KS/KQ: _normalize_yf_ohlcv 이후 UTC-naive → KST-naive 로 변환
-        # (hour-based rangebreak이 09:00-15:30 로 정확히 동작하도록)
-        if ticker.endswith(('.KS', '.KQ')):
-            try:
-                df.index = (pd.to_datetime(df.index)
-                            .tz_localize('UTC')
-                            .tz_convert('Asia/Seoul')
-                            .tz_localize(None))
-            except Exception:
-                pass
-        cols = [c for c in ['Open', 'High', 'Low', 'Close', 'Volume'] if c in df.columns]
-        return df[cols].copy()
+        if not df.empty:
+            # KS/KQ: UTC-naive → KST-naive 변환
+            if ticker.endswith(('.KS', '.KQ')):
+                try:
+                    df.index = (pd.to_datetime(df.index)
+                                .tz_localize('UTC')
+                                .tz_convert('Asia/Seoul')
+                                .tz_localize(None))
+                except Exception:
+                    pass
+            cols = [c for c in ['Open', 'High', 'Low', 'Close', 'Volume'] if c in df.columns]
+            return df[cols].copy()
     except Exception:
-        return pd.DataFrame()
+        pass
+
+    # ── 2차 fallback: pykrx (한국 종목 전용)
+    if PYKRX_AVAILABLE and ticker.endswith(('.KS', '.KQ')):
+        krx_code = ticker.replace('.KS', '').replace('.KQ', '')
+        return _fetch_intraday_pykrx(krx_code, interval)
+
+    return pd.DataFrame()
 
 
 @st.cache_data(ttl=60)
