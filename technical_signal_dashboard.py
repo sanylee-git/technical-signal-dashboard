@@ -252,8 +252,9 @@ _SP500_BASKET = [
     "PNC","TFC","CFG","KEY","FHN","SNV","CMA","ZION","RF","FITB",
     "MTB","WAL","PACW","FRC","SIVB","VZ","T","TMUS","LUMN","DISH",
 ]
-# NASDAQ-100 fallback — Wikipedia 실패 시. 전체 101종 최대한 포함
+# 나스닥 200 — NDX-100 + 시총 상위 추가 기술/성장주 (Wikipedia 실패 시 fallback)
 _NDX_BASKET = [
+    # ── NDX-100
     "AAPL","MSFT","NVDA","AMZN","META","GOOGL","GOOG","TSLA","AVGO","COST",
     "NFLX","AMD","ADBE","QCOM","CSCO","PEP","AMGN","INTU","TXN","HON",
     "AMAT","SBUX","GILD","MDLZ","REGN","VRTX","MU","KLAC","LRCX","ADI",
@@ -264,6 +265,17 @@ _NDX_BASKET = [
     "CCEP","CTSH","FSLR","ODFL","LULU","EA","BKR","XEL","DLTR","ENPH",
     "ALGN","MRNA","AZN","ABNB","GFS","CHTR","ARM","CSX","NXPI","ROP",
     "SMCI","INTC","ISRG","LBTYA","PDD","SGEN","SPLK","MTCH","DDOG","ZI",
+    # ── 나스닥 101~200 (시총 기준 추가 기술/성장주)
+    "PLTR","COIN","ZM","DOCU","OKTA","SOFI","AFRM","RIVN","LCID","HOOD",
+    "NBIX","HOLX","ALNY","BMRN","EXAS","JAZZ","INCY","SRPT","NVAX","NKTR",
+    "IBKR","NDAQ","LPLA","MKTX","SEIC","EPAM","GDDY","FFIV","NTAP","KEYS",
+    "QRVO","SWKS","ZBRA","CGNX","CHKP","AKAM","CMCSA","PINS","SNAP","RDDT",
+    "BILL","TOST","UPST","PAYC","WEX","EXPE","FOXA","SIRI","MDB","CSGP",
+    "LBTYK","NIO","LI","XPEV","ARWR","ACAD","CFLT","GTLB","NTNX","MNDY",
+    "LYFT","UBER","NET","SNOW","DKNG","WYNN","HIMS","JOBY","PCTY","APPF",
+    "PTON","OPEN","RBLX","U","ACHR","WK","NCNO","PSTG","PCOR","GWRE",
+    "SMAR","COUP","MQ","FOUR","FLYW","RELY","PAYO","SMWB","RGEN","FOLD",
+    "RARE","LEGN","RCKT","KRYS","VERA","PRAX","RXRX","CERE","KRTX","ACMR",
 ]
 
 PERIOD_OPTIONS = {
@@ -1340,7 +1352,7 @@ _WIKI_HEADERS = {
 }
 _INDEX_CODE = {
     "코스피": "^KS11", "코스닥": "^KQ11",
-    "S&P 500": "^GSPC", "나스닥 100": "^NDX",
+    "S&P 500": "^GSPC", "나스닥 200": "^NDX",
 }
 
 
@@ -1407,7 +1419,8 @@ def get_full_ticker_list(market):
             pass
         return _SP500_BASKET  # ~200종 내장 fallback
 
-    if market == "나스닥 100":
+    if market == "나스닥 200":
+        tickers = []
         try:
             import requests
             r = requests.get(
@@ -1417,10 +1430,21 @@ def get_full_ticker_list(market):
             for t in tables:
                 for col in ["Ticker", "Symbol"]:
                     if col in t.columns and len(t) > 90:
-                        return t[col].dropna().tolist()
+                        tickers = t[col].dropna().tolist()
+                        break
+                if tickers:
+                    break
         except Exception:
             pass
-        return _NDX_BASKET  # ~100종 내장 fallback
+        # _NDX_BASKET으로 200종 보충
+        existing = set(tickers)
+        for t in _NDX_BASKET:
+            if t not in existing:
+                tickers.append(t)
+                existing.add(t)
+            if len(tickers) >= 200:
+                break
+        return tickers[:200] if tickers else _NDX_BASKET
 
     return None
 
@@ -1433,11 +1457,33 @@ def get_market_internals(market, lookback_days=60):
             "코스피":   _KOSPI_BASKET,
             "코스닥":   _KOSDAQ_BASKET,
             "S&P 500":  _SP500_BASKET,
-            "나스닥 100": _NDX_BASKET,
+            "나스닥 200": _NDX_BASKET,
         }
         basket = full_tickers if full_tickers else _fallback_map.get(market)
         if basket is None:
             return None, f"{market} 종목 리스트 조회 실패"
+
+        # ── 바스켓 200종 제한 (성능 + 시총 상위 집중)
+        _BASKET_LIMIT = 200
+        if len(basket) > _BASKET_LIMIT:
+            if market in ("코스피", "코스닥") and PYKRX_AVAILABLE:
+                try:
+                    krx_mkt = "KOSPI" if market == "코스피" else "KOSDAQ"
+                    today_str = datetime.now().strftime("%Y%m%d")
+                    cap_df = pykrx_stock.get_market_cap(today_str, market=krx_mkt)
+                    suffix = ".KS" if market == "코스피" else ".KQ"
+                    top_codes = cap_df.nlargest(_BASKET_LIMIT, '시가총액').index.tolist()
+                    basket = [f"{c}{suffix}" for c in top_codes]
+                except Exception:
+                    basket = basket[:_BASKET_LIMIT]
+            elif market == "S&P 500":
+                basket_set = set(basket)
+                ordered = [t for t in _SP500_BASKET if t in basket_set]
+                remaining = [t for t in basket if t not in set(_SP500_BASKET)]
+                basket = (ordered + remaining)[:_BASKET_LIMIT]
+            else:
+                basket = basket[:_BASKET_LIMIT]
+
         index_yf_code = _INDEX_CODE.get(market, "^KS11")
         use_hv20 = market in ("코스피", "코스닥")   # ^VKOSPI는 Yahoo에 없음 → 지수로 HV20 계산
         vix_code = None if use_hv20 else "^VIX"
@@ -2842,7 +2888,7 @@ def main():
         col_mkt, col_period, _ = st.columns([2, 2, 2])
         with col_mkt:
             market_choice = st.radio(
-                "시장", ["코스피", "코스닥", "S&P 500", "나스닥 100"],
+                "시장", ["코스피", "코스닥", "S&P 500", "나스닥 200"],
                 horizontal=True,
                 label_visibility="collapsed",
             )
