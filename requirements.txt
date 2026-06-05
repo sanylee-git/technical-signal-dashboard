@@ -4,3 +4,4 @@ plotly>=5.18.0
 yfinance==0.2.65
 setuptools>=68.0.0
 pykrx>=1.0.0
+streamlit-autorefresh>=1.0.1

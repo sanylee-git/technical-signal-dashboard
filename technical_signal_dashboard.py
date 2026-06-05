@@ -31,6 +31,12 @@ except Exception as _e:
     PYKRX_AVAILABLE = False
     _PYKRX_IMPORT_ERR = f"{type(_e).__name__}: {_e}"
 
+try:
+    from streamlit_autorefresh import st_autorefresh
+    AUTOREFRESH_AVAILABLE = True
+except Exception:
+    AUTOREFRESH_AVAILABLE = False
+
 
 # ============================================================
 # 페이지 설정
@@ -2476,9 +2482,24 @@ def main():
                 label_visibility="collapsed", key="intra_interval",
             )
             yf_interval = _intra_interval_map[intra_interval_label]
+
+            st.markdown("**🔄 자동 새로고침**")
+            auto_refresh = st.toggle("분봉 자동 갱신", value=False, key="auto_refresh_toggle")
+            if auto_refresh:
+                refresh_interval_label = st.radio(
+                    "갱신 주기", ["1분", "3분", "5분", "10분"], index=2,
+                    horizontal=True, label_visibility="collapsed", key="refresh_interval",
+                )
+                _refresh_ms = {"1분": 60_000, "3분": 180_000, "5분": 300_000, "10분": 600_000}
+                refresh_ms = _refresh_ms[refresh_interval_label]
+            else:
+                auto_refresh = False
+                refresh_ms = 300_000
         else:
             intra_interval_label = None
             yf_interval = None
+            auto_refresh = False
+            refresh_ms = 300_000
 
         st.divider()
 
@@ -2658,6 +2679,12 @@ def main():
     # TAB 1 — 신호 스캐너
     # ═══════════════════════════════════════════════════════════
     with tab1:
+        # 자동 새로고침 (분봉 모드 + 토글 ON 일 때만)
+        if auto_refresh and AUTOREFRESH_AVAILABLE:
+            _count = st_autorefresh(interval=refresh_ms, key="intra_autorefresh")
+        elif auto_refresh and not AUTOREFRESH_AVAILABLE:
+            st.warning("⚠️ 자동 새로고침을 사용하려면 `streamlit-autorefresh` 패키지가 필요합니다.")
+
         if not favorites:
             st.markdown("""
             <div style='background:#111113;border:1px solid rgba(255,255,255,0.06);
