@@ -725,8 +725,30 @@ def _fetch_intraday_pykrx(krx_code: str, interval: str, lookback_days: int = 10)
         return pd.DataFrame()
 
     combined = pd.concat(frames[::-1])  # oldest first
+
+    # 거래 없는 분(체결 공백) ffill → 15:30까지 봉 생성, 확정 안 된 봉도 포함
+    try:
+        _filled = []
+        for _d, _grp in combined.groupby(combined.index.date):
+            _d_ts = pd.Timestamp(_d)
+            _session = pd.date_range(
+                _d_ts + pd.Timedelta('9h'),
+                _d_ts + pd.Timedelta('15h29m'),
+                freq='1min'
+            )
+            _grp = _grp.reindex(_session)
+            _grp[['Open', 'High', 'Low', 'Close']] = (
+                _grp[['Open', 'High', 'Low', 'Close']].ffill()
+            )
+            _grp['Volume'] = _grp['Volume'].fillna(0)
+            _filled.append(_grp.dropna(subset=['Close']))
+        if _filled:
+            combined = pd.concat(_filled)
+    except Exception:
+        pass
+
     ohlcv = (combined
-             .resample(rule, label='right', closed='right')
+             .resample(rule, label='right', closed='left')
              .agg(Open=('Open', 'first'), High=('High', 'max'),
                   Low=('Low', 'min'), Close=('Close', 'last'),
                   Volume=('Volume', 'sum'))
@@ -749,10 +771,12 @@ def fetch_intraday(ticker, interval):
         if not df.empty:
             if ticker.endswith(('.KS', '.KQ')):
                 try:
-                    df.index = (pd.to_datetime(df.index)
-                                .tz_localize('UTC')
-                                .tz_convert('Asia/Seoul')
-                                .tz_localize(None))
+                    _idx = pd.to_datetime(df.index)
+                    if _idx.tz is None:
+                        _idx = _idx.tz_localize('UTC').tz_convert('Asia/Seoul').tz_localize(None)
+                    else:
+                        _idx = _idx.tz_convert('Asia/Seoul').tz_localize(None)
+                    df.index = _idx
                 except Exception:
                     pass
             cols = [c for c in ['Open', 'High', 'Low', 'Close', 'Volume'] if c in df.columns]
