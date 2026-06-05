@@ -2483,14 +2483,15 @@ def main():
             )
             yf_interval = _intra_interval_map[intra_interval_label]
 
+            st.divider()
             st.markdown("**🔄 자동 새로고침**")
             auto_refresh = st.toggle("분봉 자동 갱신", value=False, key="auto_refresh_toggle")
             if auto_refresh:
                 refresh_interval_label = st.radio(
-                    "갱신 주기", ["1분", "3분", "5분", "10분"], index=2,
+                    "갱신 주기", ["1분", "3분", "5분"], index=2,
                     horizontal=True, label_visibility="collapsed", key="refresh_interval",
                 )
-                _refresh_ms = {"1분": 60_000, "3분": 180_000, "5분": 300_000, "10분": 600_000}
+                _refresh_ms = {"1분": 60_000, "3분": 180_000, "5분": 300_000}
                 refresh_ms = _refresh_ms[refresh_interval_label]
             else:
                 auto_refresh = False
