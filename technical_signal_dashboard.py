@@ -789,11 +789,14 @@ def fetch_intraday(ticker, interval):
     # ── 한국 종목: 1분봉으로 최근 7일 보완 (15:30까지 gap-fill + 현재 생성중인 봉)
     if _kor:
         try:
-            _raw1m = yf.Ticker(ticker).history(interval='1m', period='7d')
+            _raw1m_dl = yf.download(ticker, period='7d', interval='1m', progress=False)
+            _raw1m = _normalize_yf_ohlcv(_raw1m_dl)
             if not _raw1m.empty:
                 _idx1 = pd.to_datetime(_raw1m.index)
                 if _idx1.tz is not None:
                     _idx1 = _idx1.tz_convert('Asia/Seoul').tz_localize(None)
+                elif _idx1.tz is None:
+                    _idx1 = _idx1.tz_localize('UTC').tz_convert('Asia/Seoul').tz_localize(None)
                 _raw1m.index = _idx1
                 _raw1m = _raw1m[[c for c in ['Open', 'High', 'Low', 'Close', 'Volume']
                                   if c in _raw1m.columns]]
@@ -827,10 +830,11 @@ def fetch_intraday(ticker, interval):
         except Exception as e:
             errors.append(f"yfinance 1m: {type(e).__name__}: {e}")
 
-    # ── 비한국 종목 또는 1m 보완 실패 → 히스토리 그대로 반환
+    # ── 비한국 종목 또는 1m 보완 실패 → 히스토리 그대로 반환 (에러 포함)
     if not df_hist.empty:
         cols = [c for c in ['Open', 'High', 'Low', 'Close', 'Volume'] if c in df_hist.columns]
-        return df_hist[cols].copy(), None
+        err_str = " | ".join(errors) if errors else None
+        return df_hist[cols].copy(), err_str
 
     return pd.DataFrame(), " | ".join(errors)
 
@@ -2924,6 +2928,8 @@ def main():
                 if intra_err:
                     st.code(intra_err, language=None)
             else:
+                if intra_err:
+                    st.caption(f"⚠️ 1m 보완 실패 (15m 데이터만 사용 중): {intra_err}")
                 _disp_bars = _intra_bars_per_day[yf_interval] * period_days
                 _session   = (15.5, 9.0) if _ticker.endswith(('.KS', '.KQ')) else None
                 fig_intra  = make_detail_chart(
