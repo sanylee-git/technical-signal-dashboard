@@ -2544,7 +2544,7 @@ def main():
         persist = st.select_slider(
             "persist",
             options=[1, 2, 3],
-            value=2,
+            value=1,
             label_visibility="collapsed",
         )
 
