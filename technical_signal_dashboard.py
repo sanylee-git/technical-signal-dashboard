@@ -759,45 +759,78 @@ def _fetch_intraday_pykrx(krx_code: str, interval: str, lookback_days: int = 10)
 @st.cache_data(ttl=60)
 def fetch_intraday(ticker, interval):
     """분봉 OHLCV (5m/15m/30m/60m). TTL=60s → 새로고침 시 최신 분봉 반영.
-    yfinance 실패 시 한국 종목은 pykrx로 자동 재시도.
+    한국 종목: 15m 60일 히스토리 + 1m 7일 리샘플로 15:30까지 보완 (생성중인 봉 포함).
     반환: (DataFrame, error_str | None)
     """
     errors = []
+    _kor = ticker.endswith(('.KS', '.KQ'))
+    _rule = {'5m': '5min', '15m': '15min', '30m': '30min', '60m': '60min'}.get(interval, '15min')
 
-    # ── 1차: yfinance
+    # ── 1차: yfinance 60일 히스토리 (신호 계산용 충분한 lookback)
+    df_hist = pd.DataFrame()
     try:
         raw = yf.download(ticker, period='60d', interval=interval, progress=False)
-        df = _normalize_yf_ohlcv(raw)
-        if not df.empty:
-            if ticker.endswith(('.KS', '.KQ')):
-                try:
-                    _idx = pd.to_datetime(df.index)
-                    if _idx.tz is None:
-                        _idx = _idx.tz_localize('UTC').tz_convert('Asia/Seoul').tz_localize(None)
-                    else:
-                        _idx = _idx.tz_convert('Asia/Seoul').tz_localize(None)
-                    df.index = _idx
-                except Exception:
-                    pass
-            cols = [c for c in ['Open', 'High', 'Low', 'Close', 'Volume'] if c in df.columns]
-            return df[cols].copy(), None
-        errors.append(f"yfinance: 빈 결과 (rows={len(raw) if not raw.empty else 0})")
+        df_hist = _normalize_yf_ohlcv(raw)
+        if not df_hist.empty and _kor:
+            try:
+                _idx = pd.to_datetime(df_hist.index)
+                if _idx.tz is None:
+                    _idx = _idx.tz_localize('UTC').tz_convert('Asia/Seoul').tz_localize(None)
+                else:
+                    _idx = _idx.tz_convert('Asia/Seoul').tz_localize(None)
+                df_hist.index = _idx
+            except Exception:
+                pass
+        elif df_hist.empty:
+            errors.append(f"yfinance: 빈 결과 (rows={len(raw) if not raw.empty else 0})")
     except Exception as e:
         errors.append(f"yfinance: {type(e).__name__}: {e}")
 
-    # ── 2차 fallback: pykrx (한국 종목 전용)
-    if ticker.endswith(('.KS', '.KQ')):
-        if not PYKRX_AVAILABLE:
-            errors.append(f"pykrx: 미설치 ({_PYKRX_IMPORT_ERR or '이유 불명'})")
-        else:
-            try:
-                krx_code = ticker.replace('.KS', '').replace('.KQ', '')
-                df_pkrx = _fetch_intraday_pykrx(krx_code, interval)
-                if not df_pkrx.empty:
-                    return df_pkrx, None
-                errors.append(f"pykrx: 빈 결과 (code={krx_code})")
-            except Exception as e:
-                errors.append(f"pykrx: {type(e).__name__}: {e}")
+    # ── 한국 종목: 1분봉으로 최근 7일 보완 (15:30까지 gap-fill + 현재 생성중인 봉)
+    if _kor:
+        try:
+            _raw1m = yf.Ticker(ticker).history(interval='1m', period='7d')
+            if not _raw1m.empty:
+                _idx1 = pd.to_datetime(_raw1m.index)
+                if _idx1.tz is not None:
+                    _idx1 = _idx1.tz_convert('Asia/Seoul').tz_localize(None)
+                _raw1m.index = _idx1
+                _raw1m = _raw1m[[c for c in ['Open', 'High', 'Low', 'Close', 'Volume']
+                                  if c in _raw1m.columns]]
+                _days = []
+                for _d, _grp in _raw1m.groupby(_raw1m.index.date):
+                    _d_ts = pd.Timestamp(_d)
+                    _rs = (_grp.resample(_rule, label='right', closed='left')
+                               .agg(Open=('Open', 'first'), High=('High', 'max'),
+                                    Low=('Low', 'min'), Close=('Close', 'last'),
+                                    Volume=('Volume', 'sum'))
+                               .dropna(subset=['Close']))
+                    if _rs.empty:
+                        continue
+                    # 15:30까지 gap-fill (거래 없는 구간 = 마지막 체결가 유지, Volume=0)
+                    _sess = pd.date_range(_d_ts + pd.Timedelta('9h'),
+                                          _d_ts + pd.Timedelta('15h30m'),
+                                          freq=_rule)
+                    _rs = _rs.reindex(_sess)
+                    _rs[['Open', 'High', 'Low', 'Close']] = _rs[['Open', 'High', 'Low', 'Close']].ffill()
+                    _rs['Volume'] = _rs['Volume'].fillna(0)
+                    _days.append(_rs.dropna(subset=['Close']))
+
+                if _days:
+                    _recent = pd.concat(_days)
+                    _cutoff = _recent.index[0]
+                    _base = df_hist[df_hist.index < _cutoff] if not df_hist.empty else pd.DataFrame()
+                    df_merged = pd.concat([_base, _recent]) if not _base.empty else _recent.copy()
+                    df_merged = df_merged[~df_merged.index.duplicated(keep='last')].sort_index()
+                    cols = [c for c in ['Open', 'High', 'Low', 'Close', 'Volume'] if c in df_merged.columns]
+                    return df_merged[cols].copy(), None
+        except Exception as e:
+            errors.append(f"yfinance 1m: {type(e).__name__}: {e}")
+
+    # ── 비한국 종목 또는 1m 보완 실패 → 히스토리 그대로 반환
+    if not df_hist.empty:
+        cols = [c for c in ['Open', 'High', 'Low', 'Close', 'Volume'] if c in df_hist.columns]
+        return df_hist[cols].copy(), None
 
     return pd.DataFrame(), " | ".join(errors)
 
