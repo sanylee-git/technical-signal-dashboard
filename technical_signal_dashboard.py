@@ -2288,21 +2288,14 @@ def _market_sentiment_html(df, market_name):
 
 
 def make_score_timeseries_chart(market_df, market_name):
-    """시장 종합점수 시계열 차트 (전폭). 국면 영역 배경 + 점수 라인."""
+    """시장 종합점수 시계열 차트 (전폭). 국면 배경 + 점수 라인 + 시총가중 지수 오버레이."""
+    from plotly.subplots import make_subplots as _msp
     score_s = compute_score_timeseries(market_df).dropna()
     if len(score_s) < 5:
         return None
 
     dates  = score_s.index.tolist()
     scores = score_s.tolist()
-
-    _phase_bands = [
-        ( 65,  100, "#00FF7F", "강한 강세장"),
-        ( 30,   65, "#4BFFB3", "강세 우위"),
-        (-30,   30, "#C8C850", "중립/혼조"),
-        (-65,  -30, "#FF8C69", "약세 우위"),
-        (-100, -65, "#FF4B6E", "강한 약세장"),
-    ]
 
     def _phase_color(s):
         if s >= 65:   return "#00FF7F"
@@ -2311,36 +2304,36 @@ def make_score_timeseries_chart(market_df, market_name):
         if s >= -65:  return "#FF8C69"
         return "#FF4B6E"
 
-    fig = go.Figure()
+    fig = _msp(specs=[[{"secondary_y": True}]])
 
     # 국면 배경 밴드
-    for y0, y1, col, _ in _phase_bands:
-        fig.add_hrect(y0=y0, y1=y1, fillcolor=col, opacity=0.05,
+    for y0, y1, c in [
+        ( 65,  100, "#00FF7F"), ( 30,  65, "#4BFFB3"),
+        (-30,   30, "#C8C850"), (-65, -30, "#FF8C69"), (-100, -65, "#FF4B6E"),
+    ]:
+        fig.add_hrect(y0=y0, y1=y1, fillcolor=c, opacity=0.05,
                       layer="below", line_width=0)
 
-    # 경계선
+    # 경계·0선
     for y in [65, 30, -30, -65]:
         fig.add_hline(y=y, line=dict(color="rgba(255,255,255,0.08)", dash="dot", width=1))
-
-    # 0선
     fig.add_hline(y=0, line=dict(color="rgba(255,255,255,0.2)", width=1))
 
-    # 양수 fill
+    # 양수/음수 fill (primary y)
     fig.add_trace(go.Scatter(
         x=dates, y=[max(0, s) for s in scores],
         mode='lines', line=dict(width=0),
         fill='tozeroy', fillcolor='rgba(75,255,179,0.10)',
         showlegend=False, hoverinfo='skip',
-    ))
-    # 음수 fill
+    ), secondary_y=False)
     fig.add_trace(go.Scatter(
         x=dates, y=[min(0, s) for s in scores],
         mode='lines', line=dict(width=0),
         fill='tozeroy', fillcolor='rgba(255,75,110,0.10)',
         showlegend=False, hoverinfo='skip',
-    ))
+    ), secondary_y=False)
 
-    # 점수 라인 (국면별 색상)
+    # 점수 라인 — 국면별 색상 (primary y)
     for i in range(len(dates) - 1):
         fig.add_trace(go.Scatter(
             x=[dates[i], dates[i+1]],
@@ -2348,30 +2341,46 @@ def make_score_timeseries_chart(market_df, market_name):
             mode='lines',
             line=dict(color=_phase_color(scores[i]), width=2),
             showlegend=False, hoverinfo='skip',
-        ))
+        ), secondary_y=False)
 
-    # hover용 투명 라인
+    # hover용 투명 마커 (primary y)
     fig.add_trace(go.Scatter(
         x=dates, y=scores,
         mode='markers', marker=dict(size=6, opacity=0),
         name="점수",
         hovertemplate="<b>%{x|%Y-%m-%d}</b>  점수: %{y:+d}<extra></extra>",
-    ))
+    ), secondary_y=False)
+
+    # 시총가중 지수 오버레이 — 기존 차트와 동일 스타일 (secondary y)
+    idx = market_df['시총가중'].dropna()
+    if not idx.empty:
+        fig.add_trace(go.Scatter(
+            x=idx.index, y=idx,
+            line=dict(color="rgba(255,255,255,0.22)", width=1.1),
+            showlegend=False, hoverinfo='skip',
+        ), secondary_y=True)
+        _i_min = float(idx.min())
+        _i_max = float(idx.max())
+        _i_pad = max((_i_max - _i_min) * 0.12, 1.0)
+        fig.update_yaxes(range=[_i_min - _i_pad, _i_max + _i_pad],
+                         showgrid=False, showticklabels=False,
+                         secondary_y=True)
 
     # 우측 국면 라벨
-    for y, col, lbl in [(82,"#00FF7F","강한강세"),(47,"#4BFFB3","강세우위"),
-                         (0,"#C8C850","중립"),(-47,"#FF8C69","약세우위"),(-82,"#FF4B6E","강한약세")]:
+    for y, c, lbl in [(82,"#00FF7F","강한강세"),(47,"#4BFFB3","강세우위"),
+                       (0,"#C8C850","중립"),(-47,"#FF8C69","약세우위"),(-82,"#FF4B6E","강한약세")]:
         fig.add_annotation(x=1.005, y=y, xref='paper', yref='y',
                            text=lbl, showarrow=False, xanchor='left',
-                           font=dict(size=8, color=col))
+                           font=dict(size=8, color=c))
 
     fig.update_layout(
-        height=200,
+        height=220,
         title=dict(
             text=f"📈 {market_name} 시장 종합판단 추이",
             font=dict(size=12, color="#9B9B9B"), x=0, y=0.97,
         ),
-        yaxis=dict(range=[-110, 110], tickformat="+d", tickvals=[-100,-65,-30,0,30,65,100],
+        yaxis=dict(range=[-110, 110], tickformat="+d",
+                   tickvals=[-100, -65, -30, 0, 30, 65, 100],
                    gridcolor="rgba(255,255,255,0.04)", zeroline=False,
                    tickfont=dict(size=9)),
         xaxis=dict(gridcolor="rgba(255,255,255,0.04)", tickfont=dict(size=9)),
