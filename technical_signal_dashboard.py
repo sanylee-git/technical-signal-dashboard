@@ -2378,7 +2378,7 @@ def make_score_timeseries_chart(market_df, market_name):
         hovertemplate="<b>%{x|%Y-%m-%d}</b>  점수: %{y:+d}<extra></extra>",
     ), secondary_y=False)
 
-    # 시총가중 지수 오버레이 — 기존 차트와 동일 스타일 (secondary y)
+    # 시총가중 지수 오버레이 — 기존 차트와 동일 스타일 (secondary y = y2)
     idx = market_df['시총가중'].dropna()
     if not idx.empty:
         fig.add_trace(go.Scatter(
@@ -2392,6 +2392,18 @@ def make_score_timeseries_chart(market_df, market_name):
         fig.update_yaxes(range=[_i_min - _i_pad, _i_max + _i_pad],
                          showgrid=False, showticklabels=False,
                          secondary_y=True)
+
+    # 누적 점수 오버레이 — ADL 방식 cumsum (y3, 보라색 점선)
+    cum_s = score_s.cumsum()
+    _cs_min = float(cum_s.min())
+    _cs_max = float(cum_s.max())
+    _cs_pad = max((_cs_max - _cs_min) * 0.12, 1.0)
+    fig.add_trace(go.Scatter(
+        x=cum_s.index.tolist(), y=cum_s.tolist(),
+        line=dict(color="rgba(120,126,231,0.55)", width=1.3, dash='dot'),
+        showlegend=False, hoverinfo='skip',
+        yaxis='y3',
+    ))
 
     # 우측 국면 라벨
     for y, c, lbl in [(82,"#00FF7F","강한강세"),(47,"#4BFFB3","강세우위"),
@@ -2410,6 +2422,11 @@ def make_score_timeseries_chart(market_df, market_name):
                    tickvals=[-100, -65, -30, 0, 30, 65, 100],
                    gridcolor="rgba(255,255,255,0.04)", zeroline=False,
                    tickfont=dict(size=9)),
+        yaxis3=dict(
+            overlaying='y', side='right',
+            showgrid=False, showticklabels=False, showline=False,
+            range=[_cs_min - _cs_pad, _cs_max + _cs_pad],
+        ),
         xaxis=dict(gridcolor="rgba(255,255,255,0.04)", tickfont=dict(size=9)),
         margin=dict(l=45, r=70, t=30, b=25),
         paper_bgcolor="rgba(0,0,0,0)",
