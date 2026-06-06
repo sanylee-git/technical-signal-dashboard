@@ -2382,8 +2382,12 @@ def _market_sentiment_html(df, market_name):
 
 
 def make_score_timeseries_chart(market_df, market_name):
-    """시장 종합점수 시계열 차트 (전폭). 국면 배경 + 점수 라인 + 시총가중 지수 오버레이."""
-    from plotly.subplots import make_subplots as _msp
+    """시장 종합점수 시계열 차트 (전폭).
+    y  = 종합점수 (-100~+100)
+    y2 = 시총가중 지수 오버레이
+    y3 = 누적점수 (ADL 방식) 오버레이
+    go.Figure() 직접 사용으로 3축 충돌 방지.
+    """
     score_s = compute_score_timeseries(market_df).dropna()
     if len(score_s) < 5:
         return None
@@ -2398,7 +2402,7 @@ def make_score_timeseries_chart(market_df, market_name):
         if s >= -65:  return "#FF8C69"
         return "#FF4B6E"
 
-    fig = _msp(specs=[[{"secondary_y": True}]])
+    fig = go.Figure()
 
     # 국면 배경 밴드
     for y0, y1, c in [
@@ -2413,63 +2417,58 @@ def make_score_timeseries_chart(market_df, market_name):
         fig.add_hline(y=y, line=dict(color="rgba(255,255,255,0.08)", dash="dot", width=1))
     fig.add_hline(y=0, line=dict(color="rgba(255,255,255,0.2)", width=1))
 
-    # 양수/음수 fill (primary y)
+    # 양수/음수 fill
     fig.add_trace(go.Scatter(
         x=dates, y=[max(0, s) for s in scores],
         mode='lines', line=dict(width=0),
         fill='tozeroy', fillcolor='rgba(75,255,179,0.10)',
         showlegend=False, hoverinfo='skip',
-    ), secondary_y=False)
+    ))
     fig.add_trace(go.Scatter(
         x=dates, y=[min(0, s) for s in scores],
         mode='lines', line=dict(width=0),
         fill='tozeroy', fillcolor='rgba(255,75,110,0.10)',
         showlegend=False, hoverinfo='skip',
-    ), secondary_y=False)
+    ))
 
-    # 점수 라인 — 국면별 색상 (primary y)
+    # 점수 라인 — 국면별 색상
     for i in range(len(dates) - 1):
         fig.add_trace(go.Scatter(
-            x=[dates[i], dates[i+1]],
-            y=[scores[i], scores[i+1]],
-            mode='lines',
-            line=dict(color=_phase_color(scores[i]), width=2),
+            x=[dates[i], dates[i+1]], y=[scores[i], scores[i+1]],
+            mode='lines', line=dict(color=_phase_color(scores[i]), width=2),
             showlegend=False, hoverinfo='skip',
-        ), secondary_y=False)
+        ))
 
-    # hover용 투명 마커 (primary y)
+    # hover용 투명 마커
     fig.add_trace(go.Scatter(
         x=dates, y=scores,
         mode='markers', marker=dict(size=6, opacity=0),
         name="점수",
         hovertemplate="<b>%{x|%Y-%m-%d}</b>  점수: %{y:+d}<extra></extra>",
-    ), secondary_y=False)
+    ))
 
-    # 시총가중 지수 오버레이 — 기존 차트와 동일 스타일 (secondary y = y2)
+    # 시총가중 지수 오버레이 (y2)
+    yaxis2_cfg = dict(overlaying='y', side='right',
+                      showgrid=False, showticklabels=False, showline=False)
     idx = market_df['시총가중'].dropna()
     if not idx.empty:
         fig.add_trace(go.Scatter(
-            x=idx.index, y=idx,
+            x=idx.index.tolist(), y=idx.tolist(),
             line=dict(color="rgba(255,255,255,0.22)", width=1.1),
-            showlegend=False, hoverinfo='skip',
-        ), secondary_y=True)
-        _i_min = float(idx.min())
-        _i_max = float(idx.max())
+            showlegend=False, hoverinfo='skip', yaxis='y2',
+        ))
+        _i_min = float(idx.min()); _i_max = float(idx.max())
         _i_pad = max((_i_max - _i_min) * 0.12, 1.0)
-        fig.update_yaxes(range=[_i_min - _i_pad, _i_max + _i_pad],
-                         showgrid=False, showticklabels=False,
-                         secondary_y=True)
+        yaxis2_cfg['range'] = [_i_min - _i_pad, _i_max + _i_pad]
 
-    # 누적 점수 오버레이 — ADL 방식 cumsum (y3, 보라색 점선)
+    # 누적 점수 오버레이 (y3, 보라색 점선)
     cum_s = score_s.cumsum()
-    _cs_min = float(cum_s.min())
-    _cs_max = float(cum_s.max())
+    _cs_min = float(cum_s.min()); _cs_max = float(cum_s.max())
     _cs_pad = max((_cs_max - _cs_min) * 0.12, 1.0)
     fig.add_trace(go.Scatter(
         x=cum_s.index.tolist(), y=cum_s.tolist(),
         line=dict(color="rgba(120,126,231,0.55)", width=1.3, dash='dot'),
-        showlegend=False, hoverinfo='skip',
-        yaxis='y3',
+        showlegend=False, hoverinfo='skip', yaxis='y3',
     ))
 
     # 우측 국면 라벨
@@ -2481,19 +2480,16 @@ def make_score_timeseries_chart(market_df, market_name):
 
     fig.update_layout(
         height=220,
-        title=dict(
-            text=f"📈 {market_name} 시장 종합판단 추이",
-            font=dict(size=12, color="#9B9B9B"), x=0, y=0.97,
-        ),
+        title=dict(text=f"📈 {market_name} 시장 종합판단 추이",
+                   font=dict(size=12, color="#9B9B9B"), x=0, y=0.97),
         yaxis=dict(range=[-110, 110], tickformat="+d",
                    tickvals=[-100, -65, -30, 0, 30, 65, 100],
                    gridcolor="rgba(255,255,255,0.04)", zeroline=False,
                    tickfont=dict(size=9)),
-        yaxis3=dict(
-            overlaying='y', side='right',
-            showgrid=False, showticklabels=False, showline=False,
-            range=[_cs_min - _cs_pad, _cs_max + _cs_pad],
-        ),
+        yaxis2=yaxis2_cfg,
+        yaxis3=dict(overlaying='y', side='right',
+                    showgrid=False, showticklabels=False, showline=False,
+                    range=[_cs_min - _cs_pad, _cs_max + _cs_pad]),
         xaxis=dict(gridcolor="rgba(255,255,255,0.04)", tickfont=dict(size=9)),
         margin=dict(l=45, r=70, t=30, b=25),
         paper_bgcolor="rgba(0,0,0,0)",
