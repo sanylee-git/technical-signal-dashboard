@@ -1888,6 +1888,36 @@ def compute_market_score(indicator_scores):
     return round(total / _SCORE_MAX * 100)
 
 
+def compute_indicator_correlations(df):
+    """각 지표와 시총가중 지수 간의 Pearson 상관계수. 선택 기간 df 기준."""
+    if '시총가중' not in df.columns or df['시총가중'].dropna().shape[0] < 10:
+        return {}
+    cap = df['시총가중']
+    col_map = {
+        '균일가중':  '균일가중',
+        'ADL':      'ADL_MA10' if 'ADL_MA10' in df.columns else 'ADL',
+        '서머레이션': '서머레이션',
+        'HV20':     'VIX',
+        '상승비율':  '상승비율',
+        '20MA상위':  '20MA상위',
+        '100MA상위': '100MA상위',
+        'NH비율':    'NH비율MA10' if 'NH비율MA10' in df.columns else 'NH비율',
+    }
+    result = {}
+    for key, col in col_map.items():
+        if col not in df.columns:
+            continue
+        try:
+            s = df[col].dropna()
+            c = cap.reindex(s.index).dropna()
+            s = s.reindex(c.index)
+            if len(s) >= 10:
+                result[key] = round(float(s.corr(c)), 2)
+        except Exception:
+            pass
+    return result
+
+
 def compute_score_timeseries(market_df):
     """각 날짜별 시장 종합점수 시리즈 반환 (벡터화). 반환: pd.Series[int]"""
 
@@ -2089,6 +2119,7 @@ def render_market_score_ui(df, market_name):
 """
 
     # ── 지표별 점수 행
+    correlations = compute_indicator_correlations(df)
     score_rows = []
     label_map = {
         "시총가중": "시총가중", "균일가중": "균일가중",
@@ -2121,10 +2152,28 @@ def render_market_score_ui(df, market_name):
         ) if s != 0 else ""
         disp_str = f"+{disp}" if disp > 0 else str(disp)
 
+        # 상관계수 컬럼 (시총가중 자신은 기준이므로 생략)
+        rv = correlations.get(name)
+        if rv is not None:
+            _abs = abs(rv)
+            if _abs >= 0.7:
+                _cc = "#4BFFB3" if rv > 0 else "#FF4B6E"
+            elif _abs >= 0.4:
+                _cc = "#88D0B3" if rv > 0 else "#FF8C69"
+            else:
+                _cc = "#555"
+            corr_html = (
+                f'<div style="width:52px;font-size:9px;color:{_cc};'
+                f'text-align:right;flex-shrink:0;font-variant-numeric:tabular-nums;">'
+                f'r={rv:+.2f}</div>'
+            )
+        else:
+            corr_html = '<div style="width:52px;flex-shrink:0;"></div>'
+
         score_rows.append(
             f'<div style="display:flex;align-items:center;gap:8px;padding:3px 0;'
             f'border-bottom:1px solid rgba(255,255,255,0.04);">'
-            f'<div style="width:110px;font-size:10px;color:#888;flex-shrink:0;">'
+            f'<div style="width:90px;font-size:10px;color:#888;flex-shrink:0;">'
             f'{label_map.get(name, name)}</div>'
             f'<div style="width:40px;font-size:11px;font-weight:700;color:{c};'
             f'text-align:right;flex-shrink:0;">{disp_str}</div>'
@@ -2136,7 +2185,8 @@ def render_market_score_ui(df, market_name):
             f'border-radius:0 2px 2px 0;overflow:hidden;">'
             f'{"" if not is_pos or s==0 else bar_html}</div>'
             f'</div>'
-            f'<div style="width:110px;font-size:9px;color:#555;text-align:right;'
+            f'{corr_html}'
+            f'<div style="width:100px;font-size:9px;color:#555;text-align:right;'
             f'flex-shrink:0;line-height:1.4;">{lbl}{level_html}</div>'
             f'</div>'
         )
@@ -2144,8 +2194,9 @@ def render_market_score_ui(df, market_name):
     detail_html = f"""
 <div style="background:#0c0c0e;border:1px solid rgba(255,255,255,0.06);
             border-radius:8px;padding:10px 14px;margin-bottom:10px;">
-  <div style="font-size:10px;color:#555;margin-bottom:6px;">
-    지표별 점수 (-100 ~ +100) &nbsp;★ = 가중치 2배 핵심 지표
+  <div style="font-size:10px;color:#555;margin-bottom:6px;display:flex;justify-content:space-between;">
+    <span>지표별 점수 (-100 ~ +100) &nbsp;★ = 가중치 2배 핵심 지표</span>
+    <span style="color:#444;">r = 지수와 상관계수 (선택 기간)</span>
   </div>
   {"".join(score_rows)}
 </div>
