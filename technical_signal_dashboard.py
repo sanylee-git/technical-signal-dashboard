@@ -1979,6 +1979,61 @@ def compute_score_timeseries(market_df):
     return (total / _SCORE_MAX * 100).round().astype(int)
 
 
+def compute_lead_lag_table(df, lags=(5, 10, 20, 40)):
+    """
+    각 지표의 지수 선행성 분석.
+    corr(indicator[t], 지수[t+lag]) — 오늘 지표가 lag일 후 지수를 얼마나 예측하는가.
+    반환: pd.DataFrame (MultiIndex rows=(기간, 선행일), columns=지표)
+    """
+    if '시총가중' not in df.columns or len(df) < 30:
+        return pd.DataFrame()
+
+    cap = df['시총가중']
+    col_map = {
+        '시총가중':  '시총가중',
+        '균일가중':  '균일가중',
+        'ADL':      'ADL_MA10' if 'ADL_MA10' in df.columns else 'ADL',
+        '서머레이션': '서머레이션',
+        'HV20':     'VIX',
+        '상승비율':  '상승비율',
+        '20MA상위':  '20MA상위',
+        '100MA상위': '100MA상위',
+        'NH비율':    'NH비율MA10' if 'NH비율MA10' in df.columns else 'NH비율',
+    }
+    periods = [
+        ('1M',  21), ('3M',  63), ('6M', 126),
+        ('1Y', 252), ('2Y', 504), ('3Y', 756), ('4Y', 1008),
+    ]
+
+    rows, index = [], []
+    for period_label, n_days in periods:
+        if len(df) < n_days + max(lags):
+            continue
+        df_p  = df.iloc[-n_days:]
+        cap_p = df_p['시총가중']
+        for lag in lags:
+            cap_future = cap_p.shift(-lag)
+            row = {}
+            for ind_key, col in col_map.items():
+                if col not in df_p.columns:
+                    row[ind_key] = float('nan')
+                    continue
+                combined = pd.concat(
+                    [df_p[col].rename('ind'), cap_future.rename('cap')], axis=1
+                ).dropna()
+                if len(combined) >= 10:
+                    row[ind_key] = round(float(combined['ind'].corr(combined['cap'])), 2)
+                else:
+                    row[ind_key] = float('nan')
+            rows.append(row)
+            index.append((period_label, f"{lag}일"))
+
+    if not rows:
+        return pd.DataFrame()
+    mi = pd.MultiIndex.from_tuples(index, names=['기간', '선행일'])
+    return pd.DataFrame(rows, index=mi)
+
+
 def classify_phase(score):
     """점수 → (국면명, 색상코드)"""
     if score >= 65:    return "강한 강세장",   "#00FF7F"
@@ -3444,6 +3499,43 @@ def main():
 > 균일가중 지수는 공식 지수가 아니라 직접 계산한 참고용 지표입니다.
 > 첫 로딩 시 전체 종목 다운로드로 1~2분 소요됩니다.
                 """, unsafe_allow_html=True)
+
+
+            # ── 지표 선행성 분석
+            with st.expander("🔬 지표 선행성 분석 (지수 예측력)", expanded=False):
+                st.caption(
+                    "corr(지표[오늘], 지수[오늘+N일]) — 값이 높을수록 해당 지표가 N일 후 지수를 예측하는 경향이 있음. "
+                    "4년치 데이터를 별도 로딩합니다."
+                )
+                with st.spinner("4년 데이터 로딩 중..."):
+                    _ll_df, _ = get_market_internals(market_choice, lookback_days=1008)
+
+                if _ll_df is not None and not _ll_df.empty:
+                    _ll_tbl = compute_lead_lag_table(_ll_df)
+                    if not _ll_tbl.empty:
+                        # 색상 함수
+                        def _style_corr(v):
+                            if pd.isna(v):
+                                return 'color:#333;background:transparent'
+                            ab = abs(v)
+                            if ab >= 0.7:
+                                alpha = round(0.15 + (ab - 0.7) / 0.3 * 0.45, 2)
+                                bg = f'rgba(75,255,179,{alpha})' if v > 0 else f'rgba(255,75,110,{alpha})'
+                                fg = '#000' if v > 0 else '#fff'
+                            elif ab >= 0.4:
+                                fg = '#4BFFB3' if v > 0 else '#FF8C69'
+                                bg = 'transparent'
+                            else:
+                                fg = '#555'
+                                bg = 'transparent'
+                            return f'color:{fg};background:{bg};font-weight:{"700" if ab>=0.7 else "400"}'
+
+                        _styled = _ll_tbl.style.map(_style_corr).format(
+                            lambda v: f"{v:+.2f}" if not pd.isna(v) else "—"
+                        )
+                        st.dataframe(_styled, use_container_width=True)
+                    else:
+                        st.info("데이터 부족으로 선행성 분석을 계산할 수 없습니다.")
 
 
 if __name__ == "__main__":
