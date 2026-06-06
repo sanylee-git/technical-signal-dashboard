@@ -1934,6 +1934,67 @@ def compute_market_score(indicator_scores):
     return round(total / _SCORE_MAX * 100)
 
 
+def compute_score_timeseries(market_df):
+    """각 날짜별 시장 종합점수 시리즈 반환 (벡터화). 반환: pd.Series[int]"""
+
+    def _vec_score(series, invert=False, already_smooth=False, deadband=0.0):
+        if series is None or series.dropna().shape[0] < 4:
+            return pd.Series(dtype=float)
+        smoothed = series if already_smooth else series.rolling(10, min_periods=3).mean()
+        diff = smoothed.diff()
+        sign = pd.Series(0.0, index=diff.index)
+        sign[diff > deadband] = 1.0
+        sign[diff < -deadband] = -1.0
+        sign[diff.isna()] = 0.0
+        if invert:
+            sign = -sign
+        s1 = sign.shift(1).fillna(0)
+        s2 = sign.shift(2).fillna(0)
+        nonzero = sign != 0
+        same2 = nonzero & (sign == s1)
+        same3 = same2 & (sign == s2)
+        sc = pd.Series(0.0, index=sign.index)
+        sc[nonzero & ~same2] = 0.5 * sign[nonzero & ~same2]
+        sc[same2 & ~same3]   = 1.0 * sign[same2 & ~same3]
+        sc[same3]             = 2.0 * sign[same3]
+        return sc
+
+    df = market_df
+    total = pd.Series(0.0, index=df.index)
+
+    if '시총가중' in df.columns:
+        total += _vec_score(df['시총가중']) * _SCORE_WEIGHTS['시총가중']
+    if '균일가중' in df.columns:
+        total += _vec_score(df['균일가중']) * _SCORE_WEIGHTS['균일가중']
+
+    adl_s  = df['ADL_MA10'] if 'ADL_MA10' in df.columns else df.get('ADL')
+    adl_sm = 'ADL_MA10' in df.columns
+    if adl_s is not None:
+        total += _vec_score(adl_s, already_smooth=adl_sm) * _SCORE_WEIGHTS['ADL']
+
+    if '서머레이션' in df.columns:
+        total += _vec_score(df['서머레이션']) * _SCORE_WEIGHTS['서머레이션']
+    if 'VIX' in df.columns:
+        total += _vec_score(df['VIX'], invert=True) * _SCORE_WEIGHTS['HV20']
+
+    adv_s  = df['상승비율'] if '상승비율' in df.columns else df.get('상승비율MA20')
+    adv_sm = '상승비율' not in df.columns
+    if adv_s is not None:
+        total += _vec_score(adv_s, already_smooth=adv_sm, deadband=0.3) * _SCORE_WEIGHTS['상승비율']
+
+    if '20MA상위' in df.columns:
+        total += _vec_score(df['20MA상위']) * _SCORE_WEIGHTS['20MA상위']
+    if '100MA상위' in df.columns:
+        total += _vec_score(df['100MA상위']) * _SCORE_WEIGHTS['100MA상위']
+
+    nh_s  = df['NH비율MA10'] if 'NH비율MA10' in df.columns else df.get('NH비율')
+    nh_sm = 'NH비율MA10' in df.columns
+    if nh_s is not None:
+        total += _vec_score(nh_s, already_smooth=nh_sm) * _SCORE_WEIGHTS['NH비율']
+
+    return (total / _SCORE_MAX * 100).round().astype(int)
+
+
 def classify_phase(score):
     """점수 → (국면명, 색상코드)"""
     if score >= 65:    return "강한 강세장",   "#00FF7F"
@@ -2224,6 +2285,104 @@ def _market_sentiment_html(df, market_name):
         f'<div style="line-height:1.8;">{pills}</div>'
         f'</div>'
     )
+
+
+def make_score_timeseries_chart(market_df, market_name):
+    """시장 종합점수 시계열 차트 (전폭). 국면 영역 배경 + 점수 라인."""
+    score_s = compute_score_timeseries(market_df).dropna()
+    if len(score_s) < 5:
+        return None
+
+    dates  = score_s.index.tolist()
+    scores = score_s.tolist()
+
+    _phase_bands = [
+        ( 65,  100, "#00FF7F", "강한 강세장"),
+        ( 30,   65, "#4BFFB3", "강세 우위"),
+        (-30,   30, "#C8C850", "중립/혼조"),
+        (-65,  -30, "#FF8C69", "약세 우위"),
+        (-100, -65, "#FF4B6E", "강한 약세장"),
+    ]
+
+    def _phase_color(s):
+        if s >= 65:   return "#00FF7F"
+        if s >= 30:   return "#4BFFB3"
+        if s >= -30:  return "#C8C850"
+        if s >= -65:  return "#FF8C69"
+        return "#FF4B6E"
+
+    fig = go.Figure()
+
+    # 국면 배경 밴드
+    for y0, y1, col, _ in _phase_bands:
+        fig.add_hrect(y0=y0, y1=y1, fillcolor=col, opacity=0.05,
+                      layer="below", line_width=0)
+
+    # 경계선
+    for y in [65, 30, -30, -65]:
+        fig.add_hline(y=y, line=dict(color="rgba(255,255,255,0.08)", dash="dot", width=1))
+
+    # 0선
+    fig.add_hline(y=0, line=dict(color="rgba(255,255,255,0.2)", width=1))
+
+    # 양수 fill
+    fig.add_trace(go.Scatter(
+        x=dates, y=[max(0, s) for s in scores],
+        mode='lines', line=dict(width=0),
+        fill='tozeroy', fillcolor='rgba(75,255,179,0.10)',
+        showlegend=False, hoverinfo='skip',
+    ))
+    # 음수 fill
+    fig.add_trace(go.Scatter(
+        x=dates, y=[min(0, s) for s in scores],
+        mode='lines', line=dict(width=0),
+        fill='tozeroy', fillcolor='rgba(255,75,110,0.10)',
+        showlegend=False, hoverinfo='skip',
+    ))
+
+    # 점수 라인 (국면별 색상)
+    for i in range(len(dates) - 1):
+        fig.add_trace(go.Scatter(
+            x=[dates[i], dates[i+1]],
+            y=[scores[i], scores[i+1]],
+            mode='lines',
+            line=dict(color=_phase_color(scores[i]), width=2),
+            showlegend=False, hoverinfo='skip',
+        ))
+
+    # hover용 투명 라인
+    fig.add_trace(go.Scatter(
+        x=dates, y=scores,
+        mode='markers', marker=dict(size=6, opacity=0),
+        name="점수",
+        hovertemplate="<b>%{x|%Y-%m-%d}</b>  점수: %{y:+d}<extra></extra>",
+    ))
+
+    # 우측 국면 라벨
+    for y, col, lbl in [(82,"#00FF7F","강한강세"),(47,"#4BFFB3","강세우위"),
+                         (0,"#C8C850","중립"),(−47,"#FF8C69","약세우위"),(−82,"#FF4B6E","강한약세")]:
+        fig.add_annotation(x=1.005, y=y, xref='paper', yref='y',
+                           text=lbl, showarrow=False, xanchor='left',
+                           font=dict(size=8, color=col))
+
+    fig.update_layout(
+        height=200,
+        title=dict(
+            text=f"📈 {market_name} 시장 종합판단 추이",
+            font=dict(size=12, color="#9B9B9B"), x=0, y=0.97,
+        ),
+        yaxis=dict(range=[-110, 110], tickformat="+d", tickvals=[-100,-65,-30,0,30,65,100],
+                   gridcolor="rgba(255,255,255,0.04)", zeroline=False,
+                   tickfont=dict(size=9)),
+        xaxis=dict(gridcolor="rgba(255,255,255,0.04)", tickfont=dict(size=9)),
+        margin=dict(l=45, r=70, t=30, b=25),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#9B9B9B", size=10),
+        hovermode="x unified",
+        showlegend=False,
+    )
+    return fig
 
 
 def make_market_chart(df, market_name):
@@ -3024,6 +3183,12 @@ def main():
         elif market_df is not None and not market_df.empty:
             latest = market_df.iloc[-1]
             prev = market_df.iloc[-2] if len(market_df) >= 2 else latest
+
+            # ── 종합판단 시계열 차트 (전폭)
+            _score_ts_fig = make_score_timeseries_chart(market_df, market_choice)
+            if _score_ts_fig is not None:
+                st.plotly_chart(_score_ts_fig, use_container_width=True,
+                                config={"displayModeBar": False})
 
             # ── 시장 강도 점수 (기존 감성 요약 대체)
             render_market_score_ui(market_df, market_choice)
