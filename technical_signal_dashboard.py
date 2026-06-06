@@ -3549,6 +3549,12 @@ def main():
                             lambda v: f"{v:+.2f}" if not pd.isna(v) else "—"
                         )
                         st.dataframe(_styled, use_container_width=True)
+                        st.download_button(
+                            "⬇ CSV 다운로드",
+                            data=_ll_tbl.to_csv(float_format="%.2f"),
+                            file_name=f"lead_lag_{market_choice}.csv",
+                            mime="text/csv",
+                        )
                     else:
                         st.info("데이터 부족으로 선행성 분석을 계산할 수 없습니다.")
 
