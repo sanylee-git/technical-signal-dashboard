@@ -2005,6 +2005,10 @@ def compute_lead_lag_table(df, lags=(5, 10, 20, 40)):
         ('1Y', 252), ('2Y', 504), ('3Y', 756), ('4Y', 1008),
     ]
 
+    # 종합판단 점수 시계열 (전체 df 기준으로 한 번만 계산)
+    score_full = compute_score_timeseries(df).dropna()
+    cum_full   = score_full.cumsum()
+
     rows, index = [], []
     for period_label, n_days in periods:
         if len(df) < n_days + max(lags):
@@ -2014,6 +2018,8 @@ def compute_lead_lag_table(df, lags=(5, 10, 20, 40)):
         for lag in lags:
             cap_future = cap_p.shift(-lag)
             row = {}
+
+            # 개별 지표
             for ind_key, col in col_map.items():
                 if col not in df_p.columns:
                     row[ind_key] = float('nan')
@@ -2021,10 +2027,25 @@ def compute_lead_lag_table(df, lags=(5, 10, 20, 40)):
                 combined = pd.concat(
                     [df_p[col].rename('ind'), cap_future.rename('cap')], axis=1
                 ).dropna()
-                if len(combined) >= 10:
-                    row[ind_key] = round(float(combined['ind'].corr(combined['cap'])), 2)
-                else:
-                    row[ind_key] = float('nan')
+                row[ind_key] = round(float(combined['ind'].corr(combined['cap'])), 2) \
+                    if len(combined) >= 10 else float('nan')
+
+            # 종합판단 점수
+            score_p = score_full.reindex(df_p.index)
+            combined = pd.concat(
+                [score_p.rename('ind'), cap_future.rename('cap')], axis=1
+            ).dropna()
+            row['종합판단'] = round(float(combined['ind'].corr(combined['cap'])), 2) \
+                if len(combined) >= 10 else float('nan')
+
+            # 누적점수
+            cum_p = cum_full.reindex(df_p.index)
+            combined = pd.concat(
+                [cum_p.rename('ind'), cap_future.rename('cap')], axis=1
+            ).dropna()
+            row['누적점수'] = round(float(combined['ind'].corr(combined['cap'])), 2) \
+                if len(combined) >= 10 else float('nan')
+
             rows.append(row)
             index.append((period_label, f"{lag}일"))
 
