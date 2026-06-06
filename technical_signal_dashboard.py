@@ -2360,7 +2360,7 @@ def make_score_timeseries_chart(market_df, market_name):
 
     # 우측 국면 라벨
     for y, col, lbl in [(82,"#00FF7F","강한강세"),(47,"#4BFFB3","강세우위"),
-                         (0,"#C8C850","중립"),(−47,"#FF8C69","약세우위"),(−82,"#FF4B6E","강한약세")]:
+                         (0,"#C8C850","중립"),(-47,"#FF8C69","약세우위"),(-82,"#FF4B6E","강한약세")]:
         fig.add_annotation(x=1.005, y=y, xref='paper', yref='y',
                            text=lbl, showarrow=False, xanchor='left',
                            font=dict(size=8, color=col))
