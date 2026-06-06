@@ -2081,7 +2081,7 @@ def render_market_score_ui(df, market_name):
 
     interp = _build_interpretation(indicator_scores, score, market_name)
 
-    # 종합점수 ↔ 지수 상관계수
+    # 종합점수 / 누적점수 ↔ 지수 상관계수
     _score_corr_html = ""
     try:
         _score_ts = compute_score_timeseries(df).dropna()
@@ -2089,17 +2089,29 @@ def render_market_score_ui(df, market_name):
         _aligned  = _score_ts.reindex(_cap_ts.index).dropna()
         _cap_al   = _cap_ts.reindex(_aligned.index).dropna()
         _aligned  = _aligned.reindex(_cap_al.index)
-        if len(_aligned) >= 10:
-            _rv = round(float(_aligned.corr(_cap_al)), 2)
-            _abs = abs(_rv)
-            _cc = ("#4BFFB3" if _rv > 0 else "#FF4B6E") if _abs >= 0.7 else \
-                  ("#88D0B3" if _rv > 0 else "#FF8C69") if _abs >= 0.4 else "#555"
-            _score_corr_html = (
-                f'<span style="font-size:10px;color:#555;margin-left:12px;">'
-                f'종합점수↔지수 </span>'
-                f'<span style="font-size:10px;color:{_cc};font-weight:600;">'
-                f'r={_rv:+.2f}</span>'
+
+        def _corr_span(label, series, cap, prefix=""):
+            if len(series) < 10:
+                return ""
+            rv = round(float(series.corr(cap)), 2)
+            ab = abs(rv)
+            cc = ("#4BFFB3" if rv > 0 else "#FF4B6E") if ab >= 0.7 else \
+                 ("#88D0B3" if rv > 0 else "#FF8C69") if ab >= 0.4 else "#555"
+            return (
+                f'<span style="font-size:10px;color:#555;margin-left:10px;">{label} </span>'
+                f'<span style="font-size:10px;color:{cc};font-weight:600;">{prefix}r={rv:+.2f}</span>'
             )
+
+        if len(_aligned) >= 10:
+            _score_corr_html += _corr_span("점수↔지수", _aligned, _cap_al)
+
+        # 누적점수 ↔ 지수
+        _cum_ts  = _score_ts.cumsum().reindex(_cap_al.index).dropna()
+        _cap_cum = _cap_al.reindex(_cum_ts.index).dropna()
+        _cum_ts  = _cum_ts.reindex(_cap_cum.index)
+        if len(_cum_ts) >= 10:
+            _score_corr_html += _corr_span("누적↔지수", _cum_ts, _cap_cum)
+
     except Exception:
         pass
 
