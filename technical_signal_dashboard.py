@@ -2081,6 +2081,28 @@ def render_market_score_ui(df, market_name):
 
     interp = _build_interpretation(indicator_scores, score, market_name)
 
+    # 종합점수 ↔ 지수 상관계수
+    _score_corr_html = ""
+    try:
+        _score_ts = compute_score_timeseries(df).dropna()
+        _cap_ts   = df['시총가중'].dropna()
+        _aligned  = _score_ts.reindex(_cap_ts.index).dropna()
+        _cap_al   = _cap_ts.reindex(_aligned.index).dropna()
+        _aligned  = _aligned.reindex(_cap_al.index)
+        if len(_aligned) >= 10:
+            _rv = round(float(_aligned.corr(_cap_al)), 2)
+            _abs = abs(_rv)
+            _cc = ("#4BFFB3" if _rv > 0 else "#FF4B6E") if _abs >= 0.7 else \
+                  ("#88D0B3" if _rv > 0 else "#FF8C69") if _abs >= 0.4 else "#555"
+            _score_corr_html = (
+                f'<span style="font-size:10px;color:#555;margin-left:12px;">'
+                f'종합점수↔지수 </span>'
+                f'<span style="font-size:10px;color:{_cc};font-weight:600;">'
+                f'r={_rv:+.2f}</span>'
+            )
+    except Exception:
+        pass
+
     # ── 헤더 카드
     header_html = f"""
 <div style="background:#0f1117;border:1px solid {color}40;border-radius:10px;
@@ -2093,7 +2115,7 @@ def render_market_score_ui(df, market_name):
     <div>
       <div style="font-size:14px;font-weight:700;color:{color};">{phase}</div>
       <div style="font-size:11px;color:{s_color};margin-top:1px;">
-        {s_icon} {status} 국면
+        {s_icon} {status} 국면&nbsp;{_score_corr_html}
       </div>
     </div>
     <div style="flex:1;min-width:160px;">
