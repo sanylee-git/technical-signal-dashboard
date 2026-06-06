@@ -3533,19 +3533,17 @@ def main():
                         # 색상 함수
                         def _style_corr(v):
                             if pd.isna(v):
-                                return 'color:#333;background:transparent'
+                                return 'color:#444'
                             ab = abs(v)
-                            if ab >= 0.7:
-                                alpha = round(0.15 + (ab - 0.7) / 0.3 * 0.45, 2)
-                                bg = f'rgba(75,255,179,{alpha})' if v > 0 else f'rgba(255,75,110,{alpha})'
-                                fg = '#000' if v > 0 else '#fff'
+                            if ab >= 0.8:
+                                c = '#00FF7F' if v > 0 else '#FF4B6E'
+                            elif ab >= 0.6:
+                                c = '#4BFFB3' if v > 0 else '#FF6B6B'
                             elif ab >= 0.4:
-                                fg = '#4BFFB3' if v > 0 else '#FF8C69'
-                                bg = 'transparent'
+                                c = '#88D0B3' if v > 0 else '#FF9A6C'
                             else:
-                                fg = '#555'
-                                bg = 'transparent'
-                            return f'color:{fg};background:{bg};font-weight:{"700" if ab>=0.7 else "400"}'
+                                c = '#555'
+                            return f'color:{c};font-weight:{"700" if ab>=0.7 else "400"}'
 
                         _styled = _ll_tbl.style.map(_style_corr).format(
                             lambda v: f"{v:+.2f}" if not pd.isna(v) else "—"
