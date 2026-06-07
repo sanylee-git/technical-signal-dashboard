@@ -3744,18 +3744,19 @@ def main():
             us_signal_rows.append(_row)
         us_signal_rows.sort(key=sort_key)
 
-        # 신호 요약 카운트 (5가지 상태 × 2전략)
+        # 신호 요약 카운트 — 한국
         n_dyn_buy_flag  = sum(1 for r in signal_rows if r.get('dyn_buy_flag')  and not r.get('dyn_buy_signal'))
         n_dyn_buy       = sum(1 for r in signal_rows if r.get('dyn_buy_signal'))
         n_dyn_hold      = sum(1 for r in signal_rows if r.get('dyn_holding'))
         n_dyn_sell_flag = sum(1 for r in signal_rows if r.get('dyn_sell_flag') and not r.get('dyn_sell_signal'))
         n_dyn_sell      = sum(1 for r in signal_rows if r.get('dyn_sell_signal'))
 
-        n_band_buy_flag  = sum(1 for r in signal_rows if r.get('band_buy_flag')  and not r.get('band_buy_signal'))
-        n_band_buy       = sum(1 for r in signal_rows if r.get('band_buy_signal'))
-        n_band_hold      = sum(1 for r in signal_rows if r.get('band_holding'))
-        n_band_sell_flag = sum(1 for r in signal_rows if r.get('band_sell_flag') and not r.get('band_sell_signal'))
-        n_band_sell      = sum(1 for r in signal_rows if r.get('band_sell_signal'))
+        # 신호 요약 카운트 — 미국
+        n_us_buy_flag   = sum(1 for r in us_signal_rows if r.get('dyn_buy_flag')  and not r.get('dyn_buy_signal'))
+        n_us_buy        = sum(1 for r in us_signal_rows if r.get('dyn_buy_signal'))
+        n_us_hold       = sum(1 for r in us_signal_rows if r.get('dyn_holding'))
+        n_us_sell_flag  = sum(1 for r in us_signal_rows if r.get('dyn_sell_flag') and not r.get('dyn_sell_signal'))
+        n_us_sell       = sum(1 for r in us_signal_rows if r.get('dyn_sell_signal'))
 
         def _mini_card(label, value, accent="#787EE7"):
             return (f'<div style="flex:1;min-width:0;background:#141416;'
@@ -3768,18 +3769,35 @@ def main():
                     f'margin-top:1px;font-variant-numeric:tabular-nums;">{value}</div>'
                     f'</div>')
 
-        def _mini_row(prefix, items):
-            cards = "".join(_mini_card(f"{prefix} {lbl}", val, acc) for lbl, val, acc in items)
-            return (f'<div style="display:flex;gap:5px;margin-bottom:5px;">'
-                    f'{cards}</div>')
+        def _mini_label(flag):
+            return (f'<div style="display:flex;align-items:center;justify-content:center;'
+                    f'min-width:32px;background:#141416;'
+                    f'border:1px solid rgba(255,255,255,0.06);border-radius:6px;'
+                    f'font-size:13px;flex-shrink:0;">{flag}</div>')
 
-        st.markdown(_mini_row("★", [
-            ("매수 플래그", f"{n_dyn_buy_flag}",  "#7AAFD4"),
-            ("매수 신호",   f"{n_dyn_buy}",        "#4BFFB3"),
-            ("보유 중",     f"{n_dyn_hold}",       "#C8C850"),
-            ("매도 플래그", f"{n_dyn_sell_flag}",  "#D47A9F"),
-            ("매도 신호",   f"{n_dyn_sell}",       "#FF4B6E"),
-        ]), unsafe_allow_html=True)
+        def _mini_row(prefix, items, flag=''):
+            label = _mini_label(flag) if flag else ''
+            cards = "".join(_mini_card(f"{prefix} {lbl}", val, acc) for lbl, val, acc in items)
+            return (f'<div style="display:flex;gap:5px;margin-bottom:5px;align-items:stretch;">'
+                    f'{label}{cards}</div>')
+
+        st.markdown(
+            _mini_row("★", [
+                ("매수 플래그", f"{n_dyn_buy_flag}",  "#7AAFD4"),
+                ("매수 신호",   f"{n_dyn_buy}",        "#4BFFB3"),
+                ("보유 중",     f"{n_dyn_hold}",       "#C8C850"),
+                ("매도 플래그", f"{n_dyn_sell_flag}",  "#D47A9F"),
+                ("매도 신호",   f"{n_dyn_sell}",       "#FF4B6E"),
+            ], flag='🇰🇷') +
+            _mini_row("★", [
+                ("매수 플래그", f"{n_us_buy_flag}",   "#7AAFD4"),
+                ("매수 신호",   f"{n_us_buy}",         "#4BFFB3"),
+                ("보유 중",     f"{n_us_hold}",        "#C8C850"),
+                ("매도 플래그", f"{n_us_sell_flag}",   "#D47A9F"),
+                ("매도 신호",   f"{n_us_sell}",        "#FF4B6E"),
+            ], flag='🇺🇸'),
+            unsafe_allow_html=True,
+        )
 
         # ── 활성 시장 추적 (session_state)
         if 'scan_active' not in st.session_state:
@@ -3787,13 +3805,6 @@ def main():
 
         def _set_kr(): st.session_state.scan_active = 'kr'
         def _set_us(): st.session_state.scan_active = 'us'
-        def _on_mkt_toggle():
-            st.session_state.scan_active = 'kr' if st.session_state._mkt_toggle == '🇰🇷 한국' else 'us'
-
-        st.radio("", ["🇰🇷 한국", "🇺🇸 미국"],
-                 index=0 if st.session_state.scan_active == 'kr' else 1,
-                 horizontal=True, key='_mkt_toggle', on_change=_on_mkt_toggle,
-                 label_visibility='collapsed')
 
         # ① 전체 종목 현황 — 한국 / 미국 분리 (접힘)
         with st.expander(f"📋 🇰🇷 한국 즐겨찾기 현황 ({len(signal_rows)}개)", expanded=False):
