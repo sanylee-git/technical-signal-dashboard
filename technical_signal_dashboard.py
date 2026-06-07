@@ -369,7 +369,7 @@ DARK_CSS = """
     div[data-testid="element-container"]:has(> div[data-testid="stExpander"]) {
         margin-top: 0px !important; margin-bottom: 0px !important; padding: 0px !important; }
     div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stExpander"]) {
-        gap: 6px !important; }
+        gap: 2px !important; }
     div[data-testid="stExpander"] details summary { padding: 3px 8px !important; min-height: 28px !important; }
     div[data-testid="stExpander"] details summary p,
     div[data-testid="stExpander"] details summary span {
