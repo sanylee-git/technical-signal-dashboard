@@ -366,7 +366,7 @@ DARK_CSS = """
     div[data-testid="stExpander"] {
         border: 1px solid rgba(255,255,255,0.06); background: transparent;
         border-radius: 8px; margin-bottom: 0px !important; margin-top: 0px !important; }
-    [data-baseweb="tab-panel"]:first-of-type div[data-testid="stVerticalBlock"] { gap: 4px !important; }
+    [data-baseweb="tab-panel"]:first-of-type div[data-testid="stVerticalBlock"] { gap: 2px !important; }
     div[data-testid="stExpander"] details summary { padding: 3px 8px !important; min-height: 28px !important; }
     div[data-testid="stExpander"] details summary p,
     div[data-testid="stExpander"] details summary span {
