@@ -2628,15 +2628,18 @@ def make_market_chart(df, market_name):
             return al['a'].corr(al['b'])
 
         r1, r2, r3 = _r(s, idx_s), _r(cum_s, idx_s), _r(diff_cum, idx_s)
-        n = (row - 1) * 2 + col
 
         def _rfmt(r):
             return f'{r:+.2f}' if not pd.isna(r) else '─'
 
         ann = f"지표 {_rfmt(r1)}  누적 {_rfmt(r2)}  기울기↑누적 {_rfmt(r3)}"
+        # row_heights=[0.22,0.22,0.28,0.28], v_spacing=0.09, h_spacing=0.08
+        # paper 좌표: 각 서브플롯 좌상단 근처
+        _ytop  = {1: 0.99, 2: 0.74, 3: 0.49, 4: 0.20}
+        _xleft = {1: 0.02, 2: 0.54}
         fig.add_annotation(
-            x=0.01, y=0.97,
-            xref=f'x{n} domain', yref=f'y{n} domain',
+            x=_xleft[col], y=_ytop[row],
+            xref='paper', yref='paper',
             xanchor='left', yanchor='top',
             text=ann, showarrow=False,
             font=dict(size=7.5, color='#666'),
