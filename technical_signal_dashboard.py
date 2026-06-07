@@ -3655,12 +3655,54 @@ def main():
         with st.expander(f"📋 전체 종목 현황 ({len(signal_rows)}개)", expanded=False):
             st.markdown(render_signal_table(signal_rows), unsafe_allow_html=True)
 
-        # US 워치리스트 (여기서 종목 추가/수정)
+        # US 워치리스트 — 여기에 {"code": "...", "name": "..."} 한 줄 추가로 종목 관리
         _US_WATCHLIST = [
-            {"code": "^DJI",  "name": "다우존스 (^DJI)"},
-            {"code": "^GSPC", "name": "S&P 500 (^GSPC)"},
-            {"code": "^IXIC", "name": "나스닥 (^IXIC)"},
-            {"code": "SOXX",  "name": "SOXX 반도체 ETF"},
+            # ── 지수
+            {"code": "^DJI",   "name": "다우존스 (^DJI)"},
+            {"code": "^GSPC",  "name": "S&P 500 (^GSPC)"},
+            {"code": "^IXIC",  "name": "나스닥 (^IXIC)"},
+            # ── ETF — 섹터/테마
+            {"code": "SOXX",   "name": "SOXX 반도체 ETF"},
+            {"code": "QTUM",   "name": "QTUM 퀀텀컴퓨팅/AI ETF"},
+            {"code": "BLOK",   "name": "BLOK 블록체인 ETF"},
+            {"code": "GRID",   "name": "GRID 스마트그리드 ETF"},
+            {"code": "XLU",    "name": "XLU 유틸리티 ETF"},
+            {"code": "NLR",    "name": "NLR 원자력 ETF"},
+            {"code": "TAN",    "name": "TAN 태양광 ETF"},
+            {"code": "UFO",    "name": "UFO 우주항공 ETF"},
+            {"code": "SHLD",   "name": "SHLD 방산테크 ETF"},
+            {"code": "ARKQ",   "name": "ARKQ ARK 자율주행/로봇 ETF"},
+            {"code": "AIPO",   "name": "AIPO AI·IPO ETF"},
+            # ── ETF — 레버리지
+            {"code": "TQQQ",   "name": "TQQQ 나스닥 3X"},
+            {"code": "TECL",   "name": "TECL 테크 3X"},
+            {"code": "SOXL",   "name": "SOXL 반도체 3X"},
+            {"code": "USD",    "name": "USD 반도체 2X (ProShares)"},
+            {"code": "UGL",    "name": "UGL 금 2X"},
+            {"code": "NVDL",   "name": "NVDL 엔비디아 2X"},
+            {"code": "TSLL",   "name": "TSLL 테슬라 2X"},
+            {"code": "GGLL",   "name": "GGLL 구글 2X"},
+            {"code": "MSFU",   "name": "MSFU 마이크로소프트 2X"},
+            {"code": "AMZU",   "name": "AMZU 아마존 2X"},
+            {"code": "PTIR",   "name": "PTIR 테크인프라 ETF"},
+            # ── 개별주
+            {"code": "NVDA",   "name": "엔비디아 (NVDA)"},
+            {"code": "TSLA",   "name": "테슬라 (TSLA)"},
+            {"code": "MSFT",   "name": "마이크로소프트 (MSFT)"},
+            {"code": "GOOGL",  "name": "구글 알파벳 (GOOGL)"},
+            {"code": "AMZN",   "name": "아마존 (AMZN)"},
+            {"code": "PLTR",   "name": "팔란티어 (PLTR)"},
+            # ── 퀀텀컴퓨팅 개별주
+            {"code": "IONQ",   "name": "아이온큐 (IONQ)"},
+            {"code": "RGTI",   "name": "리게티컴퓨팅 (RGTI)"},
+            {"code": "QBTS",   "name": "D-Wave 퀀텀 (QBTS)"},
+            # ── 원자재 (선물 근월물)
+            {"code": "GC=F",   "name": "금 현물 (Gold Futures)"},
+            {"code": "SI=F",   "name": "은 현물 (Silver Futures)"},
+            {"code": "HG=F",   "name": "구리 현물 (Copper Futures)"},
+            # ── 암호화폐
+            {"code": "BTC-USD", "name": "비트코인 (BTC-USD)"},
+            {"code": "ETH-USD", "name": "이더리움 (ETH-USD)"},
         ]
 
         # 활성 시장 추적 (session_state)
