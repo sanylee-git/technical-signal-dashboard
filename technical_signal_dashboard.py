@@ -1356,11 +1356,11 @@ def render_signal_table(signal_rows):
 
         rows_html.append(f"""
         <tr style="background:{row_bg};border-bottom:1px solid rgba(255,255,255,0.04);">
-            <td style="padding:10px 14px;font-size:13px;color:#EDEDED;font-weight:500;white-space:nowrap;">{star}{row['name']}</td>
-            <td style="padding:10px 14px;font-size:13px;color:#EDEDED;text-align:right;font-variant-numeric:tabular-nums;">{close_str}</td>
-            <td style="padding:10px 14px;font-size:13px;color:{pct_color};text-align:right;font-variant-numeric:tabular-nums;">{pct_str}</td>
-            <td style="padding:10px 14px;font-size:13px;color:{rsi_color};text-align:right;font-variant-numeric:tabular-nums;">{rsi_str}</td>
-            <td style="padding:10px 14px;">{badges}</td>
+            <td style="padding:5px 14px;font-size:13px;color:#EDEDED;font-weight:500;white-space:nowrap;">{star}{row['name']}</td>
+            <td style="padding:5px 14px;font-size:13px;color:#EDEDED;text-align:right;font-variant-numeric:tabular-nums;">{close_str}</td>
+            <td style="padding:5px 14px;font-size:13px;color:{pct_color};text-align:right;font-variant-numeric:tabular-nums;">{pct_str}</td>
+            <td style="padding:5px 14px;font-size:13px;color:{rsi_color};text-align:right;font-variant-numeric:tabular-nums;">{rsi_str}</td>
+            <td style="padding:5px 14px;">{badges}</td>
         </tr>""")
 
     return f"""
