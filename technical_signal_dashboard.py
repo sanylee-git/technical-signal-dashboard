@@ -1294,17 +1294,14 @@ def signal_badges_html(dyn_buy, dyn_sell, band_buy, band_sell,
                        band_buy_flag=False, band_sell_flag=False,
                        dyn_holding=False, band_holding=False):
     parts = []
-    # 확정 신호 (★ 동적+BB 만 표시)
     if dyn_buy:
         parts.append(_badge("★ 동적+BB 매수", "#4BFFB3", "#0a2b1e", "rgba(75,255,179,0.3)"))
-    if dyn_sell:
-        parts.append(_badge("★ 동적+BB 매도", "#FF4B6E", "#2d0d1a", "rgba(255,75,110,0.25)"))
-    # 보유 중
-    if dyn_holding:
-        parts.append(_badge("★ 보유 중", "#C8C850", "#1c1c08", "rgba(200,200,80,0.3)"))
-    # Phase 1 플래그
     if dyn_buy_flag and not dyn_buy:
         parts.append(_badge("★ 매수 플래그", "#7AAFD4", "#0a1520", "rgba(120,175,212,0.2)"))
+    if dyn_holding:
+        parts.append(_badge("★ 보유 중", "#C8C850", "#1c1c08", "rgba(200,200,80,0.3)"))
+    if dyn_sell:
+        parts.append(_badge("★ 동적+BB 매도", "#FF4B6E", "#2d0d1a", "rgba(255,75,110,0.25)"))
     if dyn_sell_flag and not dyn_sell:
         parts.append(_badge("★ 매도 플래그", "#D47A9F", "#200a14", "rgba(212,120,160,0.2)"))
     if not parts:
