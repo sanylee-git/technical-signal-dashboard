@@ -3702,14 +3702,13 @@ def main():
 
         # 확정 신호 > 보유 중 > 플래그 > 없음 순 정렬
         def sort_key(r):
+            # 화면 badge와 동일한 기준 (dyn만) — band_* 는 display에 없으므로 정렬에서도 제외
             # 매수신호 > 매수플래그 > 보유중 > 매도신호 > 매도플래그 > 없음
-            buy_sig   = r.get('dyn_buy_signal')  or r.get('band_buy_signal')
-            buy_flag  = (r.get('dyn_buy_flag')  and not r.get('dyn_buy_signal'))  or \
-                        (r.get('band_buy_flag') and not r.get('band_buy_signal'))
-            holding   = r.get('dyn_holding')     or r.get('band_holding')
-            sell_sig  = r.get('dyn_sell_signal') or r.get('band_sell_signal')
-            sell_flag = (r.get('dyn_sell_flag')  and not r.get('dyn_sell_signal')) or \
-                        (r.get('band_sell_flag') and not r.get('band_sell_signal'))
+            buy_sig   = r.get('dyn_buy_signal')
+            buy_flag  = r.get('dyn_buy_flag') and not r.get('dyn_buy_signal')
+            holding   = r.get('dyn_holding')
+            sell_sig  = r.get('dyn_sell_signal')
+            sell_flag = r.get('dyn_sell_flag') and not r.get('dyn_sell_signal')
             if buy_sig:   return 0
             if buy_flag:  return 1
             if holding:   return 2
