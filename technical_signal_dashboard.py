@@ -2990,92 +2990,196 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None):
 
 
 def make_macro_options_chart(years: int = 5, spx_s=None):
-    """③ 옵션·변동성 과열: VIX + VIX 누적 + SKEW (2-row subplot)"""
+    """③ VIX 텀스트럭처: VIX 레벨 + VIX-VIX3M 스프레드(역전=공포 극대) + SKEW"""
     vix   = _yf_close('^VIX',   years)
     vix3m = _yf_close('^VIX3M', years)
     skew  = _yf_close('^SKEW',  years)
     if vix.empty:
         return None
-    fig = make_subplots(rows=2, cols=1, row_heights=[0.62, 0.38],
-                        shared_xaxes=True, vertical_spacing=0.04)
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        row_heights=[0.60, 0.40],
+        shared_xaxes=True,
+        vertical_spacing=0.06,
+        subplot_titles=['VIX 레벨  /  VIX-VIX3M 스프레드 (우, 역전=붉은 영역)', 'SKEW 지수'],
+    )
+
+    # ── Row 1: VIX 레벨
     fig.add_hline(y=20, line=dict(color='rgba(255,255,255,0.12)', dash='dot', width=1), row=1, col=1)
-    fig.add_hline(y=30, line=dict(color='rgba(255,75,110,0.3)',  dash='dot', width=1), row=1, col=1)
-    fig.add_trace(go.Scatter(x=vix.index, y=vix, name='VIX',
-                             line=dict(color='#FF4B6E', width=1.5)), row=1, col=1)
+    fig.add_hline(y=30, line=dict(color='rgba(255,75,110,0.30)', dash='dot', width=1), row=1, col=1)
+    fig.add_trace(go.Scatter(
+        x=vix.index, y=vix, name='VIX 레벨',
+        line=dict(color='#FF4B6E', width=1.7),
+        hovertemplate='<b>%{x|%Y-%m-%d}</b>  VIX %{y:.1f}<extra></extra>',
+    ), row=1, col=1)
+
+    # ── Row 1 우축: VIX - VIX3M 스프레드 (핵심 시그널)
+    #   양수(VIX > VIX3M) = 단기 공포 > 장기 → 역전 = 공포 극대 (빨간 영역)
+    #   역전 해소(0 하향 돌파) = 매수 타이밍
     if not vix3m.empty:
-        ratio = (vix / vix3m.reindex(vix.index)).dropna()
-        fig.add_trace(go.Scatter(x=ratio.index, y=ratio, name='VIX/VIX3M (우)',
-                                 line=dict(color='#C8C850', width=1.2),
-                                 yaxis='y3'), row=1, col=1)
+        spread = (vix - vix3m.reindex(vix.index)).dropna()
+        if len(spread) > 2:
+            # 역전 구간 (양수, 빨간)
+            fig.add_trace(go.Scatter(
+                x=spread.index, y=spread.clip(lower=0),
+                fill='tozeroy', fillcolor='rgba(255,75,110,0.18)',
+                line=dict(width=0), showlegend=False, hoverinfo='skip',
+                yaxis='y3',
+            ))
+            # 정상 컨탱고 구간 (음수, 초록)
+            fig.add_trace(go.Scatter(
+                x=spread.index, y=spread.clip(upper=0),
+                fill='tozeroy', fillcolor='rgba(75,255,179,0.08)',
+                line=dict(width=0), showlegend=False, hoverinfo='skip',
+                yaxis='y3',
+            ))
+            fig.add_trace(go.Scatter(
+                x=spread.index, y=spread,
+                name='VIX-VIX3M 스프레드 (우)',
+                line=dict(color='#FF8C69', width=1.4),
+                hovertemplate='<b>%{x|%Y-%m-%d}</b>  스프레드 %{y:.2f}<extra></extra>',
+                yaxis='y3',
+            ))
+
+    # ── Row 2: SKEW
     if not skew.empty:
-        fig.add_hline(y=130, line=dict(color='rgba(120,126,231,0.3)', dash='dot', width=1), row=2, col=1)
-        fig.add_trace(go.Scatter(x=skew.index, y=skew, name='SKEW',
-                                 line=dict(color='#787EE7', width=1.2)), row=2, col=1)
-    # VIX 누적변화 (row1 우축)
-    if len(vix) > 2:
-        cum_vix = (vix - vix.iloc[0]).dropna()
-        fig.add_trace(go.Scatter(x=cum_vix.index, y=cum_vix, name='VIX 누적변화',
-                                 line=dict(color='rgba(255,140,100,0.6)', width=1.1, dash='dot'),
-                                 yaxis='y4'), row=1, col=1)
-    # SPX 오버레이 (row1)
+        fig.add_hline(y=130, line=dict(color='rgba(120,126,231,0.30)', dash='dot', width=1), row=2, col=1)
+        fig.add_trace(go.Scatter(
+            x=skew.index, y=skew, name='SKEW',
+            line=dict(color='#787EE7', width=1.3),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b>  SKEW %{y:.1f}<extra></extra>',
+        ), row=2, col=1)
+
+    # ── SPX 오버레이 (row1 숨김 우축)
     if spx_s is not None and not spx_s.empty and len(vix) > 2:
         t0 = vix.index[0]
         spx_t = spx_s[spx_s.index >= t0]
         if len(spx_t) > 2:
             spx_pct = ((spx_t / spx_t.iloc[0]) - 1) * 100
-            fig.add_trace(go.Scatter(x=spx_pct.index, y=spx_pct, name='S&P500(%)',
-                                     line=dict(color='rgba(200,200,80,0.45)', width=1.0, dash='dash'),
-                                     yaxis='y5'), row=1, col=1)
+            fig.add_trace(go.Scatter(
+                x=spx_pct.index, y=spx_pct, name='S&P500(%)',
+                line=dict(color='rgba(200,200,80,0.40)', width=1.0, dash='dash'),
+                showlegend=True, hoverinfo='skip', yaxis='y4',
+            ))
+
     fig.update_layout(
-        height=360,
-        title=dict(text='③ 옵션·변동성 과열 (VIX · SKEW)',
-                   font=dict(size=12, color='#9B9B9B'), x=0, y=0.98),
+        height=400,
+        title=dict(
+            text='③ VIX 텀스트럭처 · SKEW  (VIX>VIX3M 역전=공포 극대, 해소=매수 시점)',
+            font=dict(size=12, color='#9B9B9B'), x=0, y=0.98,
+        ),
         paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
         font=dict(color='#9B9B9B', size=10),
         legend=dict(orientation='h', yanchor='bottom', y=1.01, xanchor='right', x=1,
                     font=dict(size=9), bgcolor='rgba(0,0,0,0)'),
-        margin=dict(l=50, r=20, t=38, b=30), hovermode='x unified',
-        yaxis3=dict(overlaying='y',  anchor='x', side='right',
-                    showgrid=False, showticklabels=False, showline=False, zeroline=False),
-        yaxis4=dict(overlaying='y',  anchor='x', side='right',
-                    showgrid=False, showticklabels=False, showline=False, zeroline=False),
-        yaxis5=dict(overlaying='y',  anchor='x', side='right',
+        margin=dict(l=50, r=55, t=45, b=30),
+        hovermode='x unified',
+        # y3: 스프레드 우측 축 (눈금 표시)
+        yaxis3=dict(
+            overlaying='y', anchor='x', side='right',
+            showgrid=False, showticklabels=True, showline=True,
+            linecolor='rgba(255,140,100,0.3)', tickfont=dict(size=8, color='#FF8C69'),
+            zeroline=True, zerolinecolor='rgba(255,75,110,0.6)', zerolinewidth=1.5,
+        ),
+        # y4: SPX 숨김
+        yaxis4=dict(overlaying='y', anchor='x', side='right',
                     showgrid=False, showticklabels=False, showline=False, zeroline=False),
     )
     fig.update_xaxes(gridcolor='rgba(255,255,255,0.04)', tickfont=dict(size=9))
     fig.update_yaxes(gridcolor='rgba(255,255,255,0.04)', tickfont=dict(size=9), zeroline=False)
+    # subplot_titles 색상
+    for ann in fig.layout.annotations:
+        ann.font.size  = 9
+        ann.font.color = '#666'
     return fig
 
 
 def make_macro_pmi_chart(years: int = 5, spx_s=None):
-    """④ 산업생산 & 내구재: INDPRO + DGORDER YoY% (경기 모멘텀 대리지표)"""
-    indpro  = _fred('INDPRO',   years + 2)   # 산업생산지수 (월간)
-    dgorder = _fred('DGORDER',  years + 2)   # 내구재 신규주문 (월간, 백만달러)
-    if indpro.empty and dgorder.empty:
-        return None
+    """④ ISM 신규주문-재고 스프레드 (대리지표: 제조업 신규주문 vs 재고-판매비율)
+    ISM 원데이터는 FRED에 없으므로:
+      - 신규주문 proxy: AMTMNO (전체 제조업 신규주문, SA) → NEWORDER → DGORDER 순 fallback
+      - 재고 proxy: ISRATIO (재고/판매비율) 역방향 — 재고 증가=악화
+    스프레드 = 신규주문 YoY% - 재고비율 YoY%
+    양→음 전환 시 경기 둔화 확정적 (ISM 스프레드 개념 동일)
+    """
     cutoff = pd.Timestamp.now() - pd.DateOffset(years=years)
+
+    # 신규주문 proxy (3단계 fallback)
+    ord_s = pd.Series(dtype=float)
+    ord_label = ''
+    for sid, lbl in [('AMTMNO', '全제조 신규주문'), ('NEWORDER', '자본재 신규주문'), ('DGORDER', '내구재 주문')]:
+        ord_s = _fred(sid, years + 2)
+        if not ord_s.empty:
+            ord_label = lbl
+            break
+
+    # 재고 proxy
+    inv_s    = _fred('ISRATIO', years + 2)  # 재고/판매비율: 높을수록 재고 과잉 = 악화
+    inv_label = '재고/판매비율'
+
+    if ord_s.empty:
+        return None
+
+    # YoY% 변환
+    ord_yoy = (ord_s.pct_change(12) * 100).dropna()
+    ord_yoy = ord_yoy[ord_yoy.index >= cutoff]
+
     fig = go.Figure()
-    fig.add_hline(y=0, line=dict(color='rgba(255,255,255,0.2)', width=1))
-    main_s = None
-    if not indpro.empty:
-        ip_yoy = (indpro.pct_change(12) * 100).dropna()
-        ip_yoy = ip_yoy[ip_yoy.index >= cutoff]
-        fig.add_trace(go.Scatter(x=ip_yoy.index, y=ip_yoy, name='산업생산 YoY%',
-                                 line=dict(color='#4BFFB3', width=1.5)))
-        main_s = ip_yoy
-    if not dgorder.empty:
-        dg_yoy = (dgorder.pct_change(12) * 100).dropna()
-        dg_yoy = dg_yoy[dg_yoy.index >= cutoff]
-        fig.add_trace(go.Scatter(x=dg_yoy.index, y=dg_yoy, name='내구재 주문 YoY% (우)',
-                                 line=dict(color='#FF8C69', width=1.2), yaxis='y2'))
-        if main_s is None:
-            main_s = dg_yoy
+    fig.add_hline(y=0, line=dict(color='rgba(255,255,255,0.20)', width=1))
+
+    fig.add_trace(go.Scatter(
+        x=ord_yoy.index, y=ord_yoy,
+        name=f'{ord_label} YoY%',
+        line=dict(color='#4BFFB3', width=1.6),
+        hovertemplate='<b>%{x|%Y-%m-%d}</b>  %{y:.1f}%<extra></extra>',
+    ))
+
+    main_s = ord_yoy
+    spread_s = pd.Series(dtype=float)
+
+    if not inv_s.empty:
+        inv_yoy = (inv_s.pct_change(12) * 100).dropna()
+        inv_yoy = inv_yoy[inv_yoy.index >= cutoff]
+        # 재고 악화(+) → 시그널 반전해서 표시 (재고 줄면 좋음 → 양의 기여)
+        fig.add_trace(go.Scatter(
+            x=inv_yoy.index, y=-inv_yoy,
+            name=f'{inv_label} YoY% (부호반전, 우)',
+            line=dict(color='#FF8C69', width=1.2, dash='dot'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b>  %{y:.1f}%<extra></extra>',
+            yaxis='y2',
+        ))
+        # 스프레드 = 신규주문 YoY% + 재고비율 YoY% 반전 (클수록 수요>공급)
+        aligned = ord_yoy.reindex(inv_yoy.index).dropna()
+        inv_aligned = inv_yoy.reindex(aligned.index).dropna()
+        aligned = aligned.reindex(inv_aligned.index)
+        spread_s = (aligned - inv_aligned).dropna()
+
+    if not spread_s.empty:
+        fig.add_trace(go.Scatter(
+            x=spread_s.index, y=spread_s.clip(lower=0),
+            fill='tozeroy', fillcolor='rgba(75,255,179,0.10)',
+            line=dict(width=0), showlegend=False, hoverinfo='skip',
+        ))
+        fig.add_trace(go.Scatter(
+            x=spread_s.index, y=spread_s.clip(upper=0),
+            fill='tozeroy', fillcolor='rgba(255,75,110,0.10)',
+            line=dict(width=0), showlegend=False, hoverinfo='skip',
+        ))
+        fig.add_trace(go.Scatter(
+            x=spread_s.index, y=spread_s,
+            name='신규주문-재고 스프레드 ★',
+            line=dict(color='#C8C850', width=1.8),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b>  스프레드 %{y:.1f}<extra></extra>',
+        ))
+        main_s = spread_s
+
     _add_spx_cum_overlays(fig, main_s, spx_s, cum_yaxis='y3', spx_yaxis='y4',
-                          cum_label='산업생산 누적변화')
+                          cum_label='스프레드 누적')
     fig.update_layout(
-        **_ml('④ 경기 모멘텀 (산업생산 · 내구재 주문 YoY%)'),
-        yaxis2=dict(overlaying='y', side='right', showgrid=False, tickfont=dict(size=9),
-                    zeroline=False, ticksuffix='%'),
+        **_ml('④ ISM 신규주문-재고 스프레드 (대리: 제조업 신규주문 vs 재고비율)'),
+        yaxis2=dict(overlaying='y', side='right', showgrid=False,
+                    tickfont=dict(size=9), zeroline=False, ticksuffix='%'),
         yaxis3=_hidden_yaxis('y', 'right'),
         yaxis4=_hidden_yaxis('y', 'right'),
     )
