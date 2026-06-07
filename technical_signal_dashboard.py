@@ -3702,12 +3702,20 @@ def main():
 
         # 확정 신호 > 보유 중 > 플래그 > 없음 순 정렬
         def sort_key(r):
-            confirmed = r.get('dyn_buy_signal') or r.get('dyn_sell_signal') or \
-                        r.get('band_buy_signal') or r.get('band_sell_signal')
-            holding   = r.get('dyn_holding') or r.get('band_holding')
-            flagging  = r.get('dyn_buy_flag') or r.get('dyn_sell_flag') or \
-                        r.get('band_buy_flag') or r.get('band_sell_flag')
-            return (0 if confirmed else 1 if holding else 2 if flagging else 3)
+            # 미니카드 박스 순서와 동일: 매수플래그→매수신호→보유→매도플래그→매도신호→없음
+            buy_flag  = (r.get('dyn_buy_flag')  and not r.get('dyn_buy_signal'))  or \
+                        (r.get('band_buy_flag') and not r.get('band_buy_signal'))
+            buy_sig   = r.get('dyn_buy_signal')  or r.get('band_buy_signal')
+            holding   = r.get('dyn_holding')     or r.get('band_holding')
+            sell_flag = (r.get('dyn_sell_flag')  and not r.get('dyn_sell_signal')) or \
+                        (r.get('band_sell_flag') and not r.get('band_sell_signal'))
+            sell_sig  = r.get('dyn_sell_signal') or r.get('band_sell_signal')
+            if buy_flag:  return 0
+            if buy_sig:   return 1
+            if holding:   return 2
+            if sell_flag: return 3
+            if sell_sig:  return 4
+            return 5
 
         signal_rows.sort(key=sort_key)
 
