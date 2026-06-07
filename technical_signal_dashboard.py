@@ -3655,20 +3655,67 @@ def main():
         with st.expander(f"📋 전체 종목 현황 ({len(signal_rows)}개)", expanded=False):
             st.markdown(render_signal_table(signal_rows), unsafe_allow_html=True)
 
-        # ② 종목 선택 + 차트 (항상 노출)
-        fav_names = [f['name'] for f in favorites]
-        selected_name = st.selectbox(
-            "종목 선택", fav_names, index=0,
-            label_visibility="collapsed",
-        )
-        selected_fav = next((f for f in favorites if f['name'] == selected_name), favorites[0])
+        # US 워치리스트 (여기서 종목 추가/수정)
+        _US_WATCHLIST = [
+            {"code": "^DJI",  "name": "다우존스 (^DJI)"},
+            {"code": "^GSPC", "name": "S&P 500 (^GSPC)"},
+            {"code": "^IXIC", "name": "나스닥 (^IXIC)"},
+            {"code": "SOXX",  "name": "SOXX 반도체 ETF"},
+        ]
+
+        # 활성 시장 추적 (session_state)
+        if 'scan_active' not in st.session_state:
+            st.session_state.scan_active = 'kr'
+
+        def _set_kr(): st.session_state.scan_active = 'kr'
+        def _set_us(): st.session_state.scan_active = 'us'
+
+        # ② 종목 선택 — 한국 / 미국 좌우 분리
+        col_kr, col_us = st.columns(2)
+
+        kr_names = [f['name'] for f in favorites]
+        us_names = [t['name'] for t in _US_WATCHLIST]
+
+        with col_kr:
+            with st.expander("🇰🇷 한국 즐겨찾기", expanded=True):
+                if 'scan_kr_name' not in st.session_state or \
+                        st.session_state.scan_kr_name not in kr_names:
+                    st.session_state.scan_kr_name = kr_names[0]
+                st.selectbox("한국종목선택", kr_names,
+                             key='scan_kr_name', on_change=_set_kr,
+                             label_visibility='collapsed')
+
+        with col_us:
+            with st.expander("🇺🇸 미국 지수/ETF", expanded=True):
+                if 'scan_us_name' not in st.session_state or \
+                        st.session_state.scan_us_name not in us_names:
+                    st.session_state.scan_us_name = us_names[0]
+                st.selectbox("미국종목선택", us_names,
+                             key='scan_us_name', on_change=_set_us,
+                             label_visibility='collapsed')
+
+        # 활성 티커 결정
+        if st.session_state.scan_active == 'kr':
+            _kr_name = st.session_state.get('scan_kr_name', kr_names[0])
+            _sel_item = next((f for f in favorites if f['name'] == _kr_name), favorites[0])
+            selected_name = _sel_item['name']
+            selected_code = _sel_item['code']
+        else:
+            _us_name = st.session_state.get('scan_us_name', us_names[0])
+            _sel_item = next((t for t in _US_WATCHLIST if t['name'] == _us_name), _US_WATCHLIST[0])
+            selected_name = _sel_item['name']
+            selected_code = _sel_item['code']
+
+        # 한국 시간대 판별 (지수 코드 포함)
+        _is_korean = selected_code.endswith(('.KS', '.KQ')) or \
+                     selected_code in ('^KS11', '^KQ11')
 
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
         # ── 일봉 차트 ──────────────────────────────────────
         if chart_mode == "일봉":
             with st.spinner("차트 로딩..."):
-                ohlcv = fetch_ohlcv(selected_fav['code'], data_start, data_end)
+                ohlcv = fetch_ohlcv(selected_code, data_start, data_end)
 
             if ohlcv.empty:
                 st.warning(f"⚠️ {selected_name} 데이터를 가져올 수 없습니다.")
@@ -3709,7 +3756,7 @@ def main():
 
         # ── 분봉 차트 ──────────────────────────────────────
         else:
-            _ticker = selected_fav['code']
+            _ticker = selected_code
             with st.spinner(f"분봉 로딩... ({intra_interval_label}, {period_name} 기준)"):
                 ohlcv_intra, intra_err = fetch_intraday(_ticker, yf_interval)
 
@@ -3721,7 +3768,7 @@ def main():
                 if intra_err:
                     st.caption(f"⚠️ 데이터 로딩 경고: {intra_err}")
                 _disp_bars = _intra_bars_per_day[yf_interval] * period_days
-                _session   = (15.5, 9.0) if _ticker.endswith(('.KS', '.KQ')) else None
+                _session   = (15.5, 9.0) if _is_korean else None
                 fig_intra  = make_detail_chart(
                     ohlcv_intra, f"{selected_name} ({intra_interval_label})", period_days,
                     bb_window=bb_window, rsi_lookback=rsi_lookback,
