@@ -3785,6 +3785,7 @@ def main():
                     f'{label}{cards}</div>')
 
         st.markdown(
+            '<div style="margin-bottom:10px">' +
             _mini_row("★", [
                 ("매수 플래그", f"{n_dyn_buy_flag}",  "#7AAFD4"),
                 ("매수 신호",   f"{n_dyn_buy}",        "#4BFFB3"),
@@ -3798,7 +3799,8 @@ def main():
                 ("보유 중",     f"{n_us_hold}",        "#C8C850"),
                 ("매도 플래그", f"{n_us_sell_flag}",   "#D47A9F"),
                 ("매도 신호",   f"{n_us_sell}",        "#FF4B6E"),
-            ], flag='🇺🇸'),
+            ], flag='🇺🇸') +
+            '</div>',
             unsafe_allow_html=True,
         )
 
