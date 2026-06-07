@@ -3562,100 +3562,7 @@ def main():
         rsi_sell_center= 80
         rsi_band       = 5
 
-        tickers_tuple = tuple(f['code'] for f in favorites)
-
-        with st.spinner("📡 데이터 로딩..."):
-            if chart_mode == "분봉":
-                closes = fetch_intraday_batch(tickers_tuple, yf_interval)
-            else:
-                closes = fetch_close_batch(tickers_tuple, data_start, data_end)
-
-        # 신호 계산
-        signal_rows = []
-        for fav in favorites:
-            code = fav['code']
-            row = {
-                'code': code, 'name': fav['name'],
-                'close': None, 'pct_change': None, 'rsi': None,
-                'bb_upper_touch': False, 'bb_lower_touch': False,
-                'dyn_buy_signal': False, 'dyn_sell_signal': False,
-                'band_buy_signal': False, 'band_sell_signal': False,
-                'dyn_buy_flag': False, 'dyn_sell_flag': False,
-                'band_buy_flag': False, 'band_sell_flag': False,
-                'dyn_holding': False, 'band_holding': False,
-            }
-            if code in closes.columns:
-                series = closes[code].dropna()
-                sig = get_current_signals(
-                    series,
-                    bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
-                    rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
-                    rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
-                    phase2_rsi=phase2_rsi,
-                )
-                if sig:
-                    row.update(sig)
-                elif len(series) >= 2:
-                    # 신호 계산 불가(데이터 부족)이어도 가격·등락률은 표시
-                    last = float(series.iloc[-1])
-                    prev = float(series.iloc[-2])
-                    row['close'] = last
-                    row['pct_change'] = (last / prev - 1) * 100 if prev else 0.0
-            signal_rows.append(row)
-
-        # 확정 신호 > 보유 중 > 플래그 > 없음 순 정렬
-        def sort_key(r):
-            confirmed = r.get('dyn_buy_signal') or r.get('dyn_sell_signal') or \
-                        r.get('band_buy_signal') or r.get('band_sell_signal')
-            holding   = r.get('dyn_holding') or r.get('band_holding')
-            flagging  = r.get('dyn_buy_flag') or r.get('dyn_sell_flag') or \
-                        r.get('band_buy_flag') or r.get('band_sell_flag')
-            return (0 if confirmed else 1 if holding else 2 if flagging else 3)
-
-        signal_rows.sort(key=sort_key)
-
-        # 신호 요약 카운트 (5가지 상태 × 2전략)
-        n_dyn_buy_flag  = sum(1 for r in signal_rows if r.get('dyn_buy_flag')  and not r.get('dyn_buy_signal'))
-        n_dyn_buy       = sum(1 for r in signal_rows if r.get('dyn_buy_signal'))
-        n_dyn_hold      = sum(1 for r in signal_rows if r.get('dyn_holding'))
-        n_dyn_sell_flag = sum(1 for r in signal_rows if r.get('dyn_sell_flag') and not r.get('dyn_sell_signal'))
-        n_dyn_sell      = sum(1 for r in signal_rows if r.get('dyn_sell_signal'))
-
-        n_band_buy_flag  = sum(1 for r in signal_rows if r.get('band_buy_flag')  and not r.get('band_buy_signal'))
-        n_band_buy       = sum(1 for r in signal_rows if r.get('band_buy_signal'))
-        n_band_hold      = sum(1 for r in signal_rows if r.get('band_holding'))
-        n_band_sell_flag = sum(1 for r in signal_rows if r.get('band_sell_flag') and not r.get('band_sell_signal'))
-        n_band_sell      = sum(1 for r in signal_rows if r.get('band_sell_signal'))
-
-        def _mini_card(label, value, accent="#787EE7"):
-            return (f'<div style="flex:1;min-width:0;background:#141416;'
-                    f'border:1px solid rgba(255,255,255,0.06);border-radius:6px;'
-                    f'padding:5px 10px 6px;">'
-                    f'<div style="font-size:9px;color:#444;text-transform:uppercase;'
-                    f'letter-spacing:0.7px;white-space:nowrap;overflow:hidden;'
-                    f'text-overflow:ellipsis;">{label}</div>'
-                    f'<div style="font-size:17px;font-weight:600;color:{accent};'
-                    f'margin-top:1px;font-variant-numeric:tabular-nums;">{value}</div>'
-                    f'</div>')
-
-        def _mini_row(prefix, items):
-            cards = "".join(_mini_card(f"{prefix} {lbl}", val, acc) for lbl, val, acc in items)
-            return (f'<div style="display:flex;gap:5px;margin-bottom:5px;">'
-                    f'{cards}</div>')
-
-        st.markdown(_mini_row("★", [
-            ("매수 플래그", f"{n_dyn_buy_flag}",  "#7AAFD4"),
-            ("매수 신호",   f"{n_dyn_buy}",        "#4BFFB3"),
-            ("보유 중",     f"{n_dyn_hold}",       "#C8C850"),
-            ("매도 플래그", f"{n_dyn_sell_flag}",  "#D47A9F"),
-            ("매도 신호",   f"{n_dyn_sell}",       "#FF4B6E"),
-        ]), unsafe_allow_html=True)
-
-        # ① 전체 종목 현황 — 접힘
-        with st.expander(f"📋 전체 종목 현황 ({len(signal_rows)}개)", expanded=False):
-            st.markdown(render_signal_table(signal_rows), unsafe_allow_html=True)
-
-        # US 워치리스트 — 여기에 {"code": "...", "name": "..."} 한 줄 추가로 종목 관리
+        # US 워치리스트 (신호 계산에 필요해 tickers_tuple보다 먼저 정의)
         _US_WATCHLIST = [
             # ── 지수
             {"code": "^DJI",   "name": "다우존스 (^DJI)"},
@@ -3705,12 +3612,150 @@ def main():
             {"code": "ETH-USD", "name": "이더리움 (ETH-USD)"},
         ]
 
-        # 활성 시장 추적 (session_state)
+        tickers_tuple    = tuple(f['code'] for f in favorites)
+        us_tickers_tuple = tuple(t['code'] for t in _US_WATCHLIST)
+
+        with st.spinner("📡 데이터 로딩..."):
+            if chart_mode == "분봉":
+                closes = fetch_intraday_batch(tickers_tuple, yf_interval)
+            else:
+                closes = fetch_close_batch(tickers_tuple, data_start, data_end)
+            us_closes = fetch_close_batch(us_tickers_tuple, data_start, data_end)
+
+        # 신호 계산
+        signal_rows = []
+        for fav in favorites:
+            code = fav['code']
+            row = {
+                'code': code, 'name': fav['name'],
+                'close': None, 'pct_change': None, 'rsi': None,
+                'bb_upper_touch': False, 'bb_lower_touch': False,
+                'dyn_buy_signal': False, 'dyn_sell_signal': False,
+                'band_buy_signal': False, 'band_sell_signal': False,
+                'dyn_buy_flag': False, 'dyn_sell_flag': False,
+                'band_buy_flag': False, 'band_sell_flag': False,
+                'dyn_holding': False, 'band_holding': False,
+            }
+            if code in closes.columns:
+                series = closes[code].dropna()
+                sig = get_current_signals(
+                    series,
+                    bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
+                    rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
+                    rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
+                    phase2_rsi=phase2_rsi,
+                )
+                if sig:
+                    row.update(sig)
+                elif len(series) >= 2:
+                    # 신호 계산 불가(데이터 부족)이어도 가격·등락률은 표시
+                    last = float(series.iloc[-1])
+                    prev = float(series.iloc[-2])
+                    row['close'] = last
+                    row['pct_change'] = (last / prev - 1) * 100 if prev else 0.0
+            signal_rows.append(row)
+
+        # 확정 신호 > 보유 중 > 플래그 > 없음 순 정렬
+        def sort_key(r):
+            confirmed = r.get('dyn_buy_signal') or r.get('dyn_sell_signal') or \
+                        r.get('band_buy_signal') or r.get('band_sell_signal')
+            holding   = r.get('dyn_holding') or r.get('band_holding')
+            flagging  = r.get('dyn_buy_flag') or r.get('dyn_sell_flag') or \
+                        r.get('band_buy_flag') or r.get('band_sell_flag')
+            return (0 if confirmed else 1 if holding else 2 if flagging else 3)
+
+        signal_rows.sort(key=sort_key)
+
+        # US 신호 계산
+        us_signal_rows = []
+        for _item in _US_WATCHLIST:
+            _code = _item['code']
+            _row = {
+                'code': _code, 'name': _item['name'],
+                'close': None, 'pct_change': None, 'rsi': None,
+                'bb_upper_touch': False, 'bb_lower_touch': False,
+                'dyn_buy_signal': False, 'dyn_sell_signal': False,
+                'band_buy_signal': False, 'band_sell_signal': False,
+                'dyn_buy_flag': False, 'dyn_sell_flag': False,
+                'band_buy_flag': False, 'band_sell_flag': False,
+                'dyn_holding': False, 'band_holding': False,
+            }
+            if _code in us_closes.columns:
+                _series = us_closes[_code].dropna()
+                _sig = get_current_signals(
+                    _series,
+                    bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
+                    rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
+                    rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
+                    phase2_rsi=phase2_rsi,
+                )
+                if _sig:
+                    _row.update(_sig)
+                elif len(_series) >= 2:
+                    _last = float(_series.iloc[-1])
+                    _prev = float(_series.iloc[-2])
+                    _row['close'] = _last
+                    _row['pct_change'] = (_last / _prev - 1) * 100 if _prev else 0.0
+            us_signal_rows.append(_row)
+        us_signal_rows.sort(key=sort_key)
+
+        # 신호 요약 카운트 (5가지 상태 × 2전략)
+        n_dyn_buy_flag  = sum(1 for r in signal_rows if r.get('dyn_buy_flag')  and not r.get('dyn_buy_signal'))
+        n_dyn_buy       = sum(1 for r in signal_rows if r.get('dyn_buy_signal'))
+        n_dyn_hold      = sum(1 for r in signal_rows if r.get('dyn_holding'))
+        n_dyn_sell_flag = sum(1 for r in signal_rows if r.get('dyn_sell_flag') and not r.get('dyn_sell_signal'))
+        n_dyn_sell      = sum(1 for r in signal_rows if r.get('dyn_sell_signal'))
+
+        n_band_buy_flag  = sum(1 for r in signal_rows if r.get('band_buy_flag')  and not r.get('band_buy_signal'))
+        n_band_buy       = sum(1 for r in signal_rows if r.get('band_buy_signal'))
+        n_band_hold      = sum(1 for r in signal_rows if r.get('band_holding'))
+        n_band_sell_flag = sum(1 for r in signal_rows if r.get('band_sell_flag') and not r.get('band_sell_signal'))
+        n_band_sell      = sum(1 for r in signal_rows if r.get('band_sell_signal'))
+
+        def _mini_card(label, value, accent="#787EE7"):
+            return (f'<div style="flex:1;min-width:0;background:#141416;'
+                    f'border:1px solid rgba(255,255,255,0.06);border-radius:6px;'
+                    f'padding:5px 10px 6px;">'
+                    f'<div style="font-size:9px;color:#444;text-transform:uppercase;'
+                    f'letter-spacing:0.7px;white-space:nowrap;overflow:hidden;'
+                    f'text-overflow:ellipsis;">{label}</div>'
+                    f'<div style="font-size:17px;font-weight:600;color:{accent};'
+                    f'margin-top:1px;font-variant-numeric:tabular-nums;">{value}</div>'
+                    f'</div>')
+
+        def _mini_row(prefix, items):
+            cards = "".join(_mini_card(f"{prefix} {lbl}", val, acc) for lbl, val, acc in items)
+            return (f'<div style="display:flex;gap:5px;margin-bottom:5px;">'
+                    f'{cards}</div>')
+
+        st.markdown(_mini_row("★", [
+            ("매수 플래그", f"{n_dyn_buy_flag}",  "#7AAFD4"),
+            ("매수 신호",   f"{n_dyn_buy}",        "#4BFFB3"),
+            ("보유 중",     f"{n_dyn_hold}",       "#C8C850"),
+            ("매도 플래그", f"{n_dyn_sell_flag}",  "#D47A9F"),
+            ("매도 신호",   f"{n_dyn_sell}",       "#FF4B6E"),
+        ]), unsafe_allow_html=True)
+
+        # ── 활성 시장 추적 (session_state)
         if 'scan_active' not in st.session_state:
             st.session_state.scan_active = 'kr'
 
         def _set_kr(): st.session_state.scan_active = 'kr'
         def _set_us(): st.session_state.scan_active = 'us'
+        def _on_mkt_toggle():
+            st.session_state.scan_active = 'kr' if st.session_state._mkt_toggle == '🇰🇷 한국' else 'us'
+
+        st.radio("", ["🇰🇷 한국", "🇺🇸 미국"],
+                 index=0 if st.session_state.scan_active == 'kr' else 1,
+                 horizontal=True, key='_mkt_toggle', on_change=_on_mkt_toggle,
+                 label_visibility='collapsed')
+
+        # ① 전체 종목 현황 — 한국 / 미국 분리 (접힘)
+        with st.expander(f"📋 🇰🇷 한국 즐겨찾기 현황 ({len(signal_rows)}개)", expanded=False):
+            st.markdown(render_signal_table(signal_rows), unsafe_allow_html=True)
+
+        with st.expander(f"📋 🇺🇸 미국 지수/ETF 현황 ({len(us_signal_rows)}개)", expanded=False):
+            st.markdown(render_signal_table(us_signal_rows), unsafe_allow_html=True)
 
         # ② 종목 선택 — 한국 / 미국 좌우 분리
         col_kr, col_us = st.columns(2)
