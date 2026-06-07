@@ -3785,7 +3785,7 @@ def main():
                     f'{label}{cards}</div>')
 
         st.markdown(
-            '<div style="margin-bottom:10px">' +
+            '<div style="margin-bottom:20px">' +
             _mini_row("★", [
                 ("매수 플래그", f"{n_dyn_buy_flag}",  "#7AAFD4"),
                 ("매수 신호",   f"{n_dyn_buy}",        "#4BFFB3"),
