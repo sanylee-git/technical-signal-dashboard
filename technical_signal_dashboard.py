@@ -3651,125 +3651,122 @@ def main():
             ("매도 신호",   f"{n_dyn_sell}",       "#FF4B6E"),
         ]), unsafe_allow_html=True)
 
-        fav_names = [f['name'] for f in favorites]
-        selected_name = st.selectbox(
-            "종목 선택", fav_names, index=0,
-            label_visibility="collapsed",
-        )
-        selected_fav = next((f for f in favorites if f['name'] == selected_name), favorites[0])
-
-        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+        # ① 전체 종목 현황 — 접힘
         with st.expander(f"📋 전체 종목 현황 ({len(signal_rows)}개)", expanded=False):
             st.markdown(render_signal_table(signal_rows), unsafe_allow_html=True)
 
-        # ── 디테일 차트 구분선
-        st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-        st.markdown("""
-            <p style='font-size:10px;color:#444;text-transform:uppercase;
-                      letter-spacing:1.5px;margin:0 0 6px;'>DETAIL CHART</p>
-        """, unsafe_allow_html=True)
+        # ② 차트 상세보기 — 펼침
+        with st.expander("📊 차트 상세보기", expanded=True):
+            fav_names = [f['name'] for f in favorites]
+            selected_name = st.selectbox(
+                "종목 선택", fav_names, index=0,
+                label_visibility="collapsed",
+            )
+            selected_fav = next((f for f in favorites if f['name'] == selected_name), favorites[0])
 
-        # ── 일봉 차트 ──────────────────────────────────────
-        if chart_mode == "일봉":
-            with st.spinner("차트 로딩..."):
-                ohlcv = fetch_ohlcv(selected_fav['code'], data_start, data_end)
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-            if ohlcv.empty:
-                st.warning(f"⚠️ {selected_name} 데이터를 가져올 수 없습니다.")
-            else:
-                fig = make_detail_chart(
-                    ohlcv, selected_name, period_days,
-                    bb_window=bb_window, rsi_lookback=rsi_lookback,
-                    rsi_buy_center=40, rsi_sell_center=80, rsi_band=5,
-                    persist=persist, phase2_rsi=phase2_rsi,
-                )
-                if fig:
-                    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            # ── 일봉 차트 ──────────────────────────────────────
+            if chart_mode == "일봉":
+                with st.spinner("차트 로딩..."):
+                    ohlcv = fetch_ohlcv(selected_fav['code'], data_start, data_end)
+
+                if ohlcv.empty:
+                    st.warning(f"⚠️ {selected_name} 데이터를 가져올 수 없습니다.")
                 else:
-                    close = ohlcv['Close'].dropna()
-                    have  = len(close)
-                    need  = bb_window + 14 + rsi_lookback // 2
-                    first_date = close.index[0].strftime('%Y-%m-%d') if have > 0 else '—'
-                    st.markdown(
-                        f'<div style="background:#141416;border:1px solid rgba(255,140,0,0.3);'
-                        f'border-radius:8px;padding:10px 16px;margin-bottom:10px;font-size:12px;color:#FFB347;">'
-                        f'⏳ 신호 계산 데이터 부족 — 현재 <b>{have}일</b> / 필요 <b>{need}일</b> '
-                        f'(상장: {first_date})</div>',
-                        unsafe_allow_html=True,
+                    fig = make_detail_chart(
+                        ohlcv, selected_name, period_days,
+                        bb_window=bb_window, rsi_lookback=rsi_lookback,
+                        rsi_buy_center=40, rsi_sell_center=80, rsi_band=5,
+                        persist=persist, phase2_rsi=phase2_rsi,
                     )
-                    if have >= 3:
-                        price_fig = go.Figure()
-                        price_fig.add_trace(go.Scatter(
-                            x=close.index, y=close,
-                            line=dict(color="#787EE7", width=1.8), showlegend=False,
-                        ))
-                        price_fig.update_layout(
-                            height=320, title=dict(text=selected_name, font=dict(size=13, color="#9B9B9B")),
-                            **_base_layout(),
+                    if fig:
+                        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+                    else:
+                        close = ohlcv['Close'].dropna()
+                        have  = len(close)
+                        need  = bb_window + 14 + rsi_lookback // 2
+                        first_date = close.index[0].strftime('%Y-%m-%d') if have > 0 else '—'
+                        st.markdown(
+                            f'<div style="background:#141416;border:1px solid rgba(255,140,0,0.3);'
+                            f'border-radius:8px;padding:10px 16px;margin-bottom:10px;font-size:12px;color:#FFB347;">'
+                            f'⏳ 신호 계산 데이터 부족 — 현재 <b>{have}일</b> / 필요 <b>{need}일</b> '
+                            f'(상장: {first_date})</div>',
+                            unsafe_allow_html=True,
                         )
-                        price_fig.update_xaxes(**_axis_kw())
-                        price_fig.update_yaxes(**_axis_kw())
-                        st.plotly_chart(price_fig, use_container_width=True, config={"displayModeBar": False})
+                        if have >= 3:
+                            price_fig = go.Figure()
+                            price_fig.add_trace(go.Scatter(
+                                x=close.index, y=close,
+                                line=dict(color="#787EE7", width=1.8), showlegend=False,
+                            ))
+                            price_fig.update_layout(
+                                height=320, title=dict(text=selected_name, font=dict(size=13, color="#9B9B9B")),
+                                **_base_layout(),
+                            )
+                            price_fig.update_xaxes(**_axis_kw())
+                            price_fig.update_yaxes(**_axis_kw())
+                            st.plotly_chart(price_fig, use_container_width=True, config={"displayModeBar": False})
 
-        # ── 분봉 차트 ──────────────────────────────────────
-        else:
-            _ticker = selected_fav['code']
-            with st.spinner(f"분봉 로딩... ({intra_interval_label}, {period_name} 기준)"):
-                ohlcv_intra, intra_err = fetch_intraday(_ticker, yf_interval)
-
-            if ohlcv_intra.empty:
-                st.warning(f"⚠️ {selected_name} 분봉 데이터를 가져올 수 없습니다.")
-                if intra_err:
-                    st.code(intra_err, language=None)
+            # ── 분봉 차트 ──────────────────────────────────────
             else:
-                if intra_err:
-                    st.caption(f"⚠️ 데이터 로딩 경고: {intra_err}")
-                _disp_bars = _intra_bars_per_day[yf_interval] * period_days
-                _session   = (15.5, 9.0) if _ticker.endswith(('.KS', '.KQ')) else None
-                fig_intra  = make_detail_chart(
-                    ohlcv_intra, f"{selected_name} ({intra_interval_label})", period_days,
-                    bb_window=bb_window, rsi_lookback=rsi_lookback,
-                    rsi_buy_center=40, rsi_sell_center=80, rsi_band=5,
-                    persist=persist, phase2_rsi=phase2_rsi,
-                    display_bars=_disp_bars,
-                    intraday_session=_session,
-                )
-                if fig_intra:
-                    st.plotly_chart(fig_intra, use_container_width=True, config={"displayModeBar": False})
-                else:
-                    close_intra = ohlcv_intra['Close'].dropna()
-                    have  = len(close_intra)
-                    need  = bb_window + 14 + rsi_lookback // 2
-                    st.markdown(
-                        f'<div style="background:#141416;border:1px solid rgba(255,140,0,0.3);'
-                        f'border-radius:8px;padding:10px 16px;margin-bottom:10px;font-size:12px;color:#FFB347;">'
-                        f'⏳ 분봉 신호 계산 데이터 부족 — 현재 <b>{have}봉</b> / 필요 <b>{need}봉</b></div>',
-                        unsafe_allow_html=True,
-                    )
-                    if have >= 3:
-                        pf = go.Figure()
-                        pf.add_trace(go.Scatter(
-                            x=close_intra.index, y=close_intra,
-                            line=dict(color="#787EE7", width=1.5), showlegend=False,
-                        ))
-                        pf.update_layout(
-                            height=320,
-                            title=dict(text=f"{selected_name} ({intra_interval_label})",
-                                       font=dict(size=13, color="#9B9B9B")),
-                            **_base_layout(),
-                        )
-                        pf.update_xaxes(**_axis_kw())
-                        pf.update_yaxes(**_axis_kw())
-                        if _session:
-                            close_h, open_h = _session
-                            pf.update_xaxes(rangebreaks=[
-                                dict(bounds=["sat", "mon"]),
-                                dict(bounds=[close_h, open_h], pattern="hour"),
-                            ])
-                        st.plotly_chart(pf, use_container_width=True, config={"displayModeBar": False})
+                _ticker = selected_fav['code']
+                with st.spinner(f"분봉 로딩... ({intra_interval_label}, {period_name} 기준)"):
+                    ohlcv_intra, intra_err = fetch_intraday(_ticker, yf_interval)
 
-        # 신호 설명
-        with st.expander("📖 신호 해석 가이드"):
+                if ohlcv_intra.empty:
+                    st.warning(f"⚠️ {selected_name} 분봉 데이터를 가져올 수 없습니다.")
+                    if intra_err:
+                        st.code(intra_err, language=None)
+                else:
+                    if intra_err:
+                        st.caption(f"⚠️ 데이터 로딩 경고: {intra_err}")
+                    _disp_bars = _intra_bars_per_day[yf_interval] * period_days
+                    _session   = (15.5, 9.0) if _ticker.endswith(('.KS', '.KQ')) else None
+                    fig_intra  = make_detail_chart(
+                        ohlcv_intra, f"{selected_name} ({intra_interval_label})", period_days,
+                        bb_window=bb_window, rsi_lookback=rsi_lookback,
+                        rsi_buy_center=40, rsi_sell_center=80, rsi_band=5,
+                        persist=persist, phase2_rsi=phase2_rsi,
+                        display_bars=_disp_bars,
+                        intraday_session=_session,
+                    )
+                    if fig_intra:
+                        st.plotly_chart(fig_intra, use_container_width=True, config={"displayModeBar": False})
+                    else:
+                        close_intra = ohlcv_intra['Close'].dropna()
+                        have  = len(close_intra)
+                        need  = bb_window + 14 + rsi_lookback // 2
+                        st.markdown(
+                            f'<div style="background:#141416;border:1px solid rgba(255,140,0,0.3);'
+                            f'border-radius:8px;padding:10px 16px;margin-bottom:10px;font-size:12px;color:#FFB347;">'
+                            f'⏳ 분봉 신호 계산 데이터 부족 — 현재 <b>{have}봉</b> / 필요 <b>{need}봉</b></div>',
+                            unsafe_allow_html=True,
+                        )
+                        if have >= 3:
+                            pf = go.Figure()
+                            pf.add_trace(go.Scatter(
+                                x=close_intra.index, y=close_intra,
+                                line=dict(color="#787EE7", width=1.5), showlegend=False,
+                            ))
+                            pf.update_layout(
+                                height=320,
+                                title=dict(text=f"{selected_name} ({intra_interval_label})",
+                                           font=dict(size=13, color="#9B9B9B")),
+                                **_base_layout(),
+                            )
+                            pf.update_xaxes(**_axis_kw())
+                            pf.update_yaxes(**_axis_kw())
+                            if _session:
+                                close_h, open_h = _session
+                                pf.update_xaxes(rangebreaks=[
+                                    dict(bounds=["sat", "mon"]),
+                                    dict(bounds=[close_h, open_h], pattern="hour"),
+                                ])
+                            st.plotly_chart(pf, use_container_width=True, config={"displayModeBar": False})
+
+        # ③ 신호 해석 가이드 — 접힘
+        with st.expander("📖 신호 해석 가이드", expanded=False):
             st.markdown("""
             **BB 신호**
             - 🟢 **BB↓ 하단**: 종가가 볼린저밴드 하단에 접촉 → 과매도 구간, 반등 가능성 모니터링
