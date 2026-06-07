@@ -3659,7 +3659,8 @@ def main():
         selected_fav = next((f for f in favorites if f['name'] == selected_name), favorites[0])
 
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-        st.markdown(render_signal_table(signal_rows), unsafe_allow_html=True)
+        with st.expander(f"📋 전체 종목 현황 ({len(signal_rows)}개)", expanded=False):
+            st.markdown(render_signal_table(signal_rows), unsafe_allow_html=True)
 
         # ── 디테일 차트 구분선
         st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
