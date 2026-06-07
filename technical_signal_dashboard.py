@@ -365,11 +365,8 @@ DARK_CSS = """
 
     div[data-testid="stExpander"] {
         border: 1px solid rgba(255,255,255,0.06); background: transparent;
-        border-radius: 8px; margin-bottom: 0px !important; }
-    div[data-testid="element-container"]:has(> div[data-testid="stExpander"]) {
-        margin-top: 0px !important; margin-bottom: 0px !important; padding: 0px !important; }
-    div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stExpander"]) {
-        gap: 2px !important; }
+        border-radius: 8px; margin-bottom: 0px !important; margin-top: 0px !important; }
+    div[data-testid="stVerticalBlock"] { gap: 4px !important; }
     div[data-testid="stExpander"] details summary { padding: 3px 8px !important; min-height: 28px !important; }
     div[data-testid="stExpander"] details summary p,
     div[data-testid="stExpander"] details summary span {
