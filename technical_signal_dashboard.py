@@ -2838,21 +2838,29 @@ def _yf_close(ticker: str, years: int = 5) -> pd.Series:
 
 
 @st.cache_data(ttl=3600)
-def _foreign_cumnet(market_code: str, years: int = 5) -> pd.Series:
-    """외국인 주식 누적 순매수 (pykrx, 억원)."""
+def _foreign_cumnet(market_code: str, years: int = 5):
+    """외국인 주식 누적 순매수 (pykrx, 억원). Returns (series, error_str)."""
     try:
         from pykrx import stock as _pk
         end_d   = pd.Timestamp.now().strftime('%Y%m%d')
         start_d = (pd.Timestamp.now() - pd.DateOffset(years=years)).strftime('%Y%m%d')
         df = _pk.get_market_trading_value_by_date(start_d, end_d, market_code)
-        col = next((c for c in ['외국인합계', '외국인'] if c in df.columns), None)
+        if df is None or df.empty:
+            return pd.Series(dtype=float), '빈 데이터 반환 (KRX API 일시 불가)'
+        # pykrx 버전에 따라 컬럼명이 다를 수 있음
+        candidates = ['외국인합계', '외국인', 'FOREIGNER', 'Foreign']
+        col = next((c for c in candidates if c in df.columns), None)
         if col is None:
-            return pd.Series(dtype=float)
+            # 마지막 수치형 컬럼이 대체로 '외국인합계'
+            num_cols = df.select_dtypes(include='number').columns.tolist()
+            col = num_cols[-1] if num_cols else None
+        if col is None:
+            return pd.Series(dtype=float), f'외국인 컬럼 없음 (컬럼: {list(df.columns)})'
         s = df[col].astype(float)
         s.index = pd.to_datetime(s.index)
-        return s.cumsum() / 1e8
-    except Exception:
-        return pd.Series(dtype=float)
+        return s.cumsum() / 1e8, None
+    except Exception as e:
+        return pd.Series(dtype=float), str(e)
 
 
 def _zscore(s: pd.Series, window: int = 252) -> pd.Series:
@@ -2913,6 +2921,31 @@ def _add_spx_cum_overlays(fig, main_s: pd.Series, spx_s,
             ))
 
 
+def _add_corr_annotation(fig, main_s: pd.Series, spx_s, label='vs S&P500'):
+    """상관계수 어노테이션을 그래프 우상단에 추가."""
+    if spx_s is None or spx_s.empty or main_s is None or main_s.empty:
+        return
+    try:
+        aligned = pd.concat([main_s.rename('ind'), spx_s.rename('spx')], axis=1).dropna()
+        if len(aligned) < 20:
+            return
+        r = aligned['ind'].corr(aligned['spx'])
+        if pd.isna(r):
+            return
+        color = '#4BFFB3' if r > 0.3 else '#FF4B6E' if r < -0.3 else '#AAAAAA'
+        fig.add_annotation(
+            x=1, y=1, xref='paper', yref='paper',
+            xanchor='right', yanchor='top',
+            text=f'r = {r:+.2f} ({label})',
+            showarrow=False,
+            font=dict(size=9, color=color),
+            bgcolor='rgba(14,14,17,0.80)',
+            bordercolor=color, borderwidth=1, borderpad=3,
+        )
+    except Exception:
+        pass
+
+
 def make_macro_credit_spread_chart(years: int = 5, spx_s=None):
     """① 크레딧 스프레드: HY OAS + IG OAS + 누적 + 지수"""
     hy = _fred('BAMLH0A0HYM2', years)
@@ -2933,6 +2966,7 @@ def make_macro_credit_spread_chart(years: int = 5, spx_s=None):
         yaxis3=_hidden_yaxis('y', 'right'),
         yaxis4=_hidden_yaxis('y', 'right'),
     )
+    _add_corr_annotation(fig, hy, spx_s)
     return fig
 
 
@@ -2986,6 +3020,7 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None):
         yaxis3=_hidden_yaxis('y', 'right'),
     )
     fig.update_yaxes(tickformat='+.1f')
+    _add_corr_annotation(fig, stress, spx_s)
     return fig
 
 
@@ -3092,6 +3127,7 @@ def make_macro_options_chart(years: int = 5, spx_s=None):
     for ann in fig.layout.annotations:
         ann.font.size  = 9
         ann.font.color = '#666'
+    _add_corr_annotation(fig, vix, spx_s, label='VIX vs S&P500')
     return fig
 
 
@@ -3184,6 +3220,7 @@ def make_macro_pmi_chart(years: int = 5, spx_s=None):
         yaxis4=_hidden_yaxis('y', 'right'),
     )
     fig.update_yaxes(ticksuffix='%')
+    _add_corr_annotation(fig, main_s, spx_s)
     return fig
 
 
@@ -3220,20 +3257,29 @@ def make_macro_liquidity_chart(years: int = 5, spx_s=None):
         yaxis4=_hidden_yaxis('y', 'right'),
     )
     fig.update_yaxes(ticksuffix='%')
+    _add_corr_annotation(fig, main_s, spx_s)
     return fig
 
 
 def make_macro_yield_curve_chart(years: int = 5, spx_s=None):
-    """⑥ 장단기 금리차: DGS10 - DTB3(10Y-3M) + DGS10 - DGS2(10Y-2Y)"""
-    dgs10 = _fred('DGS10', years)   # 10년 국채
-    dtb3  = _fred('DTB3',  years)   # 3개월 T-Bill
-    dgs2  = _fred('DGS2',  years)   # 2년 국채
-    if dgs10.empty:
-        return None
-    # 일간 interpolation으로 날짜 정렬 후 계산
-    idx = dgs10.index
-    t3m = (dgs10 - dtb3.reindex(idx).interpolate()).dropna() if not dtb3.empty else pd.Series(dtype=float)
-    t2y = (dgs10 - dgs2.reindex(idx).interpolate()).dropna()  if not dgs2.empty  else pd.Series(dtype=float)
+    """⑥ 장단기 금리차: T10Y3M(10Y-3M) + T10Y2Y(10Y-2Y)
+    1순위: FRED 사전계산 시리즈 (T10Y3M, T10Y2Y) — 더 안정적
+    2순위: 구성 금리 직접 차감 (DGS10 - DTB3 / DGS2) — fallback
+    """
+    # 1순위: FRED 사전계산
+    t3m = _fred('T10Y3M', years)
+    t2y = _fred('T10Y2Y', years)
+    # 2순위: 직접 계산 (어느 한 쪽이라도 비었으면 시도)
+    if t3m.empty or t2y.empty:
+        dgs10 = _fred('DGS10', years)
+        dtb3  = _fred('DTB3',  years)
+        dgs2  = _fred('DGS2',  years)
+        if not dgs10.empty:
+            idx = dgs10.index
+            if t3m.empty and not dtb3.empty:
+                t3m = (dgs10 - dtb3.reindex(idx).interpolate()).dropna()
+            if t2y.empty and not dgs2.empty:
+                t2y = (dgs10 - dgs2.reindex(idx).interpolate()).dropna()
     if t3m.empty and t2y.empty:
         return None
     main_s = t3m if not t3m.empty else t2y
@@ -3259,14 +3305,15 @@ def make_macro_yield_curve_chart(years: int = 5, spx_s=None):
         yaxis3=_hidden_yaxis('y', 'right'),
     )
     fig.update_yaxes(ticksuffix='%')
+    _add_corr_annotation(fig, main_s, spx_s)
     return fig
 
 
 def make_macro_foreign_flow_chart(market_code: str, years: int = 5, spx_s=None):
     """⑦ 외국인 누적 순매수 (주식시장 proxy, 억원) + KOSPI/KOSDAQ 지수 오버레이"""
-    s = _foreign_cumnet(market_code, years)
+    s, _err = _foreign_cumnet(market_code, years)
     if s.empty:
-        return None
+        return None, _err
     idx_code = '^KS11' if market_code == 'KOSPI' else '^KQ11'
     mkt_s    = _yf_close(idx_code, years)
     fig = go.Figure()
@@ -3287,15 +3334,13 @@ def make_macro_foreign_flow_chart(market_code: str, years: int = 5, spx_s=None):
                 line=dict(color='rgba(200,200,80,0.55)', width=1.2, dash='dash'),
                 showlegend=True, hoverinfo='skip', yaxis='y2',
             ))
-    # 외국인 순매수 일간 값(막대 근사: 누적 diff)
-    daily = s.diff().fillna(s.iloc[0] if len(s) > 0 else 0)
-    cum2  = daily.cumsum()  # == s, but keep for future use
     fig.update_layout(
         **_ml(f'⑦ 외국인 누적 순매수 — {market_code} (억원)', height=280),
         yaxis2=_hidden_yaxis('y', 'right'),
     )
     fig.update_yaxes(tickformat=',.0f')
-    return fig
+    _add_corr_annotation(fig, s, mkt_s, label=f'vs {market_code}')
+    return fig, None
 
 
 # ============================================================
@@ -4234,11 +4279,87 @@ def main():
         _ff_code = st.radio("외국인 순매수 시장", ['KOSPI', 'KOSDAQ'], horizontal=True,
                             label_visibility='visible')
         with st.spinner("📡 외국인 순매수 데이터 로딩 중..."):
-            _ff = make_macro_foreign_flow_chart(_ff_code, _macro_years, _spx_s)
+            _ff, _ff_err = make_macro_foreign_flow_chart(_ff_code, _macro_years, _spx_s)
         if _ff is not None:
             st.plotly_chart(_ff, use_container_width=True, config={"displayModeBar": False})
         else:
-            st.warning("외국인 순매수 데이터 로딩 실패 (pykrx 설치 필요)")
+            _err_detail = f" — {_ff_err}" if _ff_err else ""
+            st.warning(f"⑦ 외국인 순매수 데이터 로딩 실패{_err_detail}")
+
+        # ── 매크로 지표 상관계수 테이블 ───────────────────────────────────
+        st.divider()
+        st.markdown("##### 📊 매크로 지표 × S&P500 상관계수")
+        st.caption("r > +0.3 🟢 양의 상관  /  r < -0.3 🔴 음의 상관  /  선행(1M·3M): 지표가 시장을 N개월 앞설 때")
+
+        with st.spinner("상관계수 계산 중..."):
+            # 각 지표 주요 시리즈 수집 (FRED 캐시 재사용)
+            _cy = _macro_years
+            _hy_s   = _fred('BAMLH0A0HYM2', _cy)
+            _nfci_s = _fred('NFCI', _cy)
+            _vix_s  = _yf_close('^VIX', _cy)
+            _m2_s_raw = _fred('M2SL', _cy + 2)
+            _m2_yoy = (_m2_s_raw.pct_change(12) * 100).dropna() if not _m2_s_raw.empty else pd.Series(dtype=float)
+            _t3m_s  = _fred('T10Y3M', _cy)
+            if _t3m_s.empty:
+                _dgs10 = _fred('DGS10', _cy); _dtb3 = _fred('DTB3', _cy)
+                if not _dgs10.empty and not _dtb3.empty:
+                    _t3m_s = (_dgs10 - _dtb3.reindex(_dgs10.index).interpolate()).dropna()
+            # ISM proxy
+            _ord_s = pd.Series(dtype=float)
+            for _sid in ('AMTMNO', 'NEWORDER', 'DGORDER'):
+                _ord_s = _fred(_sid, _cy + 2)
+                if not _ord_s.empty: break
+            _ord_yoy = (_ord_s.pct_change(12) * 100).dropna() if not _ord_s.empty else pd.Series(dtype=float)
+
+            _macro_named = {
+                '① HY 스프레드':     _hy_s,
+                '② NFCI':            _nfci_s,
+                '③ VIX':             _vix_s,
+                '④ 신규주문 YoY%':   _ord_yoy,
+                '⑤ M2 YoY%':         _m2_yoy,
+                '⑥ 10Y-3M 스프레드': _t3m_s,
+            }
+
+            if _spx_s is not None and not _spx_s.empty:
+                _spx_ret = _spx_s.pct_change().dropna()
+                _corr_rows = []
+                for _nm, _s in _macro_named.items():
+                    if _s.empty:
+                        _corr_rows.append({'지표': _nm, '동기(r)': '—', '1M 선행(r)': '—', '3M 선행(r)': '—'})
+                        continue
+                    def _calc_r(series, shift_days=0):
+                        try:
+                            _spx_shifted = _spx_ret.shift(-shift_days) if shift_days else _spx_ret
+                            _al = pd.concat([series.rename('x'), _spx_shifted.rename('y')], axis=1).dropna()
+                            if len(_al) < 20: return float('nan')
+                            return round(float(_al['x'].corr(_al['y'])), 2)
+                        except Exception:
+                            return float('nan')
+                    _corr_rows.append({
+                        '지표': _nm,
+                        '동기(r)':     _calc_r(_s),
+                        '1M 선행(r)': _calc_r(_s, 21),
+                        '3M 선행(r)': _calc_r(_s, 63),
+                    })
+
+                _corr_df = pd.DataFrame(_corr_rows).set_index('지표')
+
+                def _style_r(v):
+                    if not isinstance(v, (int, float)) or pd.isna(v): return 'color:#666'
+                    if v >= 0.5:  return 'color:#4BFFB3;font-weight:600'
+                    if v >= 0.3:  return 'color:#4BFFB3'
+                    if v <= -0.5: return 'color:#FF4B6E;font-weight:600'
+                    if v <= -0.3: return 'color:#FF4B6E'
+                    return 'color:#AAAAAA'
+
+                _styled_corr = (
+                    _corr_df.style
+                    .map(_style_r)
+                    .format(lambda v: f'{v:+.2f}' if isinstance(v, float) and not pd.isna(v) else '—')
+                )
+                st.dataframe(_styled_corr, use_container_width=True)
+            else:
+                st.info("S&P500 오버레이를 체크해야 상관계수를 계산할 수 있습니다.")
 
 
 if __name__ == "__main__":
