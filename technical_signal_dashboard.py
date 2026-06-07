@@ -2491,12 +2491,45 @@ def make_score_timeseries_chart(market_df, market_name):
         showlegend=False, hoverinfo='skip', yaxis='y3',
     ))
 
+    # 기울기 누적 오버레이 (y1 기준 정규화, 주황 점선)
+    diff_cum_s = score_s.diff().cumsum().dropna()
+    if not diff_cum_s.empty:
+        _dc_lo, _dc_hi = float(diff_cum_s.min()), float(diff_cum_s.max())
+        if _dc_hi != _dc_lo:
+            diff_cum_norm = (diff_cum_s - _dc_lo) / (_dc_hi - _dc_lo) * 200 - 100
+        else:
+            diff_cum_norm = diff_cum_s * 0
+        fig.add_trace(go.Scatter(
+            x=diff_cum_norm.index.tolist(), y=diff_cum_norm.tolist(),
+            line=dict(color='rgba(255,165,0,0.55)', width=1.1, dash='dot'),
+            showlegend=False, hoverinfo='skip',
+        ))
+
     # 우측 국면 라벨
     for y, c, lbl in [(82,"#00FF7F","강한강세"),(47,"#4BFFB3","강세우위"),
                        (0,"#C8C850","중립"),(-47,"#FF8C69","약세우위"),(-82,"#FF4B6E","강한약세")]:
         fig.add_annotation(x=1.005, y=y, xref='paper', yref='y',
                            text=lbl, showarrow=False, xanchor='left',
                            font=dict(size=8, color=c))
+
+    # r 어노테이션
+    idx_s = market_df['시총가중'].dropna()
+    def _r_sc(a, b):
+        al = pd.concat([a.rename('a'), b.rename('b')], axis=1).dropna()
+        if len(al) < 10: return float('nan')
+        return al['a'].corr(al['b'])
+    _r1 = _r_sc(score_s, idx_s)
+    _r2 = _r_sc(score_s.cumsum(), idx_s)
+    _r3 = _r_sc(score_s.diff().cumsum().dropna(), idx_s)
+    def _rfmt_sc(r): return f'{r:+.2f}' if not pd.isna(r) else '─'
+    fig.add_annotation(
+        x=0.01, y=0.97, xref='paper', yref='paper',
+        xanchor='left', yanchor='top',
+        text=f"지표 {_rfmt_sc(_r1)}  누적 {_rfmt_sc(_r2)}  기울기↑누적 {_rfmt_sc(_r3)}",
+        showarrow=False,
+        font=dict(size=8, color='#666'),
+        bgcolor='rgba(14,14,17,0.75)', borderpad=2,
+    )
 
     fig.update_layout(
         height=220,
@@ -2562,6 +2595,54 @@ def make_market_chart(df, market_name):
             showlegend=False, hoverinfo='skip',
         )
 
+    def _cum_overlays(fig, row, col, main_s):
+        s = main_s.dropna()
+        if len(s) < 10:
+            return
+        idx_s = df['시총가중'].dropna()
+        cum_s    = s.cumsum()
+        diff_cum = s.diff().cumsum().dropna()
+
+        def _norm(src):
+            s_lo, s_hi = float(s.min()), float(s.max())
+            lo, hi = float(src.min()), float(src.max())
+            if hi == lo:
+                return pd.Series([(s_lo + s_hi) / 2] * len(src), index=src.index)
+            return (src - lo) / (hi - lo) * (s_hi - s_lo) + s_lo
+
+        for vals, color, dash in [
+            (cum_s.dropna(),  'rgba(120,126,231,0.65)', 'dash'),
+            (diff_cum,        'rgba(255,165,0,0.65)',   'dot'),
+        ]:
+            nv = _norm(vals)
+            fig.add_trace(go.Scatter(
+                x=nv.index, y=nv,
+                line=dict(color=color, width=1.0, dash=dash),
+                showlegend=False, hoverinfo='skip',
+            ), row=row, col=col)
+
+        def _r(a, b):
+            al = pd.concat([a.rename('a'), b.rename('b')], axis=1).dropna()
+            if len(al) < 10:
+                return float('nan')
+            return al['a'].corr(al['b'])
+
+        r1, r2, r3 = _r(s, idx_s), _r(cum_s, idx_s), _r(diff_cum, idx_s)
+        n = (row - 1) * 2 + col
+
+        def _rfmt(r):
+            return f'{r:+.2f}' if not pd.isna(r) else '─'
+
+        ann = f"지표 {_rfmt(r1)}  누적 {_rfmt(r2)}  기울기↑누적 {_rfmt(r3)}"
+        fig.add_annotation(
+            x=0.01, y=0.97,
+            xref=f'x{n} domain', yref=f'y{n} domain',
+            xanchor='left', yanchor='top',
+            text=ann, showarrow=False,
+            font=dict(size=7.5, color='#666'),
+            bgcolor='rgba(14,14,17,0.75)', borderpad=2,
+        )
+
     _specs = [[{"secondary_y": True}, {"secondary_y": True}]] * 4
     fig = make_subplots(
         rows=4, cols=2,
@@ -2586,6 +2667,7 @@ def make_market_chart(df, market_name):
         name="시총가중", line=dict(color="#00FF7F", width=1.5)), row=1, col=1)
     fig.add_trace(go.Scatter(x=df.index, y=df['균일가중'],
         name="균일가중", line=dict(color="#FFD700", width=1.5)), row=1, col=1)
+    _cum_overlays(fig, 1, 1, df['균일가중'])
 
     # ── Row 1 right: 확산비율 (균일가중 ÷ 시총가중) + 지수 배경
     # 비율 상승 = 균일가중 우세 = 장세 확산, 하락 = 시총가중 우세 = 대형주 쏠림
@@ -2594,6 +2676,7 @@ def make_market_chart(df, market_name):
     fig.add_trace(go.Scatter(x=df.index, y=ratio,
         line=dict(color="#FFD700", width=1.5), showlegend=False), row=1, col=2)
     fig.add_trace(_hl(float(ratio.mean()), "rgba(255,255,255,0.12)", 'dot'), row=1, col=2)
+    _cum_overlays(fig, 1, 2, ratio.dropna())
 
     # ── Row 2 left: ADL + MA20 + 지수 배경
     _idx_overlay(fig, 2, 1)
@@ -2610,6 +2693,7 @@ def make_market_chart(df, market_name):
             showlegend=False,
         ), row=2, col=1)
     fig.add_trace(_hl(0, "rgba(255,255,255,0.15)", 'dot'), row=2, col=1)
+    _cum_overlays(fig, 2, 1, df['ADL'].dropna())
 
     # ── Row 2 right: 52주 신고가 비율 + 지수 배경
     if has_nh:
@@ -2636,6 +2720,7 @@ def make_market_chart(df, market_name):
         _nh_all = pd.concat([nh, df['NH비율MA10'].dropna()]) if has_nh_ma else nh
         nh_max = max(float(_nh_all.max()), 30) * 1.2 if not _nh_all.empty else 40
         fig.update_yaxes(range=[0, nh_max], row=2, col=2)
+        _cum_overlays(fig, 2, 2, df['NH비율'].dropna())
     else:
         fig.add_annotation(
             text="52주 데이터 부족 (기간 늘리기)", x=0.5, y=0.5,
@@ -2671,6 +2756,7 @@ def make_market_chart(df, market_name):
             fig.add_trace(_hl(lvl, c, 'dot'), row=3, col=1)
         summ_bound = max(abs(float(_summ_valid.max())), abs(float(_summ_valid.min())), 50) * 1.25
         fig.update_yaxes(range=[-summ_bound, summ_bound], row=3, col=1)
+        _cum_overlays(fig, 3, 1, df['서머레이션'].dropna())
 
     # ── Row 3 right: VIX / HV20 + 지수 배경
     if has_vix:
@@ -2690,6 +2776,7 @@ def make_market_chart(df, market_name):
         fig.update_yaxes(range=[vix_med - half, vix_med + half], row=3, col=2)
         for lvl, c in zip(vix_ref, vix_clrs):
             fig.add_trace(_hl(lvl, c), row=3, col=2)
+        _cum_overlays(fig, 3, 2, df['VIX'].dropna())
     else:
         fig.add_annotation(
             text=f"{vix_label} 데이터 없음", x=0.5, y=0.5,
@@ -2731,6 +2818,7 @@ def make_market_chart(df, market_name):
                          "rgba(75,255,179,0.45)"]):
         fig.add_trace(_hl(lvl_t, c), row=4, col=1)
     fig.update_yaxes(range=[0, 100], row=4, col=1)
+    _cum_overlays(fig, 4, 1, df['상승비율'].dropna())
 
     # ── Row 4 right: 100MA 상위 + 20MA 상위 오버레이 + 편차 + 지수 배경
     if has_200:
@@ -2767,6 +2855,7 @@ def make_market_chart(df, market_name):
                        (50, "rgba(255,255,255,0.12)"),
                        (30, "rgba(255,75,110,0.45)")]:
             fig.add_trace(_hl(lvl, c), row=4, col=2)
+        _cum_overlays(fig, 4, 2, df['100MA상위'].dropna())
 
     fig.update_layout(
         height=1100,
