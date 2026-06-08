@@ -802,7 +802,10 @@ def _fetch_kis_today(krx_code: str):
             "tr_id": "FHKST03010200",
             "custtype": "P",
         }
-        all_bars, qtime = [], _dt.now().strftime("%H%M%S")
+        from datetime import timezone as _tz, timedelta as _td
+        _kst = _tz(_td(hours=9))
+        _now_kst = _dt.now(_kst)
+        all_bars, qtime = [], _now_kst.strftime("%H%M%S")
         for _ in range(3):
             resp = _req.get(
                 f"{base}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
@@ -823,7 +826,7 @@ def _fetch_kis_today(krx_code: str):
             qtime = last_t
         if not all_bars:
             return pd.DataFrame()
-        today = _dt.now().strftime("%Y%m%d")
+        today = _now_kst.strftime("%Y%m%d")
         df = pd.DataFrame(all_bars)
         date_col = "STCK_BSOP_DATE" if "STCK_BSOP_DATE" in df.columns else None
         df["_dt"] = pd.to_datetime(
@@ -883,7 +886,7 @@ def fetch_intraday(ticker, interval):
                                Low=('Low', 'min'),   Close=('Close', 'last'),
                                Volume=('Volume', 'sum'))
                           .dropna(subset=['Close']))
-                _today = pd.Timestamp.now().normalize()
+                _today = pd.Timestamp.now('Asia/Seoul').normalize().tz_localize(None)
                 df_hist = (pd.concat([df_hist[df_hist.index < _today], _kis_r])
                            .sort_index()
                            .loc[lambda x: ~x.index.duplicated(keep='last')])
