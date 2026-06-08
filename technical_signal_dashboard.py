@@ -758,6 +758,90 @@ def _fetch_intraday_pykrx(krx_code: str, interval: str, lookback_days: int = 10)
     return ohlcv[['Open', 'High', 'Low', 'Close', 'Volume']]
 
 
+# ── KIS API (한국투자증권) 실시간 분봉 ─────────────────────────────────────────
+
+@st.cache_data(ttl=1800)
+def _kis_token():
+    """KIS OAuth 토큰 발급 (30분 캐시). 실패/미설정 시 None 반환."""
+    try:
+        import requests as _req
+        cfg = dict(st.secrets.get("kis", {}))
+        if not cfg.get("app_key"):
+            return None
+        _base = ("https://openapivts.koreainvestment.com:9443"
+                 if cfg.get("is_mock", True)
+                 else "https://openapi.koreainvestment.com:9443")
+        r = _req.post(f"{_base}/oauth2/tokenP",
+                      json={"grant_type": "client_credentials",
+                            "appkey": cfg["app_key"],
+                            "appsecret": cfg["app_secret"]},
+                      timeout=10)
+        r.raise_for_status()
+        return r.json().get("access_token")
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=30)
+def _fetch_kis_today(krx_code: str):
+    """KIS 당일 1분봉 조회 (최대 90봉, 3페이지). 실패 시 빈 DataFrame."""
+    try:
+        import requests as _req
+        from datetime import datetime as _dt
+        token = _kis_token()
+        if not token:
+            return pd.DataFrame()
+        cfg = dict(st.secrets.get("kis", {}))
+        base = ("https://openapivts.koreainvestment.com:9443"
+                if cfg.get("is_mock", True)
+                else "https://openapi.koreainvestment.com:9443")
+        hdrs = {
+            "authorization": f"Bearer {token}",
+            "appkey": cfg["app_key"],
+            "appsecret": cfg["app_secret"],
+            "tr_id": "FHKST03010200",
+            "custtype": "P",
+        }
+        all_bars, qtime = [], _dt.now().strftime("%H%M%S")
+        for _ in range(3):
+            resp = _req.get(
+                f"{base}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
+                headers=hdrs,
+                params={"FID_ETC_CLS_CODE": "",
+                        "FID_COND_MRKT_DIV_CODE": "J",
+                        "FID_INPUT_ISCD": krx_code,
+                        "FID_INPUT_HOUR_1": qtime,
+                        "FID_PW_DATA_INCU_YN": "Y"},
+                timeout=10)
+            rows = resp.json().get("output2") or []
+            if not rows:
+                break
+            all_bars.extend(rows)
+            last_t = rows[-1].get("STCK_CNTG_HOUR", "")
+            if not last_t or last_t == qtime:
+                break
+            qtime = last_t
+        if not all_bars:
+            return pd.DataFrame()
+        today = _dt.now().strftime("%Y%m%d")
+        df = pd.DataFrame(all_bars)
+        date_col = "STCK_BSOP_DATE" if "STCK_BSOP_DATE" in df.columns else None
+        df["_dt"] = pd.to_datetime(
+            (df[date_col] if date_col else today) + df["STCK_CNTG_HOUR"],
+            format="%Y%m%d%H%M%S")
+        df = (df.set_index("_dt")
+                .rename(columns={"STCK_OPRC": "Open", "STCK_HGPR": "High",
+                                 "STCK_LWPR": "Low",  "STCK_PRPR": "Close",
+                                 "CNTG_VOL":  "Volume"})
+                .sort_index())
+        for c in ["Open", "High", "Low", "Close", "Volume"]:
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c], errors="coerce")
+        return df[["Open", "High", "Low", "Close", "Volume"]].dropna(subset=["Close"])
+    except Exception:
+        return pd.DataFrame()
+
+
 @st.cache_data(ttl=60)
 def fetch_intraday(ticker, interval):
     """분봉 OHLCV (5m/15m/30m/60m). TTL=60s → 새로고침 시 최신 분봉 반영.
@@ -784,6 +868,25 @@ def fetch_intraday(ticker, interval):
             errors.append(f"yfinance: 빈 결과 (rows={len(raw) if not raw.empty else 0})")
     except Exception as e:
         errors.append(f"yfinance: {type(e).__name__}: {e}")
+
+    # ── KIS 실시간 당일 분봉으로 최신 캔들 보완 (한국 종목 + KIS 설정 시)
+    if _kor and not df_hist.empty:
+        _krx = ticker.split('.')[0]
+        if _krx and _krx[0].isdigit():
+            _kis_1m = _fetch_kis_today(_krx)
+            if not _kis_1m.empty:
+                _rule = {"5m": "5min", "15m": "15min",
+                         "30m": "30min", "60m": "60min"}.get(interval, "15min")
+                _kis_r = (_kis_1m
+                          .resample(_rule, closed='left', label='left')
+                          .agg(Open=('Open', 'first'), High=('High', 'max'),
+                               Low=('Low', 'min'),   Close=('Close', 'last'),
+                               Volume=('Volume', 'sum'))
+                          .dropna(subset=['Close']))
+                _today = pd.Timestamp.now().normalize()
+                df_hist = (pd.concat([df_hist[df_hist.index < _today], _kis_r])
+                           .sort_index()
+                           .loc[lambda x: ~x.index.duplicated(keep='last')])
 
     if not df_hist.empty:
         cols = [c for c in ['Open', 'High', 'Low', 'Close', 'Volume'] if c in df_hist.columns]
