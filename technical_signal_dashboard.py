@@ -56,23 +56,14 @@ st.markdown("""
 
 st.markdown("""
     <style>
-    [data-testid="stHeader"]               { background: transparent !important; border: none !important; height: 0 !important; overflow: visible !important; }
+    [data-testid="stHeader"]               { display: none !important; }
     [data-testid="stToolbar"]              { display: none !important; }
     [data-testid="stDecoration"]           { display: none !important; }
     [data-testid="stStatusWidget"]         { display: none !important; }
     #MainMenu                              { display: none !important; }
     footer                                 { display: none !important; }
-    [data-testid="stSidebarCollapsedControl"] {
-        position: fixed !important; top: 8px !important; left: 8px !important;
-        z-index: 99999 !important; display: flex !important;
-        visibility: visible !important; opacity: 1 !important; }
-    [data-testid="stSidebarCollapsedControl"] button {
-        background: rgba(255,255,255,0.08) !important;
-        border: 1px solid rgba(255,255,255,0.15) !important;
-        color: #EDEDED !important; border-radius: 6px !important;
-        width: 32px !important; height: 32px !important;
-        display: flex !important; align-items: center !important; justify-content: center !important; }
-    [data-testid="stSidebarCollapseButton"] { display: flex !important; visibility: visible !important; }
+    [data-testid="stSidebarCollapseButton"]   { display: none !important; }
+    [data-testid="stSidebarCollapsedControl"] { display: none !important; }
     [data-testid="stBottom"]              { display: none !important; }
     [data-testid="embeddedAppMetaInfoBar"] { display: none !important; }
     [class*="embeddedAppMetaInfoBar"]      { display: none !important; }
