@@ -332,7 +332,9 @@ DARK_CSS = """
     .main .block-container { padding: 1rem 2rem; max-width: 1400px; }
 
     section[data-testid="stSidebar"] {
-        width: 260px !important; background: #111113 !important;
+        width: 260px !important; min-width: 260px !important;
+        transform: translateX(0) !important;
+        background: #111113 !important;
         border-right: 1px solid rgba(255,255,255,0.08) !important; }
     div[data-testid="stSidebarContent"] { padding: 6px 12px; }
     div[data-testid="stSidebarContent"] p strong {
