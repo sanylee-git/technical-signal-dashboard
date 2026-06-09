@@ -883,6 +883,14 @@ def fetch_intraday(ticker, interval):
         if _krx and _krx[0].isdigit():
             _kis_1m = _fetch_kis_today(_krx)
             if not _kis_1m.empty:
+                # 장중(09:00~15:30) 데이터만 사용 — 장외 시간 봉 제거
+                from datetime import timezone as _tz2, timedelta as _td2
+                _kst2 = _tz2(_td2(hours=9))
+                _today_str = pd.Timestamp.now(tz='Asia/Seoul').strftime('%Y-%m-%d')
+                _mkt_open  = pd.Timestamp(f"{_today_str} 09:00:00")
+                _mkt_close = pd.Timestamp(f"{_today_str} 15:30:00")
+                _kis_1m = _kis_1m[(_kis_1m.index >= _mkt_open) & (_kis_1m.index <= _mkt_close)]
+            if not _kis_1m.empty:
                 _rule = {"5m": "5min", "15m": "15min",
                          "30m": "30min", "60m": "60min"}.get(interval, "15min")
                 _kis_r = (_kis_1m
@@ -3827,12 +3835,12 @@ def main():
             except Exception as _e:
                 st.write(f"_fetch_kis_today 오류: {_e}")
             if chart_mode == "분봉":
-                try:
-                    _idf, _ierr = fetch_intraday("005930.KS", yf_interval)
-                    st.write(f"fetch_intraday {yf_interval}: {len(_idf)}행  |  최신봉={_idf.index[-1] if not _idf.empty else 'empty'}")
-                    if _ierr: st.write(f"  에러: {_ierr}")
-                except Exception as _e:
-                    st.write(f"fetch_intraday 오류: {_e}")
+                for _test_tkr in ["005930.KS", "000660.KS"]:
+                    try:
+                        _idf, _ierr = fetch_intraday(_test_tkr, yf_interval)
+                        st.write(f"fetch_intraday {_test_tkr} {yf_interval}: {len(_idf)}행  최신봉={_idf.index[-1] if not _idf.empty else 'empty'}")
+                    except Exception as _e:
+                        st.write(f"fetch_intraday {_test_tkr} 오류: {_e}")
         # ── END DEBUG ────────────────────────────────────────────────
 
         # 자동 새로고침 (분봉 모드 + 토글 ON 일 때만)
