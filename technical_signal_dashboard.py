@@ -1273,16 +1273,16 @@ def make_detail_chart(ohlcv, name, period_days,
         showlegend=False, hoverinfo='skip'), row=1, col=1)
     fig.add_trace(go.Scatter(x=disp, y=sma[disp],
         line=dict(color="rgba(120,126,231,0.4)", width=1, dash='dot'),
-        showlegend=False, name="SMA20", hoverinfo='skip'), row=1, col=1)
-    _bb_cd = list(zip(upper[disp].values, sma[disp].values, lower[disp].values))
+        showlegend=False, name="SMA20",
+        hovertemplate="SMA20: %{y:,.0f}<extra></extra>"), row=1, col=1)
+    _bb_cd = list(zip(upper[disp].values, lower[disp].values))
     fig.add_trace(go.Scatter(x=disp, y=close[disp],
         name=name, line=dict(color="#EDEDED", width=1.5),
         customdata=_bb_cd,
         hovertemplate=(
             "종가: %{y:,.0f}<br>"
             "BB상단: %{customdata[0]:,.0f}<br>"
-            "SMA20: %{customdata[1]:,.0f}<br>"
-            "BB하단: %{customdata[2]:,.0f}"
+            "BB하단: %{customdata[1]:,.0f}"
             "<extra></extra>"
         )), row=1, col=1)
 
