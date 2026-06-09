@@ -855,7 +855,8 @@ def fetch_intraday(ticker, interval):
 
     df_hist = pd.DataFrame()
     try:
-        raw = yf.download(ticker, period='60d', interval=interval, progress=False)
+        _period = {"5m": "5d", "15m": "7d", "30m": "14d", "60m": "30d"}.get(interval, "60d")
+        raw = yf.download(ticker, period=_period, interval=interval, progress=False)
         df_hist = _normalize_yf_ohlcv(raw)
         if not df_hist.empty and _kor:
             try:
@@ -886,8 +887,7 @@ def fetch_intraday(ticker, interval):
                                Low=('Low', 'min'),   Close=('Close', 'last'),
                                Volume=('Volume', 'sum'))
                           .dropna(subset=['Close']))
-                _today = pd.Timestamp.now('Asia/Seoul').normalize().tz_localize(None)
-                df_hist = (pd.concat([df_hist[df_hist.index < _today], _kis_r])
+                df_hist = (pd.concat([df_hist, _kis_r])
                            .sort_index()
                            .loc[lambda x: ~x.index.duplicated(keep='last')])
 
