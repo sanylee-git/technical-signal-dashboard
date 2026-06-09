@@ -1231,15 +1231,11 @@ def make_detail_chart(ohlcv, name, period_days,
     _n_disp = display_bars if display_bars is not None else period_days
     disp = close.index[-_n_disp:]
 
-    # 동적 RSI 파쿠르 플래그 + 확정
-    dyn_flag_buy_idx  = disp[dyn_of[disp].values]
-    dyn_flag_sell_idx = disp[dyn_oh[disp].values]
+    # 동적 RSI 파쿠르 확정
     dyn_buy_idx  = disp[dyn_buy[disp].values]
     dyn_sell_idx = disp[dyn_sell[disp].values]
 
-    # 고정 밴드 RSI 파쿠르 플래그 + 확정
-    band_flag_buy_idx  = disp[band_of[disp].values]
-    band_flag_sell_idx = disp[band_oh[disp].values]
+    # 고정 밴드 RSI 파쿠르 확정
     band_buy_idx  = disp[band_buy[disp].values]
     band_sell_idx = disp[band_sell[disp].values]
 
@@ -1278,20 +1274,6 @@ def make_detail_chart(ohlcv, name, period_days,
         line=dict(color="rgba(120,126,231,0.3)", width=0),
         showlegend=False, name="BB하단",
         hovertemplate="BB하단: %{y:,.0f}<extra></extra>"), row=1, col=1)
-
-    # 플래그 ☆ (속빈 별, 작음) — 확정 신호 아래 레이어
-    for _idx, _color, _label in [
-        (dyn_flag_buy_idx,  '#4BFFB3', "☆ 동적+BB 매수 플래그"),
-        (dyn_flag_sell_idx, '#FF4B6E', "☆ 동적+BB 매도 플래그"),
-        (band_flag_buy_idx, '#4BFFB3', "☆ 밴드+BB 매수 플래그"),
-        (band_flag_sell_idx,'#FF4B6E', "☆ 밴드+BB 매도 플래그"),
-    ]:
-        _x = _idx if len(_idx) > 0 else []
-        _y = close[_idx] if len(_idx) > 0 else []
-        fig.add_trace(go.Scatter(x=_x, y=_y, mode='markers',
-            marker=dict(symbol='star-open', color=_color, size=7,
-                        line=dict(color=_color, width=1.5)),
-            name=_label, hoverinfo='skip'), row=1, col=1)
 
     # 동적+BB 확정 ★ / 밴드+BB 확정 ● — 시그널 없어도 레전드 항목은 항상 표시
     for _idx, _color, _outline, _sym, _sz, _label in [
