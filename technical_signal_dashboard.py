@@ -882,14 +882,11 @@ def fetch_intraday(ticker, interval):
         _krx = ticker.split('.')[0]
         if _krx and _krx[0].isdigit():
             _kis_1m = _fetch_kis_today(_krx)
+            # 거래시간(09:00~15:30) 외 봉 제거
             if not _kis_1m.empty:
-                # 장중(09:00~15:30) 데이터만 사용 — 장외 시간 봉 제거
-                from datetime import timezone as _tz2, timedelta as _td2
-                _kst2 = _tz2(_td2(hours=9))
-                _today_str = pd.Timestamp.now(tz='Asia/Seoul').strftime('%Y-%m-%d')
-                _mkt_open  = pd.Timestamp(f"{_today_str} 09:00:00")
-                _mkt_close = pd.Timestamp(f"{_today_str} 15:30:00")
-                _kis_1m = _kis_1m[(_kis_1m.index >= _mkt_open) & (_kis_1m.index <= _mkt_close)]
+                _h = _kis_1m.index.hour
+                _m = _kis_1m.index.minute
+                _kis_1m = _kis_1m[(_h > 8) & ((_h < 15) | ((_h == 15) & (_m <= 30)))]
             if not _kis_1m.empty:
                 _rule = {"5m": "5min", "15m": "15min",
                          "30m": "30min", "60m": "60min"}.get(interval, "15min")
@@ -902,6 +899,10 @@ def fetch_intraday(ticker, interval):
                 df_hist = (pd.concat([df_hist, _kis_r])
                            .sort_index()
                            .loc[lambda x: ~x.index.duplicated(keep='last')])
+        # yfinance 아티팩트(자정 봉 등) + 장외 봉 최종 제거
+        _h2 = df_hist.index.hour
+        _m2 = df_hist.index.minute
+        df_hist = df_hist[(_h2 > 8) & ((_h2 < 15) | ((_h2 == 15) & (_m2 <= 30)))]
 
     if not df_hist.empty:
         cols = [c for c in ['Open', 'High', 'Low', 'Close', 'Volume'] if c in df_hist.columns]
