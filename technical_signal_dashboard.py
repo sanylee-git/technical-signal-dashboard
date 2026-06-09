@@ -57,6 +57,8 @@ st.markdown("""
 st.markdown("""
     <style>
     [data-testid="stHeader"]               { display: none !important; }
+    [data-testid="stSidebarCollapsedControl"] { display: flex !important; visibility: visible !important; }
+    [data-testid="stSidebarCollapseButton"]   { display: flex !important; visibility: visible !important; }
     [data-testid="stToolbar"]              { display: none !important; }
     [data-testid="stDecoration"]           { display: none !important; }
     [data-testid="stStatusWidget"]         { display: none !important; }
@@ -3776,6 +3778,31 @@ def main():
     # TAB 1 — 신호 스캐너
     # ═══════════════════════════════════════════════════════════
     with tab1:
+        # ── DEBUG (KIS 동작 확인 후 삭제) ────────────────────────────
+        with st.expander("🔍 KIS 디버그 (확인 후 삭제)", expanded=True):
+            try:
+                _tok = _kis_token()
+                st.write(f"KIS 토큰: {'✅ 발급됨' if _tok else '❌ None — 키 오류 또는 is_mock=true'}")
+            except Exception as _e:
+                st.write(f"KIS 토큰 오류: {_e}")
+            try:
+                _kdf = _fetch_kis_today("005930")
+                if _kdf.empty:
+                    st.write("삼성전자 KIS 분봉: ❌ 빈 DataFrame (실계좌 키 미적용 or API 오류)")
+                else:
+                    st.write(f"삼성전자 KIS 분봉: ✅ {len(_kdf)}행  |  첫봉={_kdf.index[0]}  최신봉={_kdf.index[-1]}")
+            except Exception as _e:
+                st.write(f"KIS 분봉 오류: {_e}")
+            if chart_mode == "분봉":
+                try:
+                    _idf, _ierr = fetch_intraday("005930.KS", yf_interval)
+                    st.write(f"fetch_intraday {yf_interval}: {len(_idf)}행  |  최신봉={_idf.index[-1] if not _idf.empty else 'empty'}")
+                    if _ierr:
+                        st.write(f"  에러: {_ierr}")
+                except Exception as _e:
+                    st.write(f"fetch_intraday 오류: {_e}")
+        # ── END DEBUG ────────────────────────────────────────────────
+
         # 자동 새로고침 (분봉 모드 + 토글 ON 일 때만)
         if auto_refresh and AUTOREFRESH_AVAILABLE:
             _count = st_autorefresh(interval=refresh_ms, key="intra_autorefresh")
