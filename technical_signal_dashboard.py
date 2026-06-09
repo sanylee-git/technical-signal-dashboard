@@ -1273,9 +1273,19 @@ def make_detail_chart(ohlcv, name, period_days,
         showlegend=False, hoverinfo='skip'), row=1, col=1)
     fig.add_trace(go.Scatter(x=disp, y=sma[disp],
         line=dict(color="rgba(120,126,231,0.4)", width=1, dash='dot'),
-        showlegend=False, name="SMA20"), row=1, col=1)
+        showlegend=False, name="SMA20", hoverinfo='skip'), row=1, col=1)
+    _bb_cd = list(zip(upper[disp].values, sma[disp].values, lower[disp].values))
     fig.add_trace(go.Scatter(x=disp, y=close[disp],
-        name=name, line=dict(color="#EDEDED", width=1.5)), row=1, col=1)
+        name=name, line=dict(color="#EDEDED", width=1.5),
+        customdata=_bb_cd,
+        hovertemplate=(
+            "<b>%{x}</b><br>"
+            "종가: %{y:,.0f}<br>"
+            "BB상단: %{customdata[0]:,.0f}<br>"
+            "SMA20: %{customdata[1]:,.0f}<br>"
+            "BB하단: %{customdata[2]:,.0f}"
+            "<extra></extra>"
+        )), row=1, col=1)
 
     # 동적+BB 확정 ★ / 밴드+BB 확정 ● — 시그널 없어도 레전드 항목은 항상 표시
     for _idx, _color, _outline, _sym, _sz, _label in [
