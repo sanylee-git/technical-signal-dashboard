@@ -3812,9 +3812,20 @@ def main():
                         timeout=10)
                     _rj = _r.json()
                     st.write(f"HTTP {_r.status_code}  |  rt_cd={_rj.get('rt_cd')}  msg={_rj.get('msg1','')}")
-                    st.write(f"output2 행수: {len(_rj.get('output2') or [])}")
+                    _rows = _rj.get('output2') or []
+                    st.write(f"output2 행수: {len(_rows)}")
+                    if _rows:
+                        st.write(f"  첫행 시각={_rows[0].get('STCK_CNTG_HOUR')}  마지막행 시각={_rows[-1].get('STCK_CNTG_HOUR')}")
                 except Exception as _e:
                     import traceback; st.write(f"API 직접 호출 오류:\n{traceback.format_exc()}")
+            try:
+                _kdf = _fetch_kis_today("005930")
+                if _kdf.empty:
+                    st.write("_fetch_kis_today: ❌ 빈 DataFrame (파싱 실패 or 데이터 없음)")
+                else:
+                    st.write(f"_fetch_kis_today: ✅ {len(_kdf)}행  첫={_kdf.index[0]}  최신={_kdf.index[-1]}")
+            except Exception as _e:
+                st.write(f"_fetch_kis_today 오류: {_e}")
             if chart_mode == "분봉":
                 try:
                     _idf, _ierr = fetch_intraday("005930.KS", yf_interval)
