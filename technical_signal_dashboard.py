@@ -1279,7 +1279,6 @@ def make_detail_chart(ohlcv, name, period_days,
         name=name, line=dict(color="#EDEDED", width=1.5),
         customdata=_bb_cd,
         hovertemplate=(
-            "<b>%{x}</b><br>"
             "종가: %{y:,.0f}<br>"
             "BB상단: %{customdata[0]:,.0f}<br>"
             "SMA20: %{customdata[1]:,.0f}<br>"
@@ -1299,7 +1298,7 @@ def make_detail_chart(ohlcv, name, period_days,
         fig.add_trace(go.Scatter(x=_x, y=_y, mode='markers',
             marker=dict(symbol=_sym, color=_color, size=_sz,
                         line=dict(color=_outline, width=1 if _sym == 'star' else 2.5)),
-            name=_label), row=1, col=1)
+            name=_label, hoverinfo='skip'), row=1, col=1)
 
     # ══════════════════════════════════════════
     # ROW 2: 동적 RSI
