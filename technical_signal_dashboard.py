@@ -29,7 +29,7 @@ try:
     _PYKRX_IMPORT_ERR = None
 except Exception as _e:
     PYKRX_AVAILABLE = False
-    _PYKRX_IMPORT_ERR = f"{type(_e).__name__}: {_e}"
+    pass
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -810,24 +810,18 @@ def _fetch_kis_today(krx_code: str):
         _kst = _tz(_td(hours=9))
         _now_kst = _dt.now(_kst)
         all_bars, qtime = [], _now_kst.strftime("%H%M%S")
-        for _ in range(1):
-            resp = _req.get(
-                f"{base}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
-                headers=hdrs,
-                params={"FID_ETC_CLS_CODE": "",
-                        "FID_COND_MRKT_DIV_CODE": "J",
-                        "FID_INPUT_ISCD": krx_code,
-                        "FID_INPUT_HOUR_1": qtime,
-                        "FID_PW_DATA_INCU_YN": "Y"},
-                timeout=10)
-            rows = resp.json().get("output2") or []
-            if not rows:
-                break
+        resp = _req.get(
+            f"{base}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
+            headers=hdrs,
+            params={"FID_ETC_CLS_CODE": "",
+                    "FID_COND_MRKT_DIV_CODE": "J",
+                    "FID_INPUT_ISCD": krx_code,
+                    "FID_INPUT_HOUR_1": qtime,
+                    "FID_PW_DATA_INCU_YN": "Y"},
+            timeout=10)
+        rows = resp.json().get("output2") or []
+        if rows:
             all_bars.extend(rows)
-            last_t = rows[-1].get("stck_cntg_hour", "")
-            if not last_t or last_t == qtime:
-                break
-            qtime = last_t
         if not all_bars:
             return pd.DataFrame()
         today = _now_kst.strftime("%Y%m%d")
@@ -1237,19 +1231,11 @@ def make_detail_chart(ohlcv, name, period_days,
     _n_disp = display_bars if display_bars is not None else period_days
     disp = close.index[-_n_disp:]
 
-    # BB 터치
-    upper_touch = disp[(close[disp] >= upper[disp]).values]
-    lower_touch = disp[(close[disp] <= lower[disp]).values]
-
-    # 동적 RSI 파쿠르 플래그 + 확정
-    dyn_flag_buy_idx  = disp[dyn_of[disp].values]
-    dyn_flag_sell_idx = disp[dyn_oh[disp].values]
+    # 동적 RSI 파쿠르 확정
     dyn_buy_idx  = disp[dyn_buy[disp].values]
     dyn_sell_idx = disp[dyn_sell[disp].values]
 
-    # 고정 밴드 RSI 파쿠르
-    band_flag_buy_idx  = disp[band_of[disp].values]
-    band_flag_sell_idx = disp[band_oh[disp].values]
+    # 고정 밴드 RSI 파쿠르 확정
     band_buy_idx  = disp[band_buy[disp].values]
     band_sell_idx = disp[band_sell[disp].values]
 
@@ -2764,7 +2750,6 @@ def make_market_chart(df, market_name):
             return f'{r:+.2f}' if not pd.isna(r) else '─'
 
         ann = f"지표 {_rfmt(r1)}  누적 {_rfmt(r2)}  기울기↑누적 {_rfmt(r3)}"
-        # row_heights=[0.22,0.22,0.28,0.28], v_spacing=0.09, h_spacing=0.08
         # paper 좌표: 각 서브플롯 좌상단 근처
         _ytop  = {1: 0.99, 2: 0.74, 3: 0.49, 4: 0.20}
         _xleft = {1: 0.02, 2: 0.54}
@@ -3852,7 +3837,7 @@ def main():
 
         # 자동 새로고침 (분봉 모드 + 토글 ON 일 때만)
         if auto_refresh and AUTOREFRESH_AVAILABLE:
-            _count = st_autorefresh(interval=refresh_ms, key="intra_autorefresh")
+            st_autorefresh(interval=refresh_ms, key="intra_autorefresh")
         elif auto_refresh and not AUTOREFRESH_AVAILABLE:
             st.warning("⚠️ 자동 새로고침을 사용하려면 `streamlit-autorefresh` 패키지가 필요합니다.")
 
