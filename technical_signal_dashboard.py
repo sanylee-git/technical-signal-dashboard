@@ -56,9 +56,7 @@ st.markdown("""
 
 st.markdown("""
     <style>
-    [data-testid="stHeader"]               { display: none !important; }
-    [data-testid="stSidebarCollapsedControl"] { display: flex !important; visibility: visible !important; }
-    [data-testid="stSidebarCollapseButton"]   { display: flex !important; visibility: visible !important; }
+    [data-testid="stHeader"]               { background: transparent !important; border: none !important; }
     [data-testid="stToolbar"]              { display: none !important; }
     [data-testid="stDecoration"]           { display: none !important; }
     [data-testid="stStatusWidget"]         { display: none !important; }
@@ -3780,25 +3778,44 @@ def main():
     with tab1:
         # ── DEBUG (KIS 동작 확인 후 삭제) ────────────────────────────
         with st.expander("🔍 KIS 디버그 (확인 후 삭제)", expanded=True):
+            import requests as _req
+            from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+            _kst = _tz(_td(hours=9))
+            _now_kst = _dt.now(_kst)
+            st.write(f"현재 KST: {_now_kst.strftime('%H:%M:%S')}  (장중: 09:00~15:30)")
             try:
                 _tok = _kis_token()
-                st.write(f"KIS 토큰: {'✅ 발급됨' if _tok else '❌ None — 키 오류 또는 is_mock=true'}")
+                st.write(f"KIS 토큰: {'✅ 발급됨' if _tok else '❌ None'}")
             except Exception as _e:
                 st.write(f"KIS 토큰 오류: {_e}")
-            try:
-                _kdf = _fetch_kis_today("005930")
-                if _kdf.empty:
-                    st.write("삼성전자 KIS 분봉: ❌ 빈 DataFrame (실계좌 키 미적용 or API 오류)")
-                else:
-                    st.write(f"삼성전자 KIS 분봉: ✅ {len(_kdf)}행  |  첫봉={_kdf.index[0]}  최신봉={_kdf.index[-1]}")
-            except Exception as _e:
-                st.write(f"KIS 분봉 오류: {_e}")
+                _tok = None
+            if _tok:
+                try:
+                    _cfg = dict(st.secrets.get("kis", {}))
+                    _base = ("https://openapivts.koreainvestment.com:9443"
+                             if _cfg.get("is_mock", True)
+                             else "https://openapi.koreainvestment.com:9443")
+                    st.write(f"API 서버: {'🟡 모의(VTS)' if _cfg.get('is_mock', True) else '🟢 실서버'} — {_base}")
+                    _qtime = _now_kst.strftime("%H%M%S")
+                    _r = _req.get(
+                        f"{_base}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
+                        headers={"authorization": f"Bearer {_tok}",
+                                 "appkey": _cfg["app_key"], "appsecret": _cfg["app_secret"],
+                                 "tr_id": "FHKST03010200", "custtype": "P"},
+                        params={"FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": "J",
+                                "FID_INPUT_ISCD": "005930", "FID_INPUT_HOUR_1": _qtime,
+                                "FID_PW_DATA_INCU_YN": "Y"},
+                        timeout=10)
+                    _rj = _r.json()
+                    st.write(f"HTTP {_r.status_code}  |  rt_cd={_rj.get('rt_cd')}  msg={_rj.get('msg1','')}")
+                    st.write(f"output2 행수: {len(_rj.get('output2') or [])}")
+                except Exception as _e:
+                    import traceback; st.write(f"API 직접 호출 오류:\n{traceback.format_exc()}")
             if chart_mode == "분봉":
                 try:
                     _idf, _ierr = fetch_intraday("005930.KS", yf_interval)
                     st.write(f"fetch_intraday {yf_interval}: {len(_idf)}행  |  최신봉={_idf.index[-1] if not _idf.empty else 'empty'}")
-                    if _ierr:
-                        st.write(f"  에러: {_ierr}")
+                    if _ierr: st.write(f"  에러: {_ierr}")
                 except Exception as _e:
                     st.write(f"fetch_intraday 오류: {_e}")
         # ── END DEBUG ────────────────────────────────────────────────
