@@ -824,7 +824,7 @@ def _fetch_kis_today(krx_code: str):
             if not rows:
                 break
             all_bars.extend(rows)
-            last_t = rows[-1].get("STCK_CNTG_HOUR", "")
+            last_t = rows[-1].get("stck_cntg_hour", "")
             if not last_t or last_t == qtime:
                 break
             qtime = last_t
@@ -832,14 +832,14 @@ def _fetch_kis_today(krx_code: str):
             return pd.DataFrame()
         today = _now_kst.strftime("%Y%m%d")
         df = pd.DataFrame(all_bars)
-        date_col = "STCK_BSOP_DATE" if "STCK_BSOP_DATE" in df.columns else None
+        date_col = "stck_bsop_date" if "stck_bsop_date" in df.columns else None
         df["_dt"] = pd.to_datetime(
-            (df[date_col] if date_col else today) + df["STCK_CNTG_HOUR"],
+            (df[date_col] if date_col else today) + df["stck_cntg_hour"],
             format="%Y%m%d%H%M%S")
         df = (df.set_index("_dt")
-                .rename(columns={"STCK_OPRC": "Open", "STCK_HGPR": "High",
-                                 "STCK_LWPR": "Low",  "STCK_PRPR": "Close",
-                                 "CNTG_VOL":  "Volume"})
+                .rename(columns={"stck_oprc": "Open", "stck_hgpr": "High",
+                                 "stck_lwpr": "Low",  "stck_prpr": "Close",
+                                 "cntg_vol":  "Volume"})
                 .sort_index())
         for c in ["Open", "High", "Low", "Close", "Volume"]:
             if c in df.columns:
@@ -3815,7 +3815,7 @@ def main():
                     _rows = _rj.get('output2') or []
                     st.write(f"output2 행수: {len(_rows)}")
                     if _rows:
-                        st.write(f"  첫행 시각={_rows[0].get('STCK_CNTG_HOUR')}  마지막행 시각={_rows[-1].get('STCK_CNTG_HOUR')}")
+                        st.write(f"  첫행 시각={_rows[0].get('stck_cntg_hour')}  마지막행 시각={_rows[-1].get('stck_cntg_hour')}")
                 except Exception as _e:
                     import traceback; st.write(f"API 직접 호출 오류:\n{traceback.format_exc()}")
             try:
