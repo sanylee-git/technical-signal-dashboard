@@ -1264,6 +1264,7 @@ def make_detail_chart(ohlcv, name, period_days,
     # ══════════════════════════════════════════
     # ROW 1: 가격 + BB  + 파쿠르 마커
     # ══════════════════════════════════════════
+    # BB 밴드 채움용 (hover 없음 - 순서 유지 필요)
     fig.add_trace(go.Scatter(x=disp, y=upper[disp],
         line=dict(color="rgba(120,126,231,0.2)", width=1),
         showlegend=False, hoverinfo='skip'), row=1, col=1)
@@ -1271,20 +1272,22 @@ def make_detail_chart(ohlcv, name, period_days,
         line=dict(color="rgba(120,126,231,0.2)", width=1),
         fill='tonexty', fillcolor="rgba(120,126,231,0.04)",
         showlegend=False, hoverinfo='skip'), row=1, col=1)
+    # hover 트레이스: 추가 순서 = 툴팁 표시 순서 (종가 → SMA20 → BB상단 → BB하단)
+    fig.add_trace(go.Scatter(x=disp, y=close[disp],
+        name=name, line=dict(color="#EDEDED", width=1.5),
+        hovertemplate="종가: %{y:,.0f}<extra></extra>"), row=1, col=1)
     fig.add_trace(go.Scatter(x=disp, y=sma[disp],
         line=dict(color="rgba(120,126,231,0.4)", width=1, dash='dot'),
         showlegend=False, name="SMA20",
         hovertemplate="SMA20: %{y:,.0f}<extra></extra>"), row=1, col=1)
-    _bb_cd = list(zip(upper[disp].values, lower[disp].values))
-    fig.add_trace(go.Scatter(x=disp, y=close[disp],
-        name=name, line=dict(color="#EDEDED", width=1.5),
-        customdata=_bb_cd,
-        hovertemplate=(
-            "종가: %{y:,.0f}<br>"
-            "BB상단: %{customdata[0]:,.0f}<br>"
-            "BB하단: %{customdata[1]:,.0f}"
-            "<extra></extra>"
-        )), row=1, col=1)
+    fig.add_trace(go.Scatter(x=disp, y=upper[disp],
+        line=dict(color="rgba(120,126,231,0.3)", width=0),
+        showlegend=False, name="BB상단",
+        hovertemplate="BB상단: %{y:,.0f}<extra></extra>"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=disp, y=lower[disp],
+        line=dict(color="rgba(120,126,231,0.3)", width=0),
+        showlegend=False, name="BB하단",
+        hovertemplate="BB하단: %{y:,.0f}<extra></extra>"), row=1, col=1)
 
     # 동적+BB 확정 ★ / 밴드+BB 확정 ● — 시그널 없어도 레전드 항목은 항상 표시
     for _idx, _color, _outline, _sym, _sz, _label in [
