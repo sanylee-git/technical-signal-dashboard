@@ -696,6 +696,70 @@ def fetch_close_batch(tickers_tuple, start_str, end_str):
     return result
 
 
+@st.cache_data(ttl=900)
+def fetch_ohlcv_batch(tickers_tuple, start_str, end_str):
+    """다중 종목 OHLCV 일괄 다운로드 → (closes, highs, lows) 반환. fetch_close_batch와 동일한 단일 요청."""
+    tickers = list(tickers_tuple)
+    if not tickers:
+        empty = pd.DataFrame()
+        return empty, empty, empty
+
+    closes = highs = lows = pd.DataFrame()
+
+    def _pick(raw, field):
+        try:
+            if isinstance(raw.columns, pd.MultiIndex):
+                l0 = set(raw.columns.get_level_values(0))
+                if l0 & _OHLCV_FIELDS:
+                    block = raw.get(field, pd.DataFrame())
+                    if isinstance(block, pd.Series):
+                        return pd.DataFrame({tickers[0]: block}) if len(tickers) == 1 else pd.DataFrame()
+                    return block[[t for t in tickers if t in block.columns]]
+                else:
+                    res = {}
+                    for t in tickers:
+                        try:
+                            b = raw[t]
+                            res[t] = b[field] if isinstance(b, pd.DataFrame) and field in b.columns else pd.Series(dtype=float)
+                        except Exception:
+                            pass
+                    return pd.DataFrame(res)
+            elif field in raw.columns and len(tickers) == 1:
+                s = raw[field]
+                return pd.DataFrame({tickers[0]: s.iloc[:, 0] if isinstance(s, pd.DataFrame) else s})
+        except Exception:
+            pass
+        return pd.DataFrame()
+
+    try:
+        raw = yf.download(tickers, start=start_str, end=end_str,
+                          progress=False, group_by='ticker', threads=False)
+        closes = _pick(raw, 'Close')
+        highs  = _pick(raw, 'High')
+        lows   = _pick(raw, 'Low')
+    except Exception:
+        pass
+
+    # 배치 누락 개별 보완
+    for t in tickers:
+        if t not in closes.columns or closes[t].isna().all():
+            try:
+                raw = yf.download(t, start=start_str, end=end_str, progress=False)
+                df = _normalize_yf_ohlcv(raw)
+                if not df.empty:
+                    if 'Close' in df.columns: closes[t] = df['Close']
+                    if 'High'  in df.columns: highs[t]  = df['High']
+                    if 'Low'   in df.columns: lows[t]   = df['Low']
+            except Exception:
+                pass
+
+    for df in [closes, highs, lows]:
+        if not df.empty:
+            df.index = _strip_tz(df.index)
+
+    return closes, highs, lows
+
+
 def _fetch_intraday_pykrx(krx_code: str, interval: str, lookback_days: int = 10) -> pd.DataFrame:
     """pykrx로 한국 종목 분봉 조회 (yfinance fallback용).
     1분봉을 target interval로 리샘플링해 OHLCV 반환.
@@ -1090,12 +1154,12 @@ def calculate_band_signals(close, high, low, upper, lower, rsi,
     return oversold_flag, buy_confirmed, overheat_flag, sell_confirmed
 
 
-def get_current_signals(close, bb_window=20, bb_std=2.0, rsi_period=14,
+def get_current_signals(close, high=None, low=None, bb_window=20, bb_std=2.0, rsi_period=14,
                         rsi_buy_center=40, rsi_sell_center=80, rsi_band=5,
                         rsi_lookback=60, persist=2, phase2_rsi=False):
     """
     현재(오늘) 신호 계산 (스캔 테이블용).
-    Close를 High/Low 대용으로 사용 (배치 스캔 속도 유지).
+    high/low 미전달 시 close 대용 (분봉 배치 스캔).
 
     반환:
       dyn_buy/sell  : 동적 RSI(±0) + BB 파쿠르 확정 신호
@@ -1105,18 +1169,21 @@ def get_current_signals(close, bb_window=20, bb_std=2.0, rsi_period=14,
     if len(close) < bb_window + rsi_period + rsi_lookback // 2:
         return None
 
+    _high = high.reindex(close.index).fillna(close) if high is not None else close
+    _low  = low.reindex(close.index).fillna(close)  if low  is not None else close
+
     sma, upper, lower = calculate_bb(close, bb_window, bb_std)
     rsi = calculate_rsi(close, rsi_period)
     dyn_lower, dyn_upper = calculate_dynamic_rsi_thresholds(rsi, rsi_lookback)
 
     # 동적 파쿠르: rsi_band=0 (동적 퍼센타일 자체가 임계값)
     dyn_of, dyn_buy, dyn_oh, dyn_sell = calculate_parkour_signals(
-        close, close, close, upper, lower, rsi,
+        close, _high, _low, upper, lower, rsi,
         dyn_lower, dyn_upper, rsi_band=0, persist=persist, phase2_rsi=phase2_rsi,
     )
     # 밴드+BB (B안): Phase1=BB터치+RSI극단, Phase2=RSI회복 (persist 없음)
     band_of, band_buy, band_oh, band_sell = calculate_band_signals(
-        close, close, close, upper, lower, rsi,
+        close, _high, _low, upper, lower, rsi,
         rsi_buy_center, rsi_sell_center, rsi_band,
     )
 
@@ -3917,9 +3984,10 @@ def main():
         with st.spinner("📡 데이터 로딩..."):
             if chart_mode == "분봉":
                 closes = fetch_intraday_batch(tickers_tuple, yf_interval)
+                highs = lows = pd.DataFrame()
             else:
-                closes = fetch_close_batch(tickers_tuple, data_start, data_end)
-            us_closes = fetch_close_batch(us_tickers_tuple, data_start, data_end)
+                closes, highs, lows = fetch_ohlcv_batch(tickers_tuple, data_start, data_end)
+            us_closes, us_highs, us_lows = fetch_ohlcv_batch(us_tickers_tuple, data_start, data_end)
 
         # 신호 계산
         signal_rows = []
@@ -3937,8 +4005,10 @@ def main():
             }
             if code in closes.columns:
                 series = closes[code].dropna()
+                _h = highs[code] if not highs.empty and code in highs.columns else None
+                _l = lows[code]  if not lows.empty  and code in lows.columns  else None
                 sig = get_current_signals(
-                    series,
+                    series, high=_h, low=_l,
                     bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
                     rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
                     rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
@@ -3988,8 +4058,10 @@ def main():
             }
             if _code in us_closes.columns:
                 _series = us_closes[_code].dropna()
+                _h = us_highs[_code] if not us_highs.empty and _code in us_highs.columns else None
+                _l = us_lows[_code]  if not us_lows.empty  and _code in us_lows.columns  else None
                 _sig = get_current_signals(
-                    _series,
+                    _series, high=_h, low=_l,
                     bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
                     rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
                     rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
