@@ -649,6 +649,15 @@ def _extract_close_df(raw, tickers):
         return pd.DataFrame()
 
 
+def _is_rate_limit_error(e):
+    """yfinance Rate limit(429 Too Many Requests) 에러 여부 판별.
+    감지되면 같은 루프에서 더 이상 개별 요청을 보내지 않아 429를 추가로
+    유발하지 않도록 한다. 상장폐지 등 일반 오류는 False를 반환해
+    해당 티커만 skip하고 나머지는 계속 진행한다.
+    """
+    return type(e).__name__ == 'YFRateLimitError' or 'Too Many Requests' in str(e) or 'Rate limit' in str(e)
+
+
 @st.cache_data(ttl=900)
 def fetch_ohlcv(ticker, start_str, end_str):
     """단일 종목 OHLCV (BB·RSI 차트용)"""
@@ -688,8 +697,11 @@ def fetch_close_batch(tickers_tuple, start_str, end_str):
                 df = _normalize_yf_ohlcv(raw)
                 if not df.empty and 'Close' in df.columns:
                     result[t] = df['Close']
-            except Exception:
-                pass
+            except Exception as e:
+                # rate limit이면 나머지 티커 개별 요청을 멈춤 (429 추가 유발 방지)
+                if _is_rate_limit_error(e):
+                    break
+                # 그 외(상장폐지 등 단일 티커 오류)는 이 티커만 skip하고 계속
 
     if not result.empty:
         result.index = _strip_tz(result.index)
@@ -750,8 +762,11 @@ def fetch_ohlcv_batch(tickers_tuple, start_str, end_str):
                     if 'Close' in df.columns: closes[t] = df['Close']
                     if 'High'  in df.columns: highs[t]  = df['High']
                     if 'Low'   in df.columns: lows[t]   = df['Low']
-            except Exception:
-                pass
+            except Exception as e:
+                # rate limit이면 나머지 티커 개별 요청을 멈춤 (429 추가 유발 방지)
+                if _is_rate_limit_error(e):
+                    break
+                # 그 외(상장폐지 등 단일 티커 오류)는 이 티커만 skip하고 계속
 
     for df in [closes, highs, lows]:
         if not df.empty:
@@ -3618,6 +3633,27 @@ def make_macro_foreign_flow_chart(market_code: str, years: int = 5, spx_s=None):
 
 
 # ============================================================
+# Arrow 직렬화 안전장치
+# ============================================================
+def make_arrow_safe(df):
+    """st.dataframe(Styler) 표시 전 호출.
+
+    숫자 컬럼에 '—' 같은 placeholder 문자열이 섞여 있으면 pyarrow가
+    double로 변환하지 못해 ArrowInvalid 오류가 난다. object 타입 컬럼 중
+    숫자로 변환 가능한 값이 하나라도 있으면 해당 컬럼을 숫자형으로 바꾸고
+    변환 안 되는 값(예: '—')은 NaN으로 처리한다.
+    완전히 텍스트인 컬럼과 인덱스(예: 종목명/지표명)는 그대로 둔다.
+    """
+    df = df.copy()
+    for col in df.columns:
+        if df[col].dtype == object:
+            converted = pd.to_numeric(df[col], errors='coerce')
+            if converted.notna().any():
+                df[col] = converted
+    return df
+
+
+# ============================================================
 # 메인 앱
 # ============================================================
 def main():
@@ -3777,7 +3813,7 @@ def main():
                     _display_name = _raw_code  # 이름 조회 실패 시 코드만
 
                 st.caption(f"추가 예정: **{_display_name}**")
-                if st.button("➕ 직접 추가", use_container_width=True, key="direct_add_btn"):
+                if st.button("➕ 직접 추가", width="stretch", key="direct_add_btn"):
                     if not any(f['code'] == _direct_code for f in favorites):
                         favorites.append({"code": _direct_code, "name": _display_name})
                         save_favorites(favorites)
@@ -3797,7 +3833,7 @@ def main():
                         format_func=lambda x: x['name'],
                         label_visibility="collapsed",
                     )
-                    if st.button("➕ 추가", use_container_width=True):
+                    if st.button("➕ 추가", width="stretch"):
                         if not any(f['code'] == sel['code'] for f in favorites):
                             # (종목코드) 형식으로 저장
                             _sel_raw = sel['code'].split('.')[0]
@@ -3936,43 +3972,35 @@ def main():
             {"code": "^GSPC",  "name": "S&P 500 (^GSPC)"},
             {"code": "^IXIC",  "name": "나스닥 (^IXIC)"},
             {"code": "^DJI",   "name": "다우존스 (^DJI)"},
-            # ── 단일종목 (이름 오름차순: ASCII → 가나다)
-            {"code": "QBTS",   "name": "D-Wave 퀀텀 (QBTS)"},
-            {"code": "GOOGL",  "name": "구글 알파벳 (GOOGL)"},
+            # ── 원자재
             {"code": "HG=F",   "name": "구리 현물 (Copper Futures)"},
             {"code": "GC=F",   "name": "금 현물 (Gold Futures)"},
-            {"code": "RGTI",   "name": "리게티컴퓨팅 (RGTI)"},
-            {"code": "MSFT",   "name": "마이크로소프트 (MSFT)"},
-            {"code": "BTC-USD", "name": "비트코인 (BTC-USD)"},
-            {"code": "AMZN",   "name": "아마존 (AMZN)"},
-            {"code": "IONQ",   "name": "아이온큐 (IONQ)"},
-            {"code": "NVDA",   "name": "엔비디아 (NVDA)"},
             {"code": "SI=F",   "name": "은 현물 (Silver Futures)"},
+            # ── 비트코인
+            {"code": "BTC-USD", "name": "비트코인 (BTC-USD)"},
+            # ── 이더리움
             {"code": "ETH-USD", "name": "이더리움 (ETH-USD)"},
-            {"code": "TSLA",   "name": "테슬라 (TSLA)"},
+            # ── 주식 본주: 개별종목 (이름 오름차순: ASCII → 가나다)
+            {"code": "GOOGL",  "name": "구글 알파벳 (GOOGL)"},
+            {"code": "MSFT",   "name": "마이크로소프트 (MSFT)"},
+            {"code": "AMZN",   "name": "아마존 (AMZN)"},
             {"code": "PLTR",   "name": "팔란티어 (PLTR)"},
-            # ── ETF 1배 (코드 오름차순)
+            # ── 주식 본주: ETF 1배 (코드 오름차순)
             {"code": "AIPO",   "name": "AIPO AI·IPO ETF"},
-            {"code": "ARKQ",   "name": "ARKQ ARK 자율주행/로봇 ETF"},
             {"code": "BLOK",   "name": "BLOK 블록체인 ETF"},
             {"code": "GRID",   "name": "GRID 스마트그리드 ETF"},
-            {"code": "NLR",    "name": "NLR 원자력 ETF"},
             {"code": "PTIR",   "name": "PTIR 테크인프라 ETF"},
             {"code": "QTUM",   "name": "QTUM 퀀텀컴퓨팅/AI ETF"},
-            {"code": "SHLD",   "name": "SHLD 방산테크 ETF"},
             {"code": "SOXX",   "name": "SOXX 반도체 ETF"},
             {"code": "TAN",    "name": "TAN 태양광 ETF"},
             {"code": "UFO",    "name": "UFO 우주항공 ETF"},
-            {"code": "XLU",    "name": "XLU 유틸리티 ETF"},
-            # ── ETF 2배 (코드 오름차순)
+            # ── 2배 레버리지 (코드 오름차순)
             {"code": "AMZU",   "name": "AMZU 아마존 2X"},
             {"code": "GGLL",   "name": "GGLL 구글 2X"},
             {"code": "MSFU",   "name": "MSFU 마이크로소프트 2X"},
-            {"code": "NVDL",   "name": "NVDL 엔비디아 2X"},
-            {"code": "TSLL",   "name": "TSLL 테슬라 2X"},
             {"code": "UGL",    "name": "UGL 금 2X"},
             {"code": "USD",    "name": "USD 반도체 2X (ProShares)"},
-            # ── ETF 3배 (코드 오름차순)
+            # ── 3배 레버리지 (코드 오름차순)
             {"code": "SOXL",   "name": "SOXL 반도체 3X"},
             {"code": "TECL",   "name": "TECL 테크 3X"},
             {"code": "TQQQ",   "name": "TQQQ 나스닥 3X"},
@@ -3988,6 +4016,19 @@ def main():
             else:
                 closes, highs, lows = fetch_ohlcv_batch(tickers_tuple, data_start, data_end)
             us_closes, us_highs, us_lows = fetch_ohlcv_batch(us_tickers_tuple, data_start, data_end)
+
+        # 데이터 로딩 실패 종목 안내 (해당 종목만 빈 값으로 표시, 앱은 계속 동작)
+        _missing_kr = [f['name'] for f in favorites
+                       if f['code'] not in closes.columns or closes[f['code']].dropna().empty]
+        _missing_us = [t['name'] for t in _US_WATCHLIST
+                       if t['code'] not in us_closes.columns or us_closes[t['code']].dropna().empty]
+        _missing_all = _missing_kr + _missing_us
+        if _missing_all:
+            st.warning(
+                "⚠️ 일부 종목 데이터를 가져오지 못했습니다 (Yahoo Finance 요청 제한/일시 오류일 수 있음): "
+                + ", ".join(_missing_all)
+                + " — 해당 종목은 빈 값으로 표시됩니다. 잠시 후 새로고침하면 자동으로 다시 시도됩니다."
+            )
 
         # 신호 계산
         signal_rows = []
@@ -4205,7 +4246,7 @@ def main():
                     persist=persist, phase2_rsi=phase2_rsi,
                 )
                 if fig:
-                    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
                 else:
                     close = ohlcv['Close'].dropna()
                     have  = len(close)
@@ -4230,7 +4271,7 @@ def main():
                         )
                         price_fig.update_xaxes(**_axis_kw())
                         price_fig.update_yaxes(**_axis_kw())
-                        st.plotly_chart(price_fig, use_container_width=True, config={"displayModeBar": False})
+                        st.plotly_chart(price_fig, width="stretch", config={"displayModeBar": False})
 
         # ── 분봉 차트 ──────────────────────────────────────
         else:
@@ -4256,7 +4297,7 @@ def main():
                     intraday_session=_session,
                 )
                 if fig_intra:
-                    st.plotly_chart(fig_intra, use_container_width=True, config={"displayModeBar": False})
+                    st.plotly_chart(fig_intra, width="stretch", config={"displayModeBar": False})
                 else:
                     close_intra = ohlcv_intra['Close'].dropna()
                     have  = len(close_intra)
@@ -4287,7 +4328,7 @@ def main():
                                 dict(bounds=["sat", "mon"]),
                                 dict(bounds=[close_h, open_h], pattern="hour"),
                             ])
-                        st.plotly_chart(pf, use_container_width=True, config={"displayModeBar": False})
+                        st.plotly_chart(pf, width="stretch", config={"displayModeBar": False})
 
         # ③ 신호 해석 가이드 — 접힘
         with st.expander("📖 신호 해석 가이드", expanded=False):
@@ -4343,7 +4384,7 @@ def main():
             # ── 종합판단 시계열 차트 (전폭)
             _score_ts_fig = make_score_timeseries_chart(market_df, market_choice)
             if _score_ts_fig is not None:
-                st.plotly_chart(_score_ts_fig, use_container_width=True,
+                st.plotly_chart(_score_ts_fig, width="stretch",
                                 config={"displayModeBar": False})
 
             # ── 시장 강도 점수 (기존 감성 요약 대체)
@@ -4432,7 +4473,7 @@ def main():
 
             st.plotly_chart(
                 make_market_chart(market_df, market_choice),
-                use_container_width=True,
+                width="stretch",
                 config={"displayModeBar": False},
             )
 
@@ -4548,6 +4589,7 @@ def main():
 
                 if _ll_df is not None and not _ll_df.empty:
                     _ll_tbl = compute_lead_lag_table(_ll_df)
+                    _ll_tbl = make_arrow_safe(_ll_tbl)  # Arrow 직렬화 안전장치
                     if not _ll_tbl.empty:
                         # 색상 함수
                         def _style_corr(v):
@@ -4567,7 +4609,7 @@ def main():
                         _styled = _ll_tbl.style.map(_style_corr).format(
                             lambda v: f"{v:+.2f}" if not pd.isna(v) else "—"
                         )
-                        st.dataframe(_styled, use_container_width=True)
+                        st.dataframe(_styled, width="stretch")
                         st.download_button(
                             "⬇ CSV 다운로드",
                             data=_ll_tbl.to_csv(float_format="%.2f"),
@@ -4613,7 +4655,7 @@ def main():
         for i, ch in enumerate(_macro_charts):
             if ch is not None:
                 with _mc[i % 2]:
-                    st.plotly_chart(ch, use_container_width=True, config={"displayModeBar": False})
+                    st.plotly_chart(ch, width="stretch", config={"displayModeBar": False})
             else:
                 with _mc[i % 2]:
                     _labels = ['① 크레딧 스프레드', '② 크레딧 스트레스', '③ VIX/SKEW',
@@ -4627,7 +4669,7 @@ def main():
         with st.spinner("📡 외국인 순매수 데이터 로딩 중..."):
             _ff, _ff_err = make_macro_foreign_flow_chart(_ff_code, _macro_years, _spx_s)
         if _ff is not None:
-            st.plotly_chart(_ff, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(_ff, width="stretch", config={"displayModeBar": False})
         else:
             _err_detail = f" — {_ff_err}" if _ff_err else ""
             st.warning(f"⑦ 외국인 순매수 데이터 로딩 실패{_err_detail}")
@@ -4671,7 +4713,11 @@ def main():
                 _corr_rows = []
                 for _nm, _s in _macro_named.items():
                     if _s.empty:
-                        _corr_rows.append({'지표': _nm, '동기(r)': '—', '1M 선행(r)': '—', '3M 선행(r)': '—'})
+                        # 문자열 '—' 대신 NaN 사용: 컬럼을 숫자형으로 유지해야
+                        # st.dataframe의 Arrow 변환(ArrowInvalid)이 깨지지 않음.
+                        # 화면 표시는 아래 .format()에서 NaN -> '—'로 처리됨.
+                        _corr_rows.append({'지표': _nm, '동기(r)': float('nan'),
+                                            '1M 선행(r)': float('nan'), '3M 선행(r)': float('nan')})
                         continue
                     def _calc_r(series, shift_days=0):
                         try:
@@ -4689,6 +4735,7 @@ def main():
                     })
 
                 _corr_df = pd.DataFrame(_corr_rows).set_index('지표')
+                _corr_df = make_arrow_safe(_corr_df)  # Arrow 직렬화 안전장치
 
                 def _style_r(v):
                     if not isinstance(v, (int, float)) or pd.isna(v): return 'color:#666'
@@ -4703,7 +4750,7 @@ def main():
                     .map(_style_r)
                     .format(lambda v: f'{v:+.2f}' if isinstance(v, float) and not pd.isna(v) else '—')
                 )
-                st.dataframe(_styled_corr, use_container_width=True)
+                st.dataframe(_styled_corr, width="stretch")
             else:
                 st.info("S&P500 오버레이를 체크해야 상관계수를 계산할 수 있습니다.")
 
