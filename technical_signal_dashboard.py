@@ -3889,55 +3889,6 @@ def main():
     # TAB 1 — 신호 스캐너
     # ═══════════════════════════════════════════════════════════
     with tab1:
-        # ── DEBUG (장중 KIS 확인 후 삭제) ─────────────────────────────
-        with st.expander("🔍 KIS 디버그", expanded=False):
-            import requests as _req
-            from datetime import datetime as _dt, timezone as _tz, timedelta as _td
-            _kst = _tz(_td(hours=9))
-            _now_kst = _dt.now(_kst)
-            st.write(f"현재 KST: {_now_kst.strftime('%H:%M:%S')}  (장중: 09:00~15:30)")
-            try:
-                _tok = _kis_token()
-                st.write(f"KIS 토큰: {'✅ 발급됨' if _tok else '❌ None'}")
-            except Exception as _e:
-                st.write(f"KIS 토큰 오류: {_e}"); _tok = None
-            if _tok:
-                try:
-                    _cfg = dict(st.secrets.get("kis", {}))
-                    _base = ("https://openapivts.koreainvestment.com:9443"
-                             if _cfg.get("is_mock", True)
-                             else "https://openapi.koreainvestment.com:9443")
-                    st.write(f"API 서버: {'🟡 모의' if _cfg.get('is_mock', True) else '🟢 실서버'}")
-                    _qtime = _now_kst.strftime("%H%M%S")
-                    _r = _req.get(
-                        f"{_base}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
-                        headers={"authorization": f"Bearer {_tok}",
-                                 "appkey": _cfg["app_key"], "appsecret": _cfg["app_secret"],
-                                 "tr_id": "FHKST03010200", "custtype": "P"},
-                        params={"FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": "J",
-                                "FID_INPUT_ISCD": "005930", "FID_INPUT_HOUR_1": _qtime,
-                                "FID_PW_DATA_INCU_YN": "Y"}, timeout=10)
-                    _rj = _r.json()
-                    _rows = _rj.get('output2') or []
-                    st.write(f"HTTP {_r.status_code} rt_cd={_rj.get('rt_cd')} | output2={len(_rows)}행")
-                    if _rows:
-                        st.write(f"  시각범위: {_rows[0].get('stck_cntg_hour')} ~ {_rows[-1].get('stck_cntg_hour')}")
-                except Exception as _e:
-                    st.write(f"API 오류: {_e}")
-            try:
-                _kdf = _fetch_kis_today("005930")
-                st.write(f"_fetch_kis_today: {'✅ '+str(len(_kdf))+'행 최신='+str(_kdf.index[-1]) if not _kdf.empty else '❌ 빈 DataFrame'}")
-            except Exception as _e:
-                st.write(f"_fetch_kis_today 오류: {_e}")
-            if chart_mode == "분봉":
-                for _t in ["005930.KS", "000660.KS"]:
-                    try:
-                        _d, _ = fetch_intraday(_t, yf_interval)
-                        st.write(f"{_t} {yf_interval}: {len(_d)}행 최신={_d.index[-1] if not _d.empty else 'empty'}")
-                    except Exception as _e:
-                        st.write(f"{_t} 오류: {_e}")
-        # ── END DEBUG ────────────────────────────────────────────────
-
         # 자동 새로고침 (분봉 모드 + 토글 ON 일 때만)
         if auto_refresh and AUTOREFRESH_AVAILABLE:
             st_autorefresh(interval=refresh_ms, key="intra_autorefresh")
