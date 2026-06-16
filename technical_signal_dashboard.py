@@ -708,7 +708,7 @@ def fetch_close_batch(tickers_tuple, start_str, end_str):
     return result
 
 
-@st.cache_data(ttl=900)
+@st.cache_data(ttl=900, max_entries=10)
 def fetch_ohlcv_batch(tickers_tuple, start_str, end_str):
     """다중 종목 OHLCV 일괄 다운로드 → (closes, highs, lows) 반환. fetch_close_batch와 동일한 단일 요청."""
     tickers = list(tickers_tuple)
@@ -1687,7 +1687,7 @@ def get_full_ticker_list(market):
     return None
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, max_entries=4)
 def get_market_internals(market, lookback_days=60):
     try:
         full_tickers  = get_full_ticker_list(market)
