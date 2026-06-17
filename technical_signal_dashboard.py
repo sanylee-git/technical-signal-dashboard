@@ -843,9 +843,9 @@ def _fetch_intraday_pykrx(krx_code: str, interval: str, lookback_days: int = 10)
 
 # ── KIS API (한국투자증권) 실시간 분봉 ─────────────────────────────────────────
 
-@st.cache_data(ttl=1800)
+@st.cache_data(ttl=82800)
 def _kis_token():
-    """KIS OAuth 토큰 발급 (30분 캐시). 실패/미설정 시 None 반환."""
+    """KIS OAuth 토큰 발급 (23시간 캐시). 실패/미설정 시 None 반환."""
     try:
         import requests as _req
         cfg = dict(st.secrets.get("kis", {}))
