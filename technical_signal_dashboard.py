@@ -294,7 +294,7 @@ _NDX_BASKET = [
     "ALGN","MRNA","AZN","ABNB","GFS","CHTR","ARM","CSX","NXPI","ROP",
     "SMCI","INTC","ISRG","LBTYA","PDD","SGEN","SPLK","MTCH","DDOG","ZI",
     # ── 나스닥 101~200 (시총 기준 추가 기술/성장주)
-    "PLTR","COIN","ZM","DOCU","OKTA","SOFI","AFRM","RIVN","LCID","HOOD",
+    "COIN","ZM","DOCU","OKTA","SOFI","AFRM","RIVN","LCID","HOOD",
     "NBIX","HOLX","ALNY","BMRN","EXAS","JAZZ","INCY","SRPT","NVAX","NKTR",
     "IBKR","NDAQ","LPLA","MKTX","SEIC","EPAM","GDDY","FFIV","NTAP","KEYS",
     "QRVO","SWKS","ZBRA","CGNX","CHKP","AKAM","CMCSA","PINS","SNAP","RDDT",
@@ -3935,12 +3935,10 @@ def main():
             {"code": "GOOGL",  "name": "구글 알파벳 (GOOGL)"},
             {"code": "MSFT",   "name": "마이크로소프트 (MSFT)"},
             {"code": "AMZN",   "name": "아마존 (AMZN)"},
-            {"code": "PLTR",   "name": "팔란티어 (PLTR)"},
             # ── 주식 본주: ETF 1배 (코드 오름차순)
             {"code": "AIPO",   "name": "AIPO AI·IPO ETF"},
             {"code": "BLOK",   "name": "BLOK 블록체인 ETF"},
             {"code": "GRID",   "name": "GRID 스마트그리드 ETF"},
-            {"code": "PTIR",   "name": "PTIR 테크인프라 ETF"},
             {"code": "QTUM",   "name": "QTUM 퀀텀컴퓨팅/AI ETF"},
             {"code": "SOXX",   "name": "SOXX 반도체 ETF"},
             {"code": "TAN",    "name": "TAN 태양광 ETF"},
