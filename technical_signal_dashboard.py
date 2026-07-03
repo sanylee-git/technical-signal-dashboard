@@ -661,7 +661,7 @@ def _is_rate_limit_error(e):
     return type(e).__name__ == 'YFRateLimitError' or 'Too Many Requests' in str(e) or 'Rate limit' in str(e)
 
 
-@st.cache_data(ttl=900)
+@st.cache_data(ttl=180)
 def fetch_ohlcv(ticker, start_str, end_str):
     """단일 종목 OHLCV (BB·RSI 차트용)"""
     try:
@@ -675,7 +675,7 @@ def fetch_ohlcv(ticker, start_str, end_str):
         return pd.DataFrame()
 
 
-@st.cache_data(ttl=900)
+@st.cache_data(ttl=180)
 def fetch_close_batch(tickers_tuple, start_str, end_str):
     """다중 종목 종가 일괄 다운로드 (신호 스캔용)"""
     tickers = list(tickers_tuple)
@@ -711,7 +711,7 @@ def fetch_close_batch(tickers_tuple, start_str, end_str):
     return result
 
 
-@st.cache_data(ttl=900, max_entries=10)
+@st.cache_data(ttl=180, max_entries=10)
 def fetch_ohlcv_batch(tickers_tuple, start_str, end_str):
     """다중 종목 OHLCV 일괄 다운로드 → (closes, highs, lows) 반환. fetch_close_batch와 동일한 단일 요청."""
     tickers = list(tickers_tuple)
@@ -3711,8 +3711,19 @@ def main(page="signal"):
         else:
             intra_interval_label = None
             yf_interval = None
-            auto_refresh = False
-            refresh_ms = 300_000
+            st.divider()
+            st.markdown("**🔄 자동 새로고침**")
+            daily_refresh_label = st.radio(
+                "일봉 갱신 주기",
+                ["OFF", "1분", "3분"],
+                index=0,
+                horizontal=True,
+                label_visibility="collapsed",
+                key="daily_refresh_interval",
+            )
+            _daily_refresh_ms = {"1분": 60_000, "3분": 180_000}
+            auto_refresh = daily_refresh_label != "OFF"
+            refresh_ms = _daily_refresh_ms.get(daily_refresh_label, 180_000)
 
         st.divider()
 
@@ -3914,9 +3925,9 @@ def main(page="signal"):
     # ═══════════════════════════════════════════════════════════
     if page in ("all", "signal"):
         with tab1:
-            # 자동 새로고침 (분봉 모드 + 토글 ON 일 때만)
+            # 자동 새로고침 (분봉/일봉 옵션 ON 일 때만)
             if auto_refresh and AUTOREFRESH_AVAILABLE:
-                st_autorefresh(interval=refresh_ms, key="intra_autorefresh")
+                st_autorefresh(interval=refresh_ms, key=f"{chart_mode}_autorefresh")
             elif auto_refresh and not AUTOREFRESH_AVAILABLE:
                 st.warning("⚠️ 자동 새로고침을 사용하려면 `streamlit-autorefresh` 패키지가 필요합니다.")
 
