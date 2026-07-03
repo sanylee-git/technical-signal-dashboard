@@ -3713,17 +3713,17 @@ def main(page="signal"):
             yf_interval = None
             st.divider()
             st.markdown("**🔄 자동 새로고침**")
-            daily_refresh_label = st.radio(
-                "일봉 갱신 주기",
-                ["OFF", "1분", "3분"],
-                index=0,
-                horizontal=True,
-                label_visibility="collapsed",
-                key="daily_refresh_interval",
-            )
-            _daily_refresh_ms = {"1분": 60_000, "3분": 180_000}
-            auto_refresh = daily_refresh_label != "OFF"
-            refresh_ms = _daily_refresh_ms.get(daily_refresh_label, 180_000)
+            auto_refresh = st.toggle("일봉 자동 갱신", value=False, key="daily_auto_refresh_toggle")
+            if auto_refresh:
+                refresh_interval_label = st.radio(
+                    "갱신 주기", ["1분", "3분", "5분"], index=1,
+                    horizontal=True, label_visibility="collapsed", key="daily_refresh_interval",
+                )
+                _refresh_ms = {"1분": 60_000, "3분": 180_000, "5분": 300_000}
+                refresh_ms = _refresh_ms[refresh_interval_label]
+            else:
+                auto_refresh = False
+                refresh_ms = 300_000
 
         st.divider()
 
