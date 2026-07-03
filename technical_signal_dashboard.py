@@ -3283,6 +3283,7 @@ def _make_inverted_spread_chart(
     color='#FF8C69',
     height=300,
     suffix='%',
+    show_raw=True,
 ):
     """스프레드는 -1배로 표시해 위험 확대가 아래쪽으로 보이게 한다."""
     if s is None or s.empty:
@@ -3292,12 +3293,14 @@ def _make_inverted_spread_chart(
         return None
     fig = go.Figure()
     fig.add_hline(y=0, line=dict(color='rgba(255,255,255,0.20)', width=1))
-    fig.add_trace(go.Scatter(
-        x=plot_s.index, y=plot_s,
-        name=f'{trace_name} (반전)',
-        line=dict(color=color, width=1.7),
-        hovertemplate='<b>%{x|%Y-%m-%d}</b>  반전값 %{y:.2f}<extra></extra>',
-    ))
+    if show_raw:
+        fig.add_trace(go.Scatter(
+            x=plot_s.index, y=plot_s,
+            name=f'{trace_name} (반전)',
+            line=dict(color=color, width=1.2),
+            opacity=0.45,
+            hovertemplate='<b>%{x|%Y-%m-%d}</b>  반전값 %{y:.2f}<extra></extra>',
+        ))
     _add_smoothing_lines(fig, plot_s)
     _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2')
     fig.update_layout(
@@ -3309,25 +3312,25 @@ def _make_inverted_spread_chart(
     return fig
 
 
-def make_macro_hy_spread_chart(years: int = 5, spx_s=None):
+def make_macro_hy_spread_chart(years: int = 5, spx_s=None, show_raw=True):
     """① HY 크레딧 스프레드: 반전 표시 + EMA20/Median20."""
     hy = _fred('BAMLH0A0HYM2', years)
     return _make_inverted_spread_chart(
         hy, '① HY 크레딧 스프레드 (반전, OAS %)', 'HY 스프레드',
-        spx_s=spx_s, color='#FF4B6E',
+        spx_s=spx_s, color='#FF4B6E', show_raw=show_raw,
     )
 
 
-def make_macro_ig_spread_chart(years: int = 5, spx_s=None):
+def make_macro_ig_spread_chart(years: int = 5, spx_s=None, show_raw=True):
     """② IG 크레딧 스프레드: 반전 표시 + EMA20/Median20."""
     ig = _fred('BAMLC0A0CM', years)
     return _make_inverted_spread_chart(
         ig, '② IG 크레딧 스프레드 (반전, OAS %)', 'IG 스프레드',
-        spx_s=spx_s, color='#4BFFB3',
+        spx_s=spx_s, color='#4BFFB3', show_raw=show_raw,
     )
 
 
-def make_macro_credit_stress_chart(years: int = 5, spx_s=None):
+def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True):
     """③ 신용 스트레스 지수: HY + NFCI + VIX z-score 합성, 반전 표시."""
     hy   = _fred('BAMLH0A0HYM2', years + 1)
     nfci = _fred('NFCI',         years + 1)
@@ -3354,9 +3357,11 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None):
     fig.add_trace(go.Scatter(x=plot_s.index, y=plot_s.clip(upper=0),
                              fill='tozeroy', fillcolor='rgba(255,75,110,0.10)',
                              line=dict(width=0), showlegend=False, hoverinfo='skip'))
-    fig.add_trace(go.Scatter(x=plot_s.index, y=plot_s, name='신용 스트레스 (반전)',
-                             line=dict(color='#787EE7', width=1.5),
-                             hovertemplate='<b>%{x|%Y-%m-%d}</b>  %{y:.2f}<extra></extra>'))
+    if show_raw:
+        fig.add_trace(go.Scatter(x=plot_s.index, y=plot_s, name='신용 스트레스 (반전)',
+                                 line=dict(color='#787EE7', width=1.2),
+                                 opacity=0.45,
+                                 hovertemplate='<b>%{x|%Y-%m-%d}</b>  %{y:.2f}<extra></extra>'))
     _add_smoothing_lines(fig, plot_s)
     _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2')
     fig.update_layout(
@@ -3368,7 +3373,7 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None):
     return fig
 
 
-def make_macro_options_chart(years: int = 5, spx_s=None):
+def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True):
     """④ VIX 레벨: 반전 표시 + 20일 EMA/Median."""
     vix   = _yf_close('^VIX',   years)
     if vix.empty:
@@ -3377,11 +3382,13 @@ def make_macro_options_chart(years: int = 5, spx_s=None):
     fig = go.Figure()
     fig.add_hline(y=-20, line=dict(color='rgba(255,255,255,0.12)', dash='dot', width=1))
     fig.add_hline(y=-30, line=dict(color='rgba(255,75,110,0.30)', dash='dot', width=1))
-    fig.add_trace(go.Scatter(
-        x=plot_s.index, y=plot_s, name='VIX 레벨 (반전)',
-        line=dict(color='#FF4B6E', width=1.7),
-        hovertemplate='<b>%{x|%Y-%m-%d}</b>  반전 VIX %{y:.1f}<extra></extra>',
-    ))
+    if show_raw:
+        fig.add_trace(go.Scatter(
+            x=plot_s.index, y=plot_s, name='VIX 레벨 (반전)',
+            line=dict(color='#FF4B6E', width=1.2),
+            opacity=0.45,
+            hovertemplate='<b>%{x|%Y-%m-%d}</b>  반전 VIX %{y:.1f}<extra></extra>',
+        ))
     _add_smoothing_lines(fig, plot_s)
     _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2')
     fig.update_layout(
@@ -3392,7 +3399,7 @@ def make_macro_options_chart(years: int = 5, spx_s=None):
     return fig
 
 
-def make_macro_vix_spread_chart(years: int = 5, spx_s=None):
+def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True):
     """⑤ VIX-VIX3M 스프레드: 반전 표시 + EMA20/Median20."""
     vix   = _yf_close('^VIX',   years)
     vix3m = _yf_close('^VIX3M', years)
@@ -3401,7 +3408,7 @@ def make_macro_vix_spread_chart(years: int = 5, spx_s=None):
     spread = (vix - vix3m.reindex(vix.index)).dropna()
     return _make_inverted_spread_chart(
         spread, '⑤ VIX-VIX3M 스프레드 (반전)', 'VIX-VIX3M 스프레드',
-        spx_s=spx_s, color='#FF8C69', suffix='',
+        spx_s=spx_s, color='#FF8C69', suffix='', show_raw=show_raw,
     )
 
 
@@ -4614,7 +4621,7 @@ def main(page="signal"):
         with tab3:
             st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 미국 데이터 위주이며 참고용. 주요 위험 지표는 반전 표시, 흰색 점선=EMA20, 보라 점선=Median20, 노란 파선=S&P500%.")
 
-            _c1, _c2 = st.columns([3, 1])
+            _c1, _c2, _c3 = st.columns([3, 1, 1])
             with _c1:
                 _yr_opts = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
                 _macro_years = st.select_slider(
@@ -4626,17 +4633,19 @@ def main(page="signal"):
                 )
             with _c2:
                 _show_spx = st.checkbox("S&P500 오버레이", value=True)
+            with _c3:
+                _show_raw_macro = st.checkbox("원본선 표시", value=False)
 
             with st.spinner("📡 S&P500 데이터 로딩 중..."):
                 _spx_s = _yf_close('^GSPC', _macro_years) if _show_spx else None
 
             with st.spinner("📡 매크로 데이터 로딩 중..."):
                 _macro_charts = [
-                    make_macro_hy_spread_chart(_macro_years,     _spx_s),   # ① HY 스프레드
-                    make_macro_ig_spread_chart(_macro_years,     _spx_s),   # ② IG 스프레드
-                    make_macro_credit_stress_chart(_macro_years, _spx_s),   # ③ 크레딧 스트레스 복합
-                    make_macro_options_chart(_macro_years,       _spx_s),   # ④ VIX
-                    make_macro_vix_spread_chart(_macro_years,    _spx_s),   # ⑤ VIX 텀스프레드
+                    make_macro_hy_spread_chart(_macro_years,     _spx_s, _show_raw_macro),  # ① HY 스프레드
+                    make_macro_ig_spread_chart(_macro_years,     _spx_s, _show_raw_macro),  # ② IG 스프레드
+                    make_macro_credit_stress_chart(_macro_years, _spx_s, _show_raw_macro),  # ③ 크레딧 스트레스
+                    make_macro_options_chart(_macro_years,       _spx_s, _show_raw_macro),  # ④ VIX
+                    make_macro_vix_spread_chart(_macro_years,    _spx_s, _show_raw_macro),  # ⑤ VIX 텀스프레드
                     make_macro_pmi_chart(_macro_years,           _spx_s),   # ⑥ 경기 모멘텀
                     make_macro_liquidity_chart(_macro_years,     _spx_s),   # ⑦ 유동성 (M2/Fed)
                     make_macro_yield_curve_chart(_macro_years,   _spx_s),   # ⑧ 장단기 금리차
