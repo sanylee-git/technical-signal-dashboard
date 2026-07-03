@@ -19,6 +19,7 @@ import yfinance as yf
 import json
 import os
 import re
+import sys
 import warnings
 import traceback
 warnings.filterwarnings('ignore')
@@ -41,9 +42,11 @@ except Exception:
 # ============================================================
 # 페이지 설정
 # ============================================================
+_IS_MARKET_MACRO_APP = any(os.path.basename(str(arg)) == "market_macro_dashboard.py" for arg in sys.argv)
+
 st.set_page_config(
-    page_title="기술적 신호 스캐너",
-    page_icon="🎯",
+    page_title="시장/매크로 지표" if _IS_MARKET_MACRO_APP else "기술적 신호 스캐너",
+    page_icon="🏔️" if _IS_MARKET_MACRO_APP else "🎯",
     layout="wide",
     initial_sidebar_state="expanded"
 )
