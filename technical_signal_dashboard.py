@@ -3659,7 +3659,7 @@ def make_arrow_safe(df):
 # ============================================================
 # 메인 앱
 # ============================================================
-def main():
+def main(page="signal"):
     global rsi_buy_lower_global, rsi_sell_lower_global
 
     st.markdown(DARK_CSS, unsafe_allow_html=True)
@@ -3874,931 +3874,951 @@ def main():
     rsi_sell_lower_global = 75  # 80 - 5
 
     # ─── 타이틀 ───────────────────────────────────────────────
-    st.markdown("""
+    _page_titles = {
+        "signal": ("TECHNICAL SIGNAL SCANNER", "🎯 기술적 신호 스캐너"),
+        "market": ("MARKET INTERNALS", "🌐 시장 내부지표"),
+        "macro": ("MACRO INDICATORS", "🌍 매크로 지표"),
+        "all": ("TECHNICAL SIGNAL SCANNER", "🎯 기술적 신호 스캐너"),
+    }
+    _eyebrow, _title = _page_titles.get(page, _page_titles["signal"])
+    st.markdown(f"""
         <div style='margin-bottom:16px;'>
             <p style='color:#555;font-size:11px;text-transform:uppercase;
                       letter-spacing:2px;margin:0 0 4px;font-weight:500;'>
-                TECHNICAL SIGNAL SCANNER
+                {_eyebrow}
             </p>
             <h2 style='margin:0;font-size:22px;font-weight:600;color:#EDEDED;line-height:1.3;'>
-                🎯 기술적 신호 스캐너
+                {_title}
             </h2>
         </div>
     """, unsafe_allow_html=True)
 
-    tab1, tab2, tab3 = st.tabs(["📊 신호 스캐너", "🌐 시장 내부지표", "🌍 매크로 지표"])
+    if page == "all":
+        tab1, tab2, tab3 = st.tabs(["📊 신호 스캐너", "🌐 시장 내부지표", "🌍 매크로 지표"])
+    elif page == "signal":
+        tab1, tab2, tab3 = st.container(), None, None
+    elif page == "market":
+        tab1, tab2, tab3 = None, st.container(), None
+    elif page == "macro":
+        tab1, tab2, tab3 = None, None, st.container()
+    else:
+        st.error(f"알 수 없는 페이지입니다: {page}")
+        return
 
     # ═══════════════════════════════════════════════════════════
     # TAB 1 — 신호 스캐너
     # ═══════════════════════════════════════════════════════════
-    with tab1:
-        # 자동 새로고침 (분봉 모드 + 토글 ON 일 때만)
-        if auto_refresh and AUTOREFRESH_AVAILABLE:
-            st_autorefresh(interval=refresh_ms, key="intra_autorefresh")
-        elif auto_refresh and not AUTOREFRESH_AVAILABLE:
-            st.warning("⚠️ 자동 새로고침을 사용하려면 `streamlit-autorefresh` 패키지가 필요합니다.")
+    if page in ("all", "signal"):
+        with tab1:
+            # 자동 새로고침 (분봉 모드 + 토글 ON 일 때만)
+            if auto_refresh and AUTOREFRESH_AVAILABLE:
+                st_autorefresh(interval=refresh_ms, key="intra_autorefresh")
+            elif auto_refresh and not AUTOREFRESH_AVAILABLE:
+                st.warning("⚠️ 자동 새로고침을 사용하려면 `streamlit-autorefresh` 패키지가 필요합니다.")
 
-        if not favorites:
-            st.markdown("""
-            <div style='background:#111113;border:1px solid rgba(255,255,255,0.06);
-                        border-radius:10px;padding:40px;text-align:center;margin:24px 0;'>
-                <p style='color:#555;font-size:14px;margin:0;'>
-                    왼쪽 사이드바에서 종목을 검색해서 즐겨찾기에 추가해주세요.
-                </p>
-            </div>""", unsafe_allow_html=True)
-            return
-
-        today = datetime.now().date()
-        data_end = str(today + timedelta(days=1))
-        # 표시기간 + 워밍업(RSI14 + BB + 동적RSI lookback + 여유) 합산
-        data_start = str(today - timedelta(days=period_days + 400))
-
-        # 사이드바에서 이미 bb_window, rsi_lookback, persist 받음
-        bb_std         = 2.0
-        rsi_period     = 14
-        rsi_buy_center = 40
-        rsi_sell_center= 80
-        rsi_band       = 5
-
-        # US 워치리스트 (신호 계산에 필요해 tickers_tuple보다 먼저 정의)
-        _US_WATCHLIST = [
-            # ── 지수 (이름 오름차순: ASCII → 가나다)
-            {"code": "^GSPC",  "name": "S&P 500 (^GSPC)"},
-            {"code": "^IXIC",  "name": "나스닥 (^IXIC)"},
-            {"code": "^DJI",   "name": "다우존스 (^DJI)"},
-            # ── 원자재
-            {"code": "HG=F",   "name": "구리 현물 (Copper Futures)"},
-            {"code": "GC=F",   "name": "금 현물 (Gold Futures)"},
-            {"code": "SI=F",   "name": "은 현물 (Silver Futures)"},
-            # ── 비트코인
-            {"code": "BTC-USD", "name": "비트코인 (BTC-USD)"},
-            # ── 이더리움
-            {"code": "ETH-USD", "name": "이더리움 (ETH-USD)"},
-            # ── 주식 본주: 개별종목 (이름 오름차순: ASCII → 가나다)
-            {"code": "GOOGL",  "name": "구글 알파벳 (GOOGL)"},
-            {"code": "AMZN",   "name": "아마존 (AMZN)"},
-            # ── 주식 본주: ETF 1배 (코드 오름차순)
-            {"code": "AIPO",   "name": "AIPO AI·IPO ETF"},
-            {"code": "BLOK",   "name": "BLOK 블록체인 ETF"},
-            {"code": "GRID",   "name": "GRID 스마트그리드 ETF"},
-            {"code": "QTUM",   "name": "QTUM 퀀텀컴퓨팅/AI ETF"},
-            {"code": "SOXX",   "name": "SOXX 반도체 ETF"},
-            {"code": "TAN",    "name": "TAN 태양광 ETF"},
-            {"code": "UFO",    "name": "UFO 우주항공 ETF"},
-            # ── 2배 레버리지 (코드 오름차순)
-            {"code": "AMZU",   "name": "AMZU 아마존 2X"},
-            {"code": "GGLL",   "name": "GGLL 구글 2X"},
-            {"code": "UGL",    "name": "UGL 금 2X"},
-            {"code": "USD",    "name": "USD 반도체 2X (ProShares)"},
-            # ── 3배 레버리지 (코드 오름차순)
-            {"code": "SOXL",   "name": "SOXL 반도체 3X"},
-            {"code": "TECL",   "name": "TECL 테크 3X"},
-            {"code": "TQQQ",   "name": "TQQQ 나스닥 3X"},
-        ]
-
-        tickers_tuple    = tuple(f['code'] for f in favorites)
-        us_tickers_tuple = tuple(t['code'] for t in _US_WATCHLIST)
-
-        with st.spinner("📡 데이터 로딩..."):
-            if chart_mode == "분봉":
-                closes = fetch_intraday_batch(tickers_tuple, yf_interval)
-                highs = lows = pd.DataFrame()
-            else:
-                closes, highs, lows = fetch_ohlcv_batch(tickers_tuple, data_start, data_end)
-            us_closes, us_highs, us_lows = fetch_ohlcv_batch(us_tickers_tuple, data_start, data_end)
-
-        # 데이터 로딩 실패 종목 안내 (해당 종목만 빈 값으로 표시, 앱은 계속 동작)
-        _missing_kr = [f['name'] for f in favorites
-                       if f['code'] not in closes.columns or closes[f['code']].dropna().empty]
-        _missing_us = [t['name'] for t in _US_WATCHLIST
-                       if t['code'] not in us_closes.columns or us_closes[t['code']].dropna().empty]
-        _missing_all = _missing_kr + _missing_us
-        if _missing_all:
-            st.warning(
-                "⚠️ 일부 종목 데이터를 가져오지 못했습니다 (Yahoo Finance 요청 제한/일시 오류일 수 있음): "
-                + ", ".join(_missing_all)
-                + " — 해당 종목은 빈 값으로 표시됩니다. 잠시 후 새로고침하면 자동으로 다시 시도됩니다."
-            )
-
-        # 신호 계산
-        signal_rows = []
-        for fav in favorites:
-            code = fav['code']
-            row = {
-                'code': code, 'name': fav['name'],
-                'close': None, 'pct_change': None, 'rsi': None,
-                'bb_upper_touch': False, 'bb_lower_touch': False,
-                'dyn_buy_signal': False, 'dyn_sell_signal': False,
-                'band_buy_signal': False, 'band_sell_signal': False,
-                'dyn_buy_flag': False, 'dyn_sell_flag': False,
-                'band_buy_flag': False, 'band_sell_flag': False,
-                'dyn_holding': False, 'band_holding': False,
-            }
-            if code in closes.columns:
-                series = closes[code].dropna()
-                _h = highs[code] if not highs.empty and code in highs.columns else None
-                _l = lows[code]  if not lows.empty  and code in lows.columns  else None
-                sig = get_current_signals(
-                    series, high=_h, low=_l,
-                    bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
-                    rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
-                    rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
-                    phase2_rsi=phase2_rsi,
-                )
-                if sig:
-                    row.update(sig)
-                elif len(series) >= 2:
-                    # 신호 계산 불가(데이터 부족)이어도 가격·등락률은 표시
-                    last = float(series.iloc[-1])
-                    prev = float(series.iloc[-2])
-                    row['close'] = last
-                    row['pct_change'] = (last / prev - 1) * 100 if prev else 0.0
-            signal_rows.append(row)
-
-        # 확정 신호 > 보유 중 > 플래그 > 없음 순 정렬
-        def sort_key(r):
-            # 화면 badge와 동일한 기준 (dyn만) — band_* 는 display에 없으므로 정렬에서도 제외
-            # 매수신호 > 매수플래그 > 보유중 > 매도신호 > 매도플래그 > 없음
-            buy_sig   = r.get('dyn_buy_signal')
-            buy_flag  = r.get('dyn_buy_flag') and not r.get('dyn_buy_signal')
-            holding   = r.get('dyn_holding')
-            sell_sig  = r.get('dyn_sell_signal')
-            sell_flag = r.get('dyn_sell_flag') and not r.get('dyn_sell_signal')
-            if buy_sig:   return 0
-            if buy_flag:  return 1
-            if holding:   return 2
-            if sell_sig:  return 3
-            if sell_flag: return 4
-            return 5
-
-        signal_rows.sort(key=sort_key)
-
-        # US 신호 계산
-        us_signal_rows = []
-        for _item in _US_WATCHLIST:
-            _code = _item['code']
-            _row = {
-                'code': _code, 'name': _item['name'],
-                'close': None, 'pct_change': None, 'rsi': None,
-                'bb_upper_touch': False, 'bb_lower_touch': False,
-                'dyn_buy_signal': False, 'dyn_sell_signal': False,
-                'band_buy_signal': False, 'band_sell_signal': False,
-                'dyn_buy_flag': False, 'dyn_sell_flag': False,
-                'band_buy_flag': False, 'band_sell_flag': False,
-                'dyn_holding': False, 'band_holding': False,
-            }
-            if _code in us_closes.columns:
-                _series = us_closes[_code].dropna()
-                _h = us_highs[_code] if not us_highs.empty and _code in us_highs.columns else None
-                _l = us_lows[_code]  if not us_lows.empty  and _code in us_lows.columns  else None
-                _sig = get_current_signals(
-                    _series, high=_h, low=_l,
-                    bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
-                    rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
-                    rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
-                    phase2_rsi=phase2_rsi,
-                )
-                if _sig:
-                    _row.update(_sig)
-                elif len(_series) >= 2:
-                    _last = float(_series.iloc[-1])
-                    _prev = float(_series.iloc[-2])
-                    _row['close'] = _last
-                    _row['pct_change'] = (_last / _prev - 1) * 100 if _prev else 0.0
-            us_signal_rows.append(_row)
-        us_signal_rows.sort(key=sort_key)
-
-        # 신호 요약 카운트 — 한국
-        n_dyn_buy_flag  = sum(1 for r in signal_rows if r.get('dyn_buy_flag')  and not r.get('dyn_buy_signal'))
-        n_dyn_buy       = sum(1 for r in signal_rows if r.get('dyn_buy_signal'))
-        n_dyn_hold      = sum(1 for r in signal_rows if r.get('dyn_holding'))
-        n_dyn_sell_flag = sum(1 for r in signal_rows if r.get('dyn_sell_flag') and not r.get('dyn_sell_signal'))
-        n_dyn_sell      = sum(1 for r in signal_rows if r.get('dyn_sell_signal'))
-
-        # 신호 요약 카운트 — 미국
-        n_us_buy_flag   = sum(1 for r in us_signal_rows if r.get('dyn_buy_flag')  and not r.get('dyn_buy_signal'))
-        n_us_buy        = sum(1 for r in us_signal_rows if r.get('dyn_buy_signal'))
-        n_us_hold       = sum(1 for r in us_signal_rows if r.get('dyn_holding'))
-        n_us_sell_flag  = sum(1 for r in us_signal_rows if r.get('dyn_sell_flag') and not r.get('dyn_sell_signal'))
-        n_us_sell       = sum(1 for r in us_signal_rows if r.get('dyn_sell_signal'))
-
-        def _mini_card(label, value, accent="#787EE7"):
-            return (f'<div style="flex:1;min-width:0;background:#141416;'
-                    f'border:1px solid rgba(255,255,255,0.06);border-radius:6px;'
-                    f'padding:5px 10px 6px;">'
-                    f'<div style="font-size:9px;color:#444;text-transform:uppercase;'
-                    f'letter-spacing:0.7px;white-space:nowrap;overflow:hidden;'
-                    f'text-overflow:ellipsis;">{label}</div>'
-                    f'<div style="font-size:17px;font-weight:600;color:{accent};'
-                    f'margin-top:1px;font-variant-numeric:tabular-nums;">{value}</div>'
-                    f'</div>')
-
-        def _mini_label(flag):
-            return (f'<div style="display:flex;align-items:center;justify-content:center;'
-                    f'min-width:32px;background:#141416;'
-                    f'border:1px solid rgba(255,255,255,0.06);border-radius:6px;'
-                    f'font-size:13px;flex-shrink:0;">{flag}</div>')
-
-        def _mini_row(prefix, items, flag=''):
-            label = _mini_label(flag) if flag else ''
-            cards = "".join(_mini_card(f"{prefix} {lbl}", val, acc) for lbl, val, acc in items)
-            return (f'<div style="display:flex;gap:5px;margin-bottom:5px;align-items:stretch;">'
-                    f'{label}{cards}</div>')
-
-        st.markdown(
-            '<div style="margin-bottom:20px">' +
-            _mini_row("★", [
-                ("매수 플래그", f"{n_dyn_buy_flag}",  "#7AAFD4"),
-                ("매수 신호",   f"{n_dyn_buy}",        "#4BFFB3"),
-                ("보유 중",     f"{n_dyn_hold}",       "#C8C850"),
-                ("매도 플래그", f"{n_dyn_sell_flag}",  "#D47A9F"),
-                ("매도 신호",   f"{n_dyn_sell}",       "#FF4B6E"),
-            ], flag='🇰🇷') +
-            _mini_row("★", [
-                ("매수 플래그", f"{n_us_buy_flag}",   "#7AAFD4"),
-                ("매수 신호",   f"{n_us_buy}",         "#4BFFB3"),
-                ("보유 중",     f"{n_us_hold}",        "#C8C850"),
-                ("매도 플래그", f"{n_us_sell_flag}",   "#D47A9F"),
-                ("매도 신호",   f"{n_us_sell}",        "#FF4B6E"),
-            ], flag='🇺🇸') +
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-        # ── 활성 시장 추적 (session_state)
-        if 'scan_active' not in st.session_state:
-            st.session_state.scan_active = 'kr'
-
-        def _set_kr(): st.session_state.scan_active = 'kr'
-        def _set_us(): st.session_state.scan_active = 'us'
-
-        # ① 전체 종목 현황 — 한국 / 미국 분리 (접힘)
-        with st.expander(f"📋 🇰🇷 한국 즐겨찾기 현황 ({len(signal_rows)}개)", expanded=False):
-            st.markdown(render_signal_table(signal_rows), unsafe_allow_html=True)
-
-        with st.expander(f"📋 🇺🇸 미국 지수/ETF 현황 ({len(us_signal_rows)}개)", expanded=False):
-            st.markdown(render_signal_table(us_signal_rows), unsafe_allow_html=True)
-
-        # ② 종목 선택 — 한국 / 미국 좌우 분리
-        col_kr, col_us = st.columns(2)
-
-        kr_names = [f['name'] for f in favorites]
-        us_names = [t['name'] for t in _US_WATCHLIST]
-
-        _kr_divider_prefix = "────────"
-
-        def _kr_divider(label):
-            return f"{_kr_divider_prefix} {label} {_kr_divider_prefix}"
-
-        _kr_front_codes = {"^KQ11", "^KS11", "000660.KS", "005930.KS", "373220.KS"}
-        _kr_retirement_100_codes = {
-            "442570.KS",
-            "284430.KS",
-            "0162Z0.KS",
-            "0025N0.KS",
-            "0019K0.KS",
-        }
-        _kr_leverage_codes = {"0195S0.KS", "0195R0.KS"}
-        _kr_front_names = [f['name'] for f in favorites if f['code'] in _kr_front_codes]
-        _kr_retirement_100_names = [
-            f['name'] for f in favorites
-            if f['code'] in _kr_retirement_100_codes
-        ]
-        _kr_retirement_70_names = [
-            f['name'] for f in favorites
-            if f['code'] not in _kr_front_codes
-            and f['code'] not in _kr_retirement_100_codes
-            and f['code'] not in _kr_leverage_codes
-        ]
-        _kr_leverage_names = [
-            f['name'] for f in favorites
-            if f['code'] in _kr_leverage_codes
-        ]
-        kr_select_names = (
-            _kr_front_names
-            + [_kr_divider("퇴직연금 100%")]
-            + _kr_retirement_100_names
-            + [_kr_divider("퇴직연금 70%")]
-            + _kr_retirement_70_names
-            + [_kr_divider("레버리지 ETF")]
-            + _kr_leverage_names
-        )
-
-        _us_divider_prefix = "────────"
-
-        def _us_divider(label):
-            return f"{_us_divider_prefix} {label} {_us_divider_prefix}"
-
-        us_select_names = [
-            "S&P 500 (^GSPC)",
-            "나스닥 (^IXIC)",
-            "다우존스 (^DJI)",
-            "구리 현물 (Copper Futures)",
-            "금 현물 (Gold Futures)",
-            "은 현물 (Silver Futures)",
-            _us_divider("코인 / 단일종목"),
-            "비트코인 (BTC-USD)",
-            "이더리움 (ETH-USD)",
-            "구글 알파벳 (GOOGL)",
-            "아마존 (AMZN)",
-            _us_divider("1배 ETF"),
-            "AIPO AI·IPO ETF",
-            "BLOK 블록체인 ETF",
-            "GRID 스마트그리드 ETF",
-            "QTUM 퀀텀컴퓨팅/AI ETF",
-            "SOXX 반도체 ETF",
-            "TAN 태양광 ETF",
-            "UFO 우주항공 ETF",
-            _us_divider("레버리지 ETF"),
-            "AMZU 아마존 2X",
-            "GGLL 구글 2X",
-            "UGL 금 2X",
-            "USD 반도체 2X (ProShares)",
-            "SOXL 반도체 3X",
-            "TECL 테크 3X",
-            "TQQQ 나스닥 3X",
-        ]
-
-        with col_kr:
-            with st.expander("🇰🇷 한국 즐겨찾기", expanded=True):
-                if 'scan_kr_name' not in st.session_state or \
-                        st.session_state.scan_kr_name not in kr_names:
-                    st.session_state.scan_kr_name = kr_names[0]
-                if 'scan_kr_prev_name' not in st.session_state or \
-                        st.session_state.scan_kr_prev_name not in kr_names:
-                    st.session_state.scan_kr_prev_name = st.session_state.scan_kr_name
-
-                def _set_kr_select():
-                    if st.session_state.scan_kr_name.startswith(_kr_divider_prefix):
-                        st.session_state.scan_kr_name = st.session_state.scan_kr_prev_name
-                    else:
-                        st.session_state.scan_kr_prev_name = st.session_state.scan_kr_name
-                        _set_kr()
-
-                st.selectbox("한국종목선택", kr_select_names,
-                             key='scan_kr_name', on_change=_set_kr_select,
-                             label_visibility='collapsed')
-
-        with col_us:
-            with st.expander("🇺🇸 미국 지수/ETF", expanded=True):
-                if 'scan_us_name' not in st.session_state or \
-                        st.session_state.scan_us_name not in us_names:
-                    st.session_state.scan_us_name = us_names[0]
-                if 'scan_us_prev_name' not in st.session_state or \
-                        st.session_state.scan_us_prev_name not in us_names:
-                    st.session_state.scan_us_prev_name = st.session_state.scan_us_name
-
-                def _set_us_select():
-                    if st.session_state.scan_us_name.startswith(_us_divider_prefix):
-                        st.session_state.scan_us_name = st.session_state.scan_us_prev_name
-                    else:
-                        st.session_state.scan_us_prev_name = st.session_state.scan_us_name
-                        _set_us()
-
-                st.selectbox("미국종목선택", us_select_names,
-                             key='scan_us_name', on_change=_set_us_select,
-                             label_visibility='collapsed')
-
-        # 활성 티커 결정
-        if st.session_state.scan_active == 'kr':
-            _kr_name = st.session_state.get('scan_kr_name', kr_names[0])
-            _sel_item = next((f for f in favorites if f['name'] == _kr_name), favorites[0])
-            selected_name = _sel_item['name']
-            selected_code = _sel_item['code']
-        else:
-            _us_name = st.session_state.get('scan_us_name', us_names[0])
-            _sel_item = next((t for t in _US_WATCHLIST if t['name'] == _us_name), _US_WATCHLIST[0])
-            selected_name = _sel_item['name']
-            selected_code = _sel_item['code']
-
-        # 한국 시간대 판별 (지수 코드 포함)
-        _is_korean = selected_code.endswith(('.KS', '.KQ')) or \
-                     selected_code in ('^KS11', '^KQ11')
-
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-        # ── 일봉 차트 ──────────────────────────────────────
-        if chart_mode == "일봉":
-            with st.spinner("차트 로딩..."):
-                ohlcv = fetch_ohlcv(selected_code, data_start, data_end)
-
-            if ohlcv.empty:
-                st.warning(f"⚠️ {selected_name} 데이터를 가져올 수 없습니다.")
-            else:
-                fig = make_detail_chart(
-                    ohlcv, selected_name, period_days,
-                    bb_window=bb_window, rsi_lookback=rsi_lookback,
-                    rsi_buy_center=40, rsi_sell_center=80, rsi_band=5,
-                    persist=persist, phase2_rsi=phase2_rsi,
-                )
-                if fig:
-                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-                else:
-                    close = ohlcv['Close'].dropna()
-                    have  = len(close)
-                    need  = bb_window + 14 + rsi_lookback // 2
-                    first_date = close.index[0].strftime('%Y-%m-%d') if have > 0 else '—'
-                    st.markdown(
-                        f'<div style="background:#141416;border:1px solid rgba(255,140,0,0.3);'
-                        f'border-radius:8px;padding:10px 16px;margin-bottom:10px;font-size:12px;color:#FFB347;">'
-                        f'⏳ 신호 계산 데이터 부족 — 현재 <b>{have}일</b> / 필요 <b>{need}일</b> '
-                        f'(상장: {first_date})</div>',
-                        unsafe_allow_html=True,
-                    )
-                    if have >= 3:
-                        price_fig = go.Figure()
-                        price_fig.add_trace(go.Scatter(
-                            x=close.index, y=close,
-                            line=dict(color="#787EE7", width=1.8), showlegend=False,
-                        ))
-                        price_fig.update_layout(
-                            height=320, title=dict(text=selected_name, font=dict(size=13, color="#9B9B9B")),
-                            **_base_layout(),
-                        )
-                        price_fig.update_xaxes(**_axis_kw())
-                        price_fig.update_yaxes(**_axis_kw())
-                        st.plotly_chart(price_fig, width="stretch", config={"displayModeBar": False})
-
-        # ── 분봉 차트 ──────────────────────────────────────
-        else:
-            _ticker = selected_code
-            with st.spinner(f"분봉 로딩... ({intra_interval_label}, {period_name} 기준)"):
-                ohlcv_intra, intra_err = fetch_intraday(_ticker, yf_interval)
-
-            if ohlcv_intra.empty:
-                st.warning(f"⚠️ {selected_name} 분봉 데이터를 가져올 수 없습니다.")
-                if intra_err:
-                    st.code(intra_err, language=None)
-            else:
-                if intra_err:
-                    st.caption(f"⚠️ 데이터 로딩 경고: {intra_err}")
-                _disp_bars = _intra_bars_per_day[yf_interval] * period_days
-                _session   = (15.5, 9.0) if _is_korean else None
-                fig_intra  = make_detail_chart(
-                    ohlcv_intra, f"{selected_name} ({intra_interval_label})", period_days,
-                    bb_window=bb_window, rsi_lookback=rsi_lookback,
-                    rsi_buy_center=40, rsi_sell_center=80, rsi_band=5,
-                    persist=persist, phase2_rsi=phase2_rsi,
-                    display_bars=_disp_bars,
-                    intraday_session=_session,
-                )
-                if fig_intra:
-                    st.plotly_chart(fig_intra, width="stretch", config={"displayModeBar": False})
-                else:
-                    close_intra = ohlcv_intra['Close'].dropna()
-                    have  = len(close_intra)
-                    need  = bb_window + 14 + rsi_lookback // 2
-                    st.markdown(
-                        f'<div style="background:#141416;border:1px solid rgba(255,140,0,0.3);'
-                        f'border-radius:8px;padding:10px 16px;margin-bottom:10px;font-size:12px;color:#FFB347;">'
-                        f'⏳ 분봉 신호 계산 데이터 부족 — 현재 <b>{have}봉</b> / 필요 <b>{need}봉</b></div>',
-                        unsafe_allow_html=True,
-                    )
-                    if have >= 3:
-                        pf = go.Figure()
-                        pf.add_trace(go.Scatter(
-                            x=close_intra.index, y=close_intra,
-                            line=dict(color="#787EE7", width=1.5), showlegend=False,
-                        ))
-                        pf.update_layout(
-                            height=320,
-                            title=dict(text=f"{selected_name} ({intra_interval_label})",
-                                       font=dict(size=13, color="#9B9B9B")),
-                            **_base_layout(),
-                        )
-                        pf.update_xaxes(**_axis_kw())
-                        pf.update_yaxes(**_axis_kw())
-                        if _session:
-                            close_h, open_h = _session
-                            pf.update_xaxes(rangebreaks=[
-                                dict(bounds=["sat", "mon"]),
-                                dict(bounds=[close_h, open_h], pattern="hour"),
-                            ])
-                        st.plotly_chart(pf, width="stretch", config={"displayModeBar": False})
-
-        # ③ 신호 해석 가이드 — 접힘
-        with st.expander("📖 신호 해석 가이드", expanded=False):
-            st.markdown("""
-            **BB 신호**
-            - 🟢 **BB↓ 하단**: 종가가 볼린저밴드 하단에 접촉 → 과매도 구간, 반등 가능성 모니터링
-            - 🔴 **BB↑ 상단**: 종가가 볼린저밴드 상단에 접촉 → 과열 구간, 조정 가능성 모니터링
-
-            **RSI 신호** (기준: 매수 40±5, 매도 80±5)
-            - 🟢 **RSI 매수존**: RSI가 35~45 구간 진입 → 눌림/저점 구간
-            - 🔴 **RSI 매도존**: RSI가 75~85 구간 진입 → 과열/고점 구간
-
-            **⭐ 복합 신호**: BB 하단 터치 + RSI 매수존 동시 발생 (또는 BB 상단 + RSI 매도존)
-            → 두 지표가 같은 방향을 가리킬 때 신호 신뢰도가 높아짐
-
-            > 이 신호는 참고 지표이며, 실제 매매 결정은 추가 분석 후 본인 판단으로 하세요.
-            """)
-
-    # ═══════════════════════════════════════════════════════════
-    # TAB 2 — 시장 내부지표
-    # ═══════════════════════════════════════════════════════════
-    with tab2:
-        col_mkt, col_period, _ = st.columns([2, 2, 2])
-        with col_mkt:
-            market_choice = st.radio(
-                "시장", ["코스피", "코스닥", "S&P 500", "나스닥 200"],
-                horizontal=True,
-                label_visibility="collapsed",
-            )
-        with col_period:
-            _mkt_labels = {
-                20: "20일", 42: "2개월", 63: "3개월",
-                126: "6개월", 189: "9개월",
-                252: "1년", 378: "1년 6개월",
-                504: "2년", 756: "3년", 1008: "4년",
-            }
-            mkt_lookback = st.select_slider(
-                "기간", options=list(_mkt_labels.keys()),
-                value=63, format_func=lambda x: _mkt_labels[x],
-                label_visibility="collapsed",
-            )
-
-        with st.spinner("📡 시장 데이터 로딩 중... (전체 종목 첫 로딩 시 1분 소요, 이후 1시간 캐시)"):
-            market_df, err = get_market_internals(market_choice, lookback_days=mkt_lookback)
-
-        if err:
-            st.error("데이터 로드 실패 — 아래 에러 전문을 복사해서 공유해주세요")
-            st.code(err, language="python")
-        elif market_df is not None and not market_df.empty:
-            latest = market_df.iloc[-1]
-            prev = market_df.iloc[-2] if len(market_df) >= 2 else latest
-
-            # ── 종합판단 시계열 차트 (전폭)
-            _score_ts_fig = make_score_timeseries_chart(market_df, market_choice)
-            if _score_ts_fig is not None:
-                st.plotly_chart(_score_ts_fig, width="stretch",
-                                config={"displayModeBar": False})
-
-            # ── 시장 강도 점수 (기존 감성 요약 대체)
-            render_market_score_ui(market_df, market_choice)
-
-            # ── 소형 메트릭 카드 (신호 스캐너와 동일 스타일)
-            def _mkt_card(label, value, delta="", accent="#787EE7"):
-                dlt = (f'<div style="font-size:9px;color:#555;margin-top:1px;">{delta}</div>'
-                       if delta else "")
-                return (
-                    f'<div style="flex:1;min-width:0;background:#141416;'
-                    f'border:1px solid rgba(255,255,255,0.06);border-radius:6px;'
-                    f'padding:5px 10px 6px;">'
-                    f'<div style="font-size:9px;color:#444;text-transform:uppercase;'
-                    f'letter-spacing:0.6px;white-space:nowrap;overflow:hidden;'
-                    f'text-overflow:ellipsis;">{label}</div>'
-                    f'<div style="font-size:15px;font-weight:600;color:{accent};'
-                    f'margin-top:1px;font-variant-numeric:tabular-nums;">{value}</div>'
-                    f'{dlt}</div>'
-                )
-
-            def _mkt_row(cards_html):
-                return (f'<div style="display:flex;gap:5px;margin-bottom:5px;">'
-                        f'{cards_html}</div>')
-
-            summ_val = float(latest['서머레이션'])
-            vix_val  = latest['VIX']
-            ma20_val = latest['상승비율MA20']
-            p200_val = latest['100MA상위']
-            p50_val  = latest.get('20MA상위')
-            adl_chg  = float(latest['ADL'] - prev['ADL'])
-            vix_lbl  = "변동성(HV20)" if market_choice in ("코스피", "코스닥") else "VIX"
-
-            row1 = "".join([
-                _mkt_card("시총가중",
-                    f"{latest['시총가중']:.1f}",
-                    f"{latest['시총가중']-prev['시총가중']:+.2f}",
-                    "#00FF7F" if latest['시총가중'] > prev['시총가중'] else "#FF4B6E"),
-                _mkt_card("균일가중",
-                    f"{latest['균일가중']:.1f}",
-                    f"{latest['균일가중']-prev['균일가중']:+.2f}",
-                    "#FFD700" if latest['균일가중'] > prev['균일가중'] else "#FF4B6E"),
-                _mkt_card("ADL",
-                    f"{latest['ADL']:.0f}",
-                    f"{adl_chg:+.0f}",
-                    "#4BFFB3" if adl_chg >= 0 else "#FF4B6E"),
-                _mkt_card("서머레이션",
-                    f"{summ_val:+.0f}",
-                    "강세구간" if summ_val > 0 else "약세구간",
-                    "#4BFFB3" if summ_val > 0 else "#FF4B6E"),
-                _mkt_card(vix_lbl,
-                    f"{vix_val:.1f}" if pd.notna(vix_val) else "—",
-                    "공포" if (pd.notna(vix_val) and float(vix_val) > 30)
-                    else ("탐욕" if (pd.notna(vix_val) and float(vix_val) < 20) else "중립"),
-                    "#FFB347"),
-                _mkt_card("상승비율MA20",
-                    f"{ma20_val:.1f}%" if pd.notna(ma20_val) else "—",
-                    "",
-                    "#4BFFB3" if (pd.notna(ma20_val) and float(ma20_val) > 50) else "#FF4B6E"),
-                _mkt_card("20MA 상위",
-                    f"{p50_val:.1f}%" if pd.notna(p50_val) else "—",
-                    "강세" if (pd.notna(p50_val) and float(p50_val) > 50)
-                    else "약세",
-                    "#87CEEB" if (pd.notna(p50_val) and float(p50_val) > 50) else "#FF4B6E"),
-                _mkt_card("100MA 상위",
-                    f"{p200_val:.1f}%" if pd.notna(p200_val) else "—",
-                    "강세장" if (pd.notna(p200_val) and float(p200_val) > 70)
-                    else ("약세장" if (pd.notna(p200_val) and float(p200_val) < 30) else "중립"),
-                    "#C8C850"),
-            ])
-            st.markdown(_mkt_row(row1), unsafe_allow_html=True)
-
-            n_med  = int(market_df['전체종목수'].median())
-            full_t = get_full_ticker_list(market_choice)
-            n_full = len(full_t) if full_t else 0
-            if n_full:
-                src_label = f"전체 {n_full}종목"
-            elif market_choice in ("코스피", "코스닥"):
-                src_label = "대형주 바스켓 (fallback)"
-            else:
-                src_label = "구성종목"
-            st.caption(
-                f"기준: {src_label} | 데이터 유효 (중앙값): {n_med}개 | "
-                f"최근 상승: {int(latest['상승종목수'])}개 / {int(latest['전체종목수'])}개"
-            )
-
-            st.plotly_chart(
-                make_market_chart(market_df, market_choice),
-                width="stretch",
-                config={"displayModeBar": False},
-            )
-
-            with st.expander("📖 지표 쉽게 이해하기", expanded=False):
+            if not favorites:
                 st.markdown("""
-<style>
-.guide-table { width:100%; border-collapse:collapse; font-size:12px; }
-.guide-table th { background:#1a1a2e; color:#787EE7; padding:7px 10px; text-align:left; border-bottom:1px solid #2a2a3e; }
-.guide-table td { padding:6px 10px; border-bottom:1px solid #1e1e2e; vertical-align:top; line-height:1.6; }
-.guide-table tr:hover td { background:rgba(120,126,231,0.04); }
-.bull { color:#4BFFB3; font-weight:600; }
-.bear { color:#FF4B6E; font-weight:600; }
-.neut { color:#C8C850; font-weight:600; }
-</style>
+                <div style='background:#111113;border:1px solid rgba(255,255,255,0.06);
+                            border-radius:10px;padding:40px;text-align:center;margin:24px 0;'>
+                    <p style='color:#555;font-size:14px;margin:0;'>
+                        왼쪽 사이드바에서 종목을 검색해서 즐겨찾기에 추가해주세요.
+                    </p>
+                </div>""", unsafe_allow_html=True)
+                return
 
-<table class="guide-table">
-<tr>
-  <th>지표 이름</th>
-  <th>한 줄 설명 (쉽게)</th>
-  <th>🟢 좋은 신호</th>
-  <th>🔴 나쁜 신호</th>
-  <th>결론 내리는 법</th>
-</tr>
-<tr>
-  <td><b>시총가중 지수</b></td>
-  <td>삼성·애플 같은 큰 회사 위주로 시장이 얼마나 올랐나</td>
-  <td class="bull">꾸준히 우상향</td>
-  <td class="bear">꺾이며 하락</td>
-  <td>우리가 흔히 보는 코스피·S&P500 과 같은 개념. 가장 기본 지표</td>
-</tr>
-<tr>
-  <td><b>균일가중 지수</b></td>
-  <td>큰 회사·작은 회사 모두 똑같이 1표씩 줬을 때의 시장. "골고루 오르나?" 확인용</td>
-  <td class="bull">시총가중과 함께 오름</td>
-  <td class="bear">시총가중만 오르고 이건 제자리</td>
-  <td>둘이 같이 오르면 건강한 장. 시총가중만 오르면 일부 대형주만 끌어올리는 불안한 장</td>
-</tr>
-<tr>
-  <td><b>ADL (등락누적선)</b></td>
-  <td>매일 오른 종목 수 − 내린 종목 수를 계속 더한 값. 시장이 진짜 건강한지 보여줌</td>
-  <td class="bull">계속 우상향</td>
-  <td class="bear">지수는 오르는데 ADL은 내려감 (위험 신호!)</td>
-  <td><b>가장 중요한 선행지표.</b> 지수보다 ADL이 먼저 꺾이면 조정이 곧 온다는 경고. ADL이 먼저 올라오면 반등 시작 신호</td>
-</tr>
-<tr>
-  <td><b>52주 신고가 비율</b></td>
-  <td>오늘 1년(52주) 내 최고가를 찍은 종목 수 ÷ 전체 유효 종목 수 × 100. 진짜 상승 모멘텀이 있는지 확인</td>
-  <td class="bull">30% 이상 = 강한 상승 모멘텀</td>
-  <td class="bear">5% 이하 = 신고가 거의 없음 (약세 신호)</td>
-  <td>지수가 오르는데 신고가 비율이 낮으면 소수 대형주만 끌어올리는 불안한 장. 역대 최고가 갱신 구간에서 30%+ 유지되면 진짜 상승장</td>
-</tr>
-<tr>
-  <td><b>20일선 상위 비율</b></td>
-  <td>20일(약 1달) 평균 가격보다 지금 비싼 종목이 몇 %인지. 단기 추세의 건강도를 빠르게 파악</td>
-  <td class="bull">50% 이상 = 단기 강세 흐름</td>
-  <td class="bear">50% 이하 = 단기 약세 흐름</td>
-  <td>100일선 상위 비율보다 민감하게 반응해서 추세 전환을 더 빨리 알려줌. 50%선을 뚫고 올라오면 단기 반등 확인 신호</td>
-</tr>
-<tr>
-  <td><b>맥클렐란 서머레이션</b></td>
-  <td>단기·장기 평균 등락 차이를 계속 누적한 값. "지금 강세장인지 약세장인지" 큰 그림</td>
-  <td class="bull">0 이상 (강세장 영역)</td>
-  <td class="bear">0 이하 (약세장 영역)</td>
-  <td>0선 위면 강세장, 아래면 약세장. 0선을 뚫고 올라오면 장세 전환 신호. 0선 위에서 하락 전환하면 조정 경고</td>
-</tr>
-<tr>
-  <td><b>VIX / 역사적변동성(HV20)</b></td>
-  <td>투자자들이 얼마나 겁먹고 있나. 미국=VIX(옵션 내재변동성), 한국=HV20(지수 20일 실현변동성). 숫자 클수록 불안</td>
-  <td class="bull">급등 후 빠르게 내려올 때 → 공포 해소 = 반등 신호</td>
-  <td class="bear">낮은 수준에서 갑자기 급등 → 조정 시작 신호</td>
-  <td>미국 VIX: 20 이하=안심, 20~30=주의, 30 이상=공포. 한국 HV20: 15 이하=안심, 20 이상=주의, 25 이상=경계. <b>공포 극대일 때가 역발상 매수 타이밍</b>인 경우 많음</td>
-</tr>
-<tr>
-  <td><b>상승비율 MA20</b></td>
-  <td>오늘 전체 종목 중 오른 종목이 몇 %인지를 20일 평균낸 것</td>
-  <td class="bull">60% 이상 유지</td>
-  <td class="bear">40% 이하로 내려감</td>
-  <td>50% 위면 "대부분 오르는 중", 아래면 "대부분 내리는 중". 하루치 수치는 변동 크니 20일 평균선만 봐도 충분</td>
-</tr>
-<tr>
-  <td><b>100일선 상위 비율</b></td>
-  <td>100일(약 5개월) 평균 가격보다 지금 비싼 종목이 몇 %인지</td>
-  <td class="bull">70% 이상 = 강세장</td>
-  <td class="bear">30% 이하 = 약세장 / 20% 이하 = 침체 바닥권</td>
-  <td>중장기 건강도 지표. 30% 이하까지 내려간 뒤 반등하면 강력한 바닥 신호로 자주 활용됨</td>
-</tr>
-</table>
+            today = datetime.now().date()
+            data_end = str(today + timedelta(days=1))
+            # 표시기간 + 워밍업(RSI14 + BB + 동적RSI lookback + 여유) 합산
+            data_start = str(today - timedelta(days=period_days + 400))
 
-<br>
+            # 사이드바에서 이미 bb_window, rsi_lookback, persist 받음
+            bb_std         = 2.0
+            rsi_period     = 14
+            rsi_buy_center = 40
+            rsi_sell_center= 80
+            rsi_band       = 5
 
-**🗺️ 지표 조합으로 지금 어느 상황인지 판단하기**
-
-| 시장 상황 | ADL | 서머레이션 | 52주신고가 비율 | 100일선 상위 | 공포지수 | 내가 할 행동 |
-|---------|-----|----------|------------|------------|---------|------------|
-| 🟢 **상승 시작** | 바닥 찍고 올라오는 중 | 0선 위로 뚫음 | 30%→50% 회복 | 30%→50% 회복 중 | 30 이상에서 내려오는 중 | 적극적으로 매수할 타이밍 |
-| 🟢 **상승 중반** | 계속 우상향 | +500 이상 | 70% 이상 유지 | 60~80% | 20 이하 (안심 구간) | 보유 유지. 추격 매수는 자제 |
-| 🟡 **상승 막바지** | 지수는 오르는데 ADL은 정체 | +1000 이상이지만 더 안 오름 | 지수 오르는데 70% 이하 | 70% 이상 | 15 이하 (과도한 안심) | 비중 줄이고 차익실현 준비 |
-| 🔴 **하락장** | 계속 우하향 | 0선 아래 | 30% 이하 | 30% 이하 | 30 이상 (공포) | 현금 비중 늘리기. 반등해도 매도 기회 |
-
-> 균일가중 지수는 공식 지수가 아니라 직접 계산한 참고용 지표입니다.
-> 첫 로딩 시 전체 종목 다운로드로 1~2분 소요됩니다.
-                """, unsafe_allow_html=True)
-
-
-            # ── 지표 선행성 분석
-            with st.expander("🔬 지표 선행성 분석 (지수 예측력)", expanded=False):
-                st.caption(
-                    "corr(지표[오늘], 지수[오늘+N일]) — 값이 높을수록 해당 지표가 N일 후 지수를 예측하는 경향이 있음. "
-                    "4년치 데이터를 별도 로딩합니다."
-                )
-                with st.spinner("4년 데이터 로딩 중..."):
-                    _ll_df, _ = get_market_internals(market_choice, lookback_days=1008)
-
-                if _ll_df is not None and not _ll_df.empty:
-                    _ll_tbl = compute_lead_lag_table(_ll_df)
-                    _ll_tbl = make_arrow_safe(_ll_tbl)  # Arrow 직렬화 안전장치
-                    if not _ll_tbl.empty:
-                        # 색상 함수
-                        def _style_corr(v):
-                            if pd.isna(v):
-                                return 'color:#444'
-                            ab = abs(v)
-                            if ab >= 0.8:
-                                c = '#00FF7F' if v > 0 else '#FF4B6E'
-                            elif ab >= 0.6:
-                                c = '#4BFFB3' if v > 0 else '#FF6B6B'
-                            elif ab >= 0.4:
-                                c = '#88D0B3' if v > 0 else '#FF9A6C'
-                            else:
-                                c = '#555'
-                            return f'color:{c};font-weight:{"700" if ab>=0.7 else "400"}'
-
-                        _styled = _ll_tbl.style.map(_style_corr).format(
-                            lambda v: f"{v:+.2f}" if not pd.isna(v) else "—"
-                        )
-                        st.dataframe(_styled, width="stretch")
-                        st.download_button(
-                            "⬇ CSV 다운로드",
-                            data=_ll_tbl.to_csv(float_format="%.2f"),
-                            file_name=f"lead_lag_{market_choice}.csv",
-                            mime="text/csv",
-                        )
-                    else:
-                        st.info("데이터 부족으로 선행성 분석을 계산할 수 없습니다.")
-
-    # ═══════════════════════════════════════════════════════════
-    # TAB 3 — 매크로 지표
-    # ═══════════════════════════════════════════════════════════
-    with tab3:
-        st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 미국 데이터 위주이며 참고용. 주황 점선=누적변화, 노란 파선=S&P500%.")
-
-        _c1, _c2 = st.columns([3, 1])
-        with _c1:
-            _yr_opts = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
-            _macro_years = st.select_slider(
-                "기간",
-                options=list(_yr_opts.keys()),
-                value=5,
-                format_func=lambda x: _yr_opts[x],
-                label_visibility='collapsed',
-            )
-        with _c2:
-            _show_spx = st.checkbox("S&P500 오버레이", value=True)
-
-        with st.spinner("📡 S&P500 데이터 로딩 중..."):
-            _spx_s = _yf_close('^GSPC', _macro_years) if _show_spx else None
-
-        with st.spinner("📡 매크로 데이터 로딩 중..."):
-            _macro_charts = [
-                make_macro_credit_spread_chart(_macro_years, _spx_s),   # ① 크레딧 스프레드
-                make_macro_credit_stress_chart(_macro_years, _spx_s),   # ② 크레딧 스트레스 복합
-                make_macro_options_chart(_macro_years,       _spx_s),   # ③ 옵션 심리 (VIX/SKEW)
-                make_macro_pmi_chart(_macro_years,           _spx_s),   # ④ 경기 모멘텀
-                make_macro_liquidity_chart(_macro_years,     _spx_s),   # ⑤ 유동성 (M2/Fed)
-                make_macro_yield_curve_chart(_macro_years,   _spx_s),   # ⑥ 장단기 금리차
+            # US 워치리스트 (신호 계산에 필요해 tickers_tuple보다 먼저 정의)
+            _US_WATCHLIST = [
+                # ── 지수 (이름 오름차순: ASCII → 가나다)
+                {"code": "^GSPC",  "name": "S&P 500 (^GSPC)"},
+                {"code": "^IXIC",  "name": "나스닥 (^IXIC)"},
+                {"code": "^DJI",   "name": "다우존스 (^DJI)"},
+                # ── 원자재
+                {"code": "HG=F",   "name": "구리 현물 (Copper Futures)"},
+                {"code": "GC=F",   "name": "금 현물 (Gold Futures)"},
+                {"code": "SI=F",   "name": "은 현물 (Silver Futures)"},
+                # ── 비트코인
+                {"code": "BTC-USD", "name": "비트코인 (BTC-USD)"},
+                # ── 이더리움
+                {"code": "ETH-USD", "name": "이더리움 (ETH-USD)"},
+                # ── 주식 본주: 개별종목 (이름 오름차순: ASCII → 가나다)
+                {"code": "GOOGL",  "name": "구글 알파벳 (GOOGL)"},
+                {"code": "AMZN",   "name": "아마존 (AMZN)"},
+                # ── 주식 본주: ETF 1배 (코드 오름차순)
+                {"code": "AIPO",   "name": "AIPO AI·IPO ETF"},
+                {"code": "BLOK",   "name": "BLOK 블록체인 ETF"},
+                {"code": "GRID",   "name": "GRID 스마트그리드 ETF"},
+                {"code": "QTUM",   "name": "QTUM 퀀텀컴퓨팅/AI ETF"},
+                {"code": "SOXX",   "name": "SOXX 반도체 ETF"},
+                {"code": "TAN",    "name": "TAN 태양광 ETF"},
+                {"code": "UFO",    "name": "UFO 우주항공 ETF"},
+                # ── 2배 레버리지 (코드 오름차순)
+                {"code": "AMZU",   "name": "AMZU 아마존 2X"},
+                {"code": "GGLL",   "name": "GGLL 구글 2X"},
+                {"code": "UGL",    "name": "UGL 금 2X"},
+                {"code": "USD",    "name": "USD 반도체 2X (ProShares)"},
+                # ── 3배 레버리지 (코드 오름차순)
+                {"code": "SOXL",   "name": "SOXL 반도체 3X"},
+                {"code": "TECL",   "name": "TECL 테크 3X"},
+                {"code": "TQQQ",   "name": "TQQQ 나스닥 3X"},
             ]
 
-        _mc = st.columns(2)
-        for i, ch in enumerate(_macro_charts):
-            if ch is not None:
-                with _mc[i % 2]:
-                    st.plotly_chart(ch, width="stretch", config={"displayModeBar": False})
-            else:
-                with _mc[i % 2]:
-                    _labels = ['① 크레딧 스프레드', '② 크레딧 스트레스', '③ VIX/SKEW',
-                               '④ 경기 모멘텀', '⑤ 유동성', '⑥ 금리차']
-                    st.warning(f"{_labels[i]} 데이터 로딩 실패 — FRED 일시 불가. 잠시 후 재시도해 주세요.")
+            tickers_tuple    = tuple(f['code'] for f in favorites)
+            us_tickers_tuple = tuple(t['code'] for t in _US_WATCHLIST)
 
-        # ⑦ 외국인 순매수 누적 — KOSPI / KOSDAQ 선택
-        st.divider()
-        _ff_code = st.radio("외국인 순매수 시장", ['KOSPI', 'KOSDAQ'], horizontal=True,
-                            label_visibility='visible')
-        with st.spinner("📡 외국인 순매수 데이터 로딩 중..."):
-            _ff, _ff_err = make_macro_foreign_flow_chart(_ff_code, _macro_years, _spx_s)
-        if _ff is not None:
-            st.plotly_chart(_ff, width="stretch", config={"displayModeBar": False})
-        else:
-            _err_detail = f" — {_ff_err}" if _ff_err else ""
-            st.warning(f"⑦ 외국인 순매수 데이터 로딩 실패{_err_detail}")
+            with st.spinner("📡 데이터 로딩..."):
+                if chart_mode == "분봉":
+                    closes = fetch_intraday_batch(tickers_tuple, yf_interval)
+                    highs = lows = pd.DataFrame()
+                else:
+                    closes, highs, lows = fetch_ohlcv_batch(tickers_tuple, data_start, data_end)
+                us_closes, us_highs, us_lows = fetch_ohlcv_batch(us_tickers_tuple, data_start, data_end)
 
-        # ── 매크로 지표 상관계수 테이블 ───────────────────────────────────
-        st.divider()
-        st.markdown("##### 📊 매크로 지표 × S&P500 상관계수")
-        st.caption("r > +0.3 🟢 양의 상관  /  r < -0.3 🔴 음의 상관  /  선행(1M·3M): 지표가 시장을 N개월 앞설 때")
-
-        with st.spinner("상관계수 계산 중..."):
-            # 각 지표 주요 시리즈 수집 (FRED 캐시 재사용)
-            _cy = _macro_years
-            _hy_s   = _fred('BAMLH0A0HYM2', _cy)
-            _nfci_s = _fred('NFCI', _cy)
-            _vix_s  = _yf_close('^VIX', _cy)
-            _m2_s_raw = _fred('M2SL', _cy + 2)
-            _m2_yoy = (_m2_s_raw.pct_change(12) * 100).dropna() if not _m2_s_raw.empty else pd.Series(dtype=float)
-            _t3m_s  = _fred('T10Y3M', _cy)
-            if _t3m_s.empty:
-                _dgs10 = _fred('DGS10', _cy); _dtb3 = _fred('DTB3', _cy)
-                if not _dgs10.empty and not _dtb3.empty:
-                    _t3m_s = (_dgs10 - _dtb3.reindex(_dgs10.index).interpolate()).dropna()
-            # ISM proxy
-            _ord_s = pd.Series(dtype=float)
-            for _sid in ('AMTMNO', 'NEWORDER', 'DGORDER'):
-                _ord_s = _fred(_sid, _cy + 2)
-                if not _ord_s.empty: break
-            _ord_yoy = (_ord_s.pct_change(12) * 100).dropna() if not _ord_s.empty else pd.Series(dtype=float)
-
-            _macro_named = {
-                '① HY 스프레드':     _hy_s,
-                '② NFCI':            _nfci_s,
-                '③ VIX':             _vix_s,
-                '④ 신규주문 YoY%':   _ord_yoy,
-                '⑤ M2 YoY%':         _m2_yoy,
-                '⑥ 10Y-3M 스프레드': _t3m_s,
-            }
-
-            if _spx_s is not None and not _spx_s.empty:
-                _spx_ret = _spx_s.pct_change().dropna()
-                _corr_rows = []
-                for _nm, _s in _macro_named.items():
-                    if _s.empty:
-                        # 문자열 '—' 대신 NaN 사용: 컬럼을 숫자형으로 유지해야
-                        # st.dataframe의 Arrow 변환(ArrowInvalid)이 깨지지 않음.
-                        # 화면 표시는 아래 .format()에서 NaN -> '—'로 처리됨.
-                        _corr_rows.append({'지표': _nm, '동기(r)': float('nan'),
-                                            '1M 선행(r)': float('nan'), '3M 선행(r)': float('nan')})
-                        continue
-                    def _calc_r(series, shift_days=0):
-                        try:
-                            _spx_shifted = _spx_ret.shift(-shift_days) if shift_days else _spx_ret
-                            _al = pd.concat([series.rename('x'), _spx_shifted.rename('y')], axis=1).dropna()
-                            if len(_al) < 20: return float('nan')
-                            return round(float(_al['x'].corr(_al['y'])), 2)
-                        except Exception:
-                            return float('nan')
-                    _corr_rows.append({
-                        '지표': _nm,
-                        '동기(r)':     _calc_r(_s),
-                        '1M 선행(r)': _calc_r(_s, 21),
-                        '3M 선행(r)': _calc_r(_s, 63),
-                    })
-
-                _corr_df = pd.DataFrame(_corr_rows).set_index('지표')
-                _corr_df = make_arrow_safe(_corr_df)  # Arrow 직렬화 안전장치
-
-                def _style_r(v):
-                    if not isinstance(v, (int, float)) or pd.isna(v): return 'color:#666'
-                    if v >= 0.5:  return 'color:#4BFFB3;font-weight:600'
-                    if v >= 0.3:  return 'color:#4BFFB3'
-                    if v <= -0.5: return 'color:#FF4B6E;font-weight:600'
-                    if v <= -0.3: return 'color:#FF4B6E'
-                    return 'color:#AAAAAA'
-
-                _styled_corr = (
-                    _corr_df.style
-                    .map(_style_r)
-                    .format(lambda v: f'{v:+.2f}' if isinstance(v, float) and not pd.isna(v) else '—')
+            # 데이터 로딩 실패 종목 안내 (해당 종목만 빈 값으로 표시, 앱은 계속 동작)
+            _missing_kr = [f['name'] for f in favorites
+                           if f['code'] not in closes.columns or closes[f['code']].dropna().empty]
+            _missing_us = [t['name'] for t in _US_WATCHLIST
+                           if t['code'] not in us_closes.columns or us_closes[t['code']].dropna().empty]
+            _missing_all = _missing_kr + _missing_us
+            if _missing_all:
+                st.warning(
+                    "⚠️ 일부 종목 데이터를 가져오지 못했습니다 (Yahoo Finance 요청 제한/일시 오류일 수 있음): "
+                    + ", ".join(_missing_all)
+                    + " — 해당 종목은 빈 값으로 표시됩니다. 잠시 후 새로고침하면 자동으로 다시 시도됩니다."
                 )
-                st.dataframe(_styled_corr, width="stretch")
+
+            # 신호 계산
+            signal_rows = []
+            for fav in favorites:
+                code = fav['code']
+                row = {
+                    'code': code, 'name': fav['name'],
+                    'close': None, 'pct_change': None, 'rsi': None,
+                    'bb_upper_touch': False, 'bb_lower_touch': False,
+                    'dyn_buy_signal': False, 'dyn_sell_signal': False,
+                    'band_buy_signal': False, 'band_sell_signal': False,
+                    'dyn_buy_flag': False, 'dyn_sell_flag': False,
+                    'band_buy_flag': False, 'band_sell_flag': False,
+                    'dyn_holding': False, 'band_holding': False,
+                }
+                if code in closes.columns:
+                    series = closes[code].dropna()
+                    _h = highs[code] if not highs.empty and code in highs.columns else None
+                    _l = lows[code]  if not lows.empty  and code in lows.columns  else None
+                    sig = get_current_signals(
+                        series, high=_h, low=_l,
+                        bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
+                        rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
+                        rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
+                        phase2_rsi=phase2_rsi,
+                    )
+                    if sig:
+                        row.update(sig)
+                    elif len(series) >= 2:
+                        # 신호 계산 불가(데이터 부족)이어도 가격·등락률은 표시
+                        last = float(series.iloc[-1])
+                        prev = float(series.iloc[-2])
+                        row['close'] = last
+                        row['pct_change'] = (last / prev - 1) * 100 if prev else 0.0
+                signal_rows.append(row)
+
+            # 확정 신호 > 보유 중 > 플래그 > 없음 순 정렬
+            def sort_key(r):
+                # 화면 badge와 동일한 기준 (dyn만) — band_* 는 display에 없으므로 정렬에서도 제외
+                # 매수신호 > 매수플래그 > 보유중 > 매도신호 > 매도플래그 > 없음
+                buy_sig   = r.get('dyn_buy_signal')
+                buy_flag  = r.get('dyn_buy_flag') and not r.get('dyn_buy_signal')
+                holding   = r.get('dyn_holding')
+                sell_sig  = r.get('dyn_sell_signal')
+                sell_flag = r.get('dyn_sell_flag') and not r.get('dyn_sell_signal')
+                if buy_sig:   return 0
+                if buy_flag:  return 1
+                if holding:   return 2
+                if sell_sig:  return 3
+                if sell_flag: return 4
+                return 5
+
+            signal_rows.sort(key=sort_key)
+
+            # US 신호 계산
+            us_signal_rows = []
+            for _item in _US_WATCHLIST:
+                _code = _item['code']
+                _row = {
+                    'code': _code, 'name': _item['name'],
+                    'close': None, 'pct_change': None, 'rsi': None,
+                    'bb_upper_touch': False, 'bb_lower_touch': False,
+                    'dyn_buy_signal': False, 'dyn_sell_signal': False,
+                    'band_buy_signal': False, 'band_sell_signal': False,
+                    'dyn_buy_flag': False, 'dyn_sell_flag': False,
+                    'band_buy_flag': False, 'band_sell_flag': False,
+                    'dyn_holding': False, 'band_holding': False,
+                }
+                if _code in us_closes.columns:
+                    _series = us_closes[_code].dropna()
+                    _h = us_highs[_code] if not us_highs.empty and _code in us_highs.columns else None
+                    _l = us_lows[_code]  if not us_lows.empty  and _code in us_lows.columns  else None
+                    _sig = get_current_signals(
+                        _series, high=_h, low=_l,
+                        bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
+                        rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
+                        rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
+                        phase2_rsi=phase2_rsi,
+                    )
+                    if _sig:
+                        _row.update(_sig)
+                    elif len(_series) >= 2:
+                        _last = float(_series.iloc[-1])
+                        _prev = float(_series.iloc[-2])
+                        _row['close'] = _last
+                        _row['pct_change'] = (_last / _prev - 1) * 100 if _prev else 0.0
+                us_signal_rows.append(_row)
+            us_signal_rows.sort(key=sort_key)
+
+            # 신호 요약 카운트 — 한국
+            n_dyn_buy_flag  = sum(1 for r in signal_rows if r.get('dyn_buy_flag')  and not r.get('dyn_buy_signal'))
+            n_dyn_buy       = sum(1 for r in signal_rows if r.get('dyn_buy_signal'))
+            n_dyn_hold      = sum(1 for r in signal_rows if r.get('dyn_holding'))
+            n_dyn_sell_flag = sum(1 for r in signal_rows if r.get('dyn_sell_flag') and not r.get('dyn_sell_signal'))
+            n_dyn_sell      = sum(1 for r in signal_rows if r.get('dyn_sell_signal'))
+
+            # 신호 요약 카운트 — 미국
+            n_us_buy_flag   = sum(1 for r in us_signal_rows if r.get('dyn_buy_flag')  and not r.get('dyn_buy_signal'))
+            n_us_buy        = sum(1 for r in us_signal_rows if r.get('dyn_buy_signal'))
+            n_us_hold       = sum(1 for r in us_signal_rows if r.get('dyn_holding'))
+            n_us_sell_flag  = sum(1 for r in us_signal_rows if r.get('dyn_sell_flag') and not r.get('dyn_sell_signal'))
+            n_us_sell       = sum(1 for r in us_signal_rows if r.get('dyn_sell_signal'))
+
+            def _mini_card(label, value, accent="#787EE7"):
+                return (f'<div style="flex:1;min-width:0;background:#141416;'
+                        f'border:1px solid rgba(255,255,255,0.06);border-radius:6px;'
+                        f'padding:5px 10px 6px;">'
+                        f'<div style="font-size:9px;color:#444;text-transform:uppercase;'
+                        f'letter-spacing:0.7px;white-space:nowrap;overflow:hidden;'
+                        f'text-overflow:ellipsis;">{label}</div>'
+                        f'<div style="font-size:17px;font-weight:600;color:{accent};'
+                        f'margin-top:1px;font-variant-numeric:tabular-nums;">{value}</div>'
+                        f'</div>')
+
+            def _mini_label(flag):
+                return (f'<div style="display:flex;align-items:center;justify-content:center;'
+                        f'min-width:32px;background:#141416;'
+                        f'border:1px solid rgba(255,255,255,0.06);border-radius:6px;'
+                        f'font-size:13px;flex-shrink:0;">{flag}</div>')
+
+            def _mini_row(prefix, items, flag=''):
+                label = _mini_label(flag) if flag else ''
+                cards = "".join(_mini_card(f"{prefix} {lbl}", val, acc) for lbl, val, acc in items)
+                return (f'<div style="display:flex;gap:5px;margin-bottom:5px;align-items:stretch;">'
+                        f'{label}{cards}</div>')
+
+            st.markdown(
+                '<div style="margin-bottom:20px">' +
+                _mini_row("★", [
+                    ("매수 플래그", f"{n_dyn_buy_flag}",  "#7AAFD4"),
+                    ("매수 신호",   f"{n_dyn_buy}",        "#4BFFB3"),
+                    ("보유 중",     f"{n_dyn_hold}",       "#C8C850"),
+                    ("매도 플래그", f"{n_dyn_sell_flag}",  "#D47A9F"),
+                    ("매도 신호",   f"{n_dyn_sell}",       "#FF4B6E"),
+                ], flag='🇰🇷') +
+                _mini_row("★", [
+                    ("매수 플래그", f"{n_us_buy_flag}",   "#7AAFD4"),
+                    ("매수 신호",   f"{n_us_buy}",         "#4BFFB3"),
+                    ("보유 중",     f"{n_us_hold}",        "#C8C850"),
+                    ("매도 플래그", f"{n_us_sell_flag}",   "#D47A9F"),
+                    ("매도 신호",   f"{n_us_sell}",        "#FF4B6E"),
+                ], flag='🇺🇸') +
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+            # ── 활성 시장 추적 (session_state)
+            if 'scan_active' not in st.session_state:
+                st.session_state.scan_active = 'kr'
+
+            def _set_kr(): st.session_state.scan_active = 'kr'
+            def _set_us(): st.session_state.scan_active = 'us'
+
+            # ① 전체 종목 현황 — 한국 / 미국 분리 (접힘)
+            with st.expander(f"📋 🇰🇷 한국 즐겨찾기 현황 ({len(signal_rows)}개)", expanded=False):
+                st.markdown(render_signal_table(signal_rows), unsafe_allow_html=True)
+
+            with st.expander(f"📋 🇺🇸 미국 지수/ETF 현황 ({len(us_signal_rows)}개)", expanded=False):
+                st.markdown(render_signal_table(us_signal_rows), unsafe_allow_html=True)
+
+            # ② 종목 선택 — 한국 / 미국 좌우 분리
+            col_kr, col_us = st.columns(2)
+
+            kr_names = [f['name'] for f in favorites]
+            us_names = [t['name'] for t in _US_WATCHLIST]
+
+            _kr_divider_prefix = "────────"
+
+            def _kr_divider(label):
+                return f"{_kr_divider_prefix} {label} {_kr_divider_prefix}"
+
+            _kr_front_codes = {"^KQ11", "^KS11", "000660.KS", "005930.KS", "373220.KS"}
+            _kr_retirement_100_codes = {
+                "442570.KS",
+                "284430.KS",
+                "0162Z0.KS",
+                "0025N0.KS",
+                "0019K0.KS",
+            }
+            _kr_leverage_codes = {"0195S0.KS", "0195R0.KS"}
+            _kr_front_names = [f['name'] for f in favorites if f['code'] in _kr_front_codes]
+            _kr_retirement_100_names = [
+                f['name'] for f in favorites
+                if f['code'] in _kr_retirement_100_codes
+            ]
+            _kr_retirement_70_names = [
+                f['name'] for f in favorites
+                if f['code'] not in _kr_front_codes
+                and f['code'] not in _kr_retirement_100_codes
+                and f['code'] not in _kr_leverage_codes
+            ]
+            _kr_leverage_names = [
+                f['name'] for f in favorites
+                if f['code'] in _kr_leverage_codes
+            ]
+            kr_select_names = (
+                _kr_front_names
+                + [_kr_divider("퇴직연금 100%")]
+                + _kr_retirement_100_names
+                + [_kr_divider("퇴직연금 70%")]
+                + _kr_retirement_70_names
+                + [_kr_divider("레버리지 ETF")]
+                + _kr_leverage_names
+            )
+
+            _us_divider_prefix = "────────"
+
+            def _us_divider(label):
+                return f"{_us_divider_prefix} {label} {_us_divider_prefix}"
+
+            us_select_names = [
+                "S&P 500 (^GSPC)",
+                "나스닥 (^IXIC)",
+                "다우존스 (^DJI)",
+                "구리 현물 (Copper Futures)",
+                "금 현물 (Gold Futures)",
+                "은 현물 (Silver Futures)",
+                _us_divider("코인 / 단일종목"),
+                "비트코인 (BTC-USD)",
+                "이더리움 (ETH-USD)",
+                "구글 알파벳 (GOOGL)",
+                "아마존 (AMZN)",
+                _us_divider("1배 ETF"),
+                "AIPO AI·IPO ETF",
+                "BLOK 블록체인 ETF",
+                "GRID 스마트그리드 ETF",
+                "QTUM 퀀텀컴퓨팅/AI ETF",
+                "SOXX 반도체 ETF",
+                "TAN 태양광 ETF",
+                "UFO 우주항공 ETF",
+                _us_divider("레버리지 ETF"),
+                "AMZU 아마존 2X",
+                "GGLL 구글 2X",
+                "UGL 금 2X",
+                "USD 반도체 2X (ProShares)",
+                "SOXL 반도체 3X",
+                "TECL 테크 3X",
+                "TQQQ 나스닥 3X",
+            ]
+
+            with col_kr:
+                with st.expander("🇰🇷 한국 즐겨찾기", expanded=True):
+                    if 'scan_kr_name' not in st.session_state or \
+                            st.session_state.scan_kr_name not in kr_names:
+                        st.session_state.scan_kr_name = kr_names[0]
+                    if 'scan_kr_prev_name' not in st.session_state or \
+                            st.session_state.scan_kr_prev_name not in kr_names:
+                        st.session_state.scan_kr_prev_name = st.session_state.scan_kr_name
+
+                    def _set_kr_select():
+                        if st.session_state.scan_kr_name.startswith(_kr_divider_prefix):
+                            st.session_state.scan_kr_name = st.session_state.scan_kr_prev_name
+                        else:
+                            st.session_state.scan_kr_prev_name = st.session_state.scan_kr_name
+                            _set_kr()
+
+                    st.selectbox("한국종목선택", kr_select_names,
+                                 key='scan_kr_name', on_change=_set_kr_select,
+                                 label_visibility='collapsed')
+
+            with col_us:
+                with st.expander("🇺🇸 미국 지수/ETF", expanded=True):
+                    if 'scan_us_name' not in st.session_state or \
+                            st.session_state.scan_us_name not in us_names:
+                        st.session_state.scan_us_name = us_names[0]
+                    if 'scan_us_prev_name' not in st.session_state or \
+                            st.session_state.scan_us_prev_name not in us_names:
+                        st.session_state.scan_us_prev_name = st.session_state.scan_us_name
+
+                    def _set_us_select():
+                        if st.session_state.scan_us_name.startswith(_us_divider_prefix):
+                            st.session_state.scan_us_name = st.session_state.scan_us_prev_name
+                        else:
+                            st.session_state.scan_us_prev_name = st.session_state.scan_us_name
+                            _set_us()
+
+                    st.selectbox("미국종목선택", us_select_names,
+                                 key='scan_us_name', on_change=_set_us_select,
+                                 label_visibility='collapsed')
+
+            # 활성 티커 결정
+            if st.session_state.scan_active == 'kr':
+                _kr_name = st.session_state.get('scan_kr_name', kr_names[0])
+                _sel_item = next((f for f in favorites if f['name'] == _kr_name), favorites[0])
+                selected_name = _sel_item['name']
+                selected_code = _sel_item['code']
             else:
-                st.info("S&P500 오버레이를 체크해야 상관계수를 계산할 수 있습니다.")
+                _us_name = st.session_state.get('scan_us_name', us_names[0])
+                _sel_item = next((t for t in _US_WATCHLIST if t['name'] == _us_name), _US_WATCHLIST[0])
+                selected_name = _sel_item['name']
+                selected_code = _sel_item['code']
+
+            # 한국 시간대 판별 (지수 코드 포함)
+            _is_korean = selected_code.endswith(('.KS', '.KQ')) or \
+                         selected_code in ('^KS11', '^KQ11')
+
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+            # ── 일봉 차트 ──────────────────────────────────────
+            if chart_mode == "일봉":
+                with st.spinner("차트 로딩..."):
+                    ohlcv = fetch_ohlcv(selected_code, data_start, data_end)
+
+                if ohlcv.empty:
+                    st.warning(f"⚠️ {selected_name} 데이터를 가져올 수 없습니다.")
+                else:
+                    fig = make_detail_chart(
+                        ohlcv, selected_name, period_days,
+                        bb_window=bb_window, rsi_lookback=rsi_lookback,
+                        rsi_buy_center=40, rsi_sell_center=80, rsi_band=5,
+                        persist=persist, phase2_rsi=phase2_rsi,
+                    )
+                    if fig:
+                        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                    else:
+                        close = ohlcv['Close'].dropna()
+                        have  = len(close)
+                        need  = bb_window + 14 + rsi_lookback // 2
+                        first_date = close.index[0].strftime('%Y-%m-%d') if have > 0 else '—'
+                        st.markdown(
+                            f'<div style="background:#141416;border:1px solid rgba(255,140,0,0.3);'
+                            f'border-radius:8px;padding:10px 16px;margin-bottom:10px;font-size:12px;color:#FFB347;">'
+                            f'⏳ 신호 계산 데이터 부족 — 현재 <b>{have}일</b> / 필요 <b>{need}일</b> '
+                            f'(상장: {first_date})</div>',
+                            unsafe_allow_html=True,
+                        )
+                        if have >= 3:
+                            price_fig = go.Figure()
+                            price_fig.add_trace(go.Scatter(
+                                x=close.index, y=close,
+                                line=dict(color="#787EE7", width=1.8), showlegend=False,
+                            ))
+                            price_fig.update_layout(
+                                height=320, title=dict(text=selected_name, font=dict(size=13, color="#9B9B9B")),
+                                **_base_layout(),
+                            )
+                            price_fig.update_xaxes(**_axis_kw())
+                            price_fig.update_yaxes(**_axis_kw())
+                            st.plotly_chart(price_fig, width="stretch", config={"displayModeBar": False})
+
+            # ── 분봉 차트 ──────────────────────────────────────
+            else:
+                _ticker = selected_code
+                with st.spinner(f"분봉 로딩... ({intra_interval_label}, {period_name} 기준)"):
+                    ohlcv_intra, intra_err = fetch_intraday(_ticker, yf_interval)
+
+                if ohlcv_intra.empty:
+                    st.warning(f"⚠️ {selected_name} 분봉 데이터를 가져올 수 없습니다.")
+                    if intra_err:
+                        st.code(intra_err, language=None)
+                else:
+                    if intra_err:
+                        st.caption(f"⚠️ 데이터 로딩 경고: {intra_err}")
+                    _disp_bars = _intra_bars_per_day[yf_interval] * period_days
+                    _session   = (15.5, 9.0) if _is_korean else None
+                    fig_intra  = make_detail_chart(
+                        ohlcv_intra, f"{selected_name} ({intra_interval_label})", period_days,
+                        bb_window=bb_window, rsi_lookback=rsi_lookback,
+                        rsi_buy_center=40, rsi_sell_center=80, rsi_band=5,
+                        persist=persist, phase2_rsi=phase2_rsi,
+                        display_bars=_disp_bars,
+                        intraday_session=_session,
+                    )
+                    if fig_intra:
+                        st.plotly_chart(fig_intra, width="stretch", config={"displayModeBar": False})
+                    else:
+                        close_intra = ohlcv_intra['Close'].dropna()
+                        have  = len(close_intra)
+                        need  = bb_window + 14 + rsi_lookback // 2
+                        st.markdown(
+                            f'<div style="background:#141416;border:1px solid rgba(255,140,0,0.3);'
+                            f'border-radius:8px;padding:10px 16px;margin-bottom:10px;font-size:12px;color:#FFB347;">'
+                            f'⏳ 분봉 신호 계산 데이터 부족 — 현재 <b>{have}봉</b> / 필요 <b>{need}봉</b></div>',
+                            unsafe_allow_html=True,
+                        )
+                        if have >= 3:
+                            pf = go.Figure()
+                            pf.add_trace(go.Scatter(
+                                x=close_intra.index, y=close_intra,
+                                line=dict(color="#787EE7", width=1.5), showlegend=False,
+                            ))
+                            pf.update_layout(
+                                height=320,
+                                title=dict(text=f"{selected_name} ({intra_interval_label})",
+                                           font=dict(size=13, color="#9B9B9B")),
+                                **_base_layout(),
+                            )
+                            pf.update_xaxes(**_axis_kw())
+                            pf.update_yaxes(**_axis_kw())
+                            if _session:
+                                close_h, open_h = _session
+                                pf.update_xaxes(rangebreaks=[
+                                    dict(bounds=["sat", "mon"]),
+                                    dict(bounds=[close_h, open_h], pattern="hour"),
+                                ])
+                            st.plotly_chart(pf, width="stretch", config={"displayModeBar": False})
+
+            # ③ 신호 해석 가이드 — 접힘
+            with st.expander("📖 신호 해석 가이드", expanded=False):
+                st.markdown("""
+                **BB 신호**
+                - 🟢 **BB↓ 하단**: 종가가 볼린저밴드 하단에 접촉 → 과매도 구간, 반등 가능성 모니터링
+                - 🔴 **BB↑ 상단**: 종가가 볼린저밴드 상단에 접촉 → 과열 구간, 조정 가능성 모니터링
+
+                **RSI 신호** (기준: 매수 40±5, 매도 80±5)
+                - 🟢 **RSI 매수존**: RSI가 35~45 구간 진입 → 눌림/저점 구간
+                - 🔴 **RSI 매도존**: RSI가 75~85 구간 진입 → 과열/고점 구간
+
+                **⭐ 복합 신호**: BB 하단 터치 + RSI 매수존 동시 발생 (또는 BB 상단 + RSI 매도존)
+                → 두 지표가 같은 방향을 가리킬 때 신호 신뢰도가 높아짐
+
+                > 이 신호는 참고 지표이며, 실제 매매 결정은 추가 분석 후 본인 판단으로 하세요.
+                """)
+
+        # ═══════════════════════════════════════════════════════════
+        # TAB 2 — 시장 내부지표
+        # ═══════════════════════════════════════════════════════════
+    if page in ("all", "market"):
+        with tab2:
+            col_mkt, col_period, _ = st.columns([2, 2, 2])
+            with col_mkt:
+                market_choice = st.radio(
+                    "시장", ["코스피", "코스닥", "S&P 500", "나스닥 200"],
+                    horizontal=True,
+                    label_visibility="collapsed",
+                )
+            with col_period:
+                _mkt_labels = {
+                    20: "20일", 42: "2개월", 63: "3개월",
+                    126: "6개월", 189: "9개월",
+                    252: "1년", 378: "1년 6개월",
+                    504: "2년", 756: "3년", 1008: "4년",
+                }
+                mkt_lookback = st.select_slider(
+                    "기간", options=list(_mkt_labels.keys()),
+                    value=63, format_func=lambda x: _mkt_labels[x],
+                    label_visibility="collapsed",
+                )
+
+            with st.spinner("📡 시장 데이터 로딩 중... (전체 종목 첫 로딩 시 1분 소요, 이후 1시간 캐시)"):
+                market_df, err = get_market_internals(market_choice, lookback_days=mkt_lookback)
+
+            if err:
+                st.error("데이터 로드 실패 — 아래 에러 전문을 복사해서 공유해주세요")
+                st.code(err, language="python")
+            elif market_df is not None and not market_df.empty:
+                latest = market_df.iloc[-1]
+                prev = market_df.iloc[-2] if len(market_df) >= 2 else latest
+
+                # ── 종합판단 시계열 차트 (전폭)
+                _score_ts_fig = make_score_timeseries_chart(market_df, market_choice)
+                if _score_ts_fig is not None:
+                    st.plotly_chart(_score_ts_fig, width="stretch",
+                                    config={"displayModeBar": False})
+
+                # ── 시장 강도 점수 (기존 감성 요약 대체)
+                render_market_score_ui(market_df, market_choice)
+
+                # ── 소형 메트릭 카드 (신호 스캐너와 동일 스타일)
+                def _mkt_card(label, value, delta="", accent="#787EE7"):
+                    dlt = (f'<div style="font-size:9px;color:#555;margin-top:1px;">{delta}</div>'
+                           if delta else "")
+                    return (
+                        f'<div style="flex:1;min-width:0;background:#141416;'
+                        f'border:1px solid rgba(255,255,255,0.06);border-radius:6px;'
+                        f'padding:5px 10px 6px;">'
+                        f'<div style="font-size:9px;color:#444;text-transform:uppercase;'
+                        f'letter-spacing:0.6px;white-space:nowrap;overflow:hidden;'
+                        f'text-overflow:ellipsis;">{label}</div>'
+                        f'<div style="font-size:15px;font-weight:600;color:{accent};'
+                        f'margin-top:1px;font-variant-numeric:tabular-nums;">{value}</div>'
+                        f'{dlt}</div>'
+                    )
+
+                def _mkt_row(cards_html):
+                    return (f'<div style="display:flex;gap:5px;margin-bottom:5px;">'
+                            f'{cards_html}</div>')
+
+                summ_val = float(latest['서머레이션'])
+                vix_val  = latest['VIX']
+                ma20_val = latest['상승비율MA20']
+                p200_val = latest['100MA상위']
+                p50_val  = latest.get('20MA상위')
+                adl_chg  = float(latest['ADL'] - prev['ADL'])
+                vix_lbl  = "변동성(HV20)" if market_choice in ("코스피", "코스닥") else "VIX"
+
+                row1 = "".join([
+                    _mkt_card("시총가중",
+                        f"{latest['시총가중']:.1f}",
+                        f"{latest['시총가중']-prev['시총가중']:+.2f}",
+                        "#00FF7F" if latest['시총가중'] > prev['시총가중'] else "#FF4B6E"),
+                    _mkt_card("균일가중",
+                        f"{latest['균일가중']:.1f}",
+                        f"{latest['균일가중']-prev['균일가중']:+.2f}",
+                        "#FFD700" if latest['균일가중'] > prev['균일가중'] else "#FF4B6E"),
+                    _mkt_card("ADL",
+                        f"{latest['ADL']:.0f}",
+                        f"{adl_chg:+.0f}",
+                        "#4BFFB3" if adl_chg >= 0 else "#FF4B6E"),
+                    _mkt_card("서머레이션",
+                        f"{summ_val:+.0f}",
+                        "강세구간" if summ_val > 0 else "약세구간",
+                        "#4BFFB3" if summ_val > 0 else "#FF4B6E"),
+                    _mkt_card(vix_lbl,
+                        f"{vix_val:.1f}" if pd.notna(vix_val) else "—",
+                        "공포" if (pd.notna(vix_val) and float(vix_val) > 30)
+                        else ("탐욕" if (pd.notna(vix_val) and float(vix_val) < 20) else "중립"),
+                        "#FFB347"),
+                    _mkt_card("상승비율MA20",
+                        f"{ma20_val:.1f}%" if pd.notna(ma20_val) else "—",
+                        "",
+                        "#4BFFB3" if (pd.notna(ma20_val) and float(ma20_val) > 50) else "#FF4B6E"),
+                    _mkt_card("20MA 상위",
+                        f"{p50_val:.1f}%" if pd.notna(p50_val) else "—",
+                        "강세" if (pd.notna(p50_val) and float(p50_val) > 50)
+                        else "약세",
+                        "#87CEEB" if (pd.notna(p50_val) and float(p50_val) > 50) else "#FF4B6E"),
+                    _mkt_card("100MA 상위",
+                        f"{p200_val:.1f}%" if pd.notna(p200_val) else "—",
+                        "강세장" if (pd.notna(p200_val) and float(p200_val) > 70)
+                        else ("약세장" if (pd.notna(p200_val) and float(p200_val) < 30) else "중립"),
+                        "#C8C850"),
+                ])
+                st.markdown(_mkt_row(row1), unsafe_allow_html=True)
+
+                n_med  = int(market_df['전체종목수'].median())
+                full_t = get_full_ticker_list(market_choice)
+                n_full = len(full_t) if full_t else 0
+                if n_full:
+                    src_label = f"전체 {n_full}종목"
+                elif market_choice in ("코스피", "코스닥"):
+                    src_label = "대형주 바스켓 (fallback)"
+                else:
+                    src_label = "구성종목"
+                st.caption(
+                    f"기준: {src_label} | 데이터 유효 (중앙값): {n_med}개 | "
+                    f"최근 상승: {int(latest['상승종목수'])}개 / {int(latest['전체종목수'])}개"
+                )
+
+                st.plotly_chart(
+                    make_market_chart(market_df, market_choice),
+                    width="stretch",
+                    config={"displayModeBar": False},
+                )
+
+                with st.expander("📖 지표 쉽게 이해하기", expanded=False):
+                    st.markdown("""
+    <style>
+    .guide-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .guide-table th { background:#1a1a2e; color:#787EE7; padding:7px 10px; text-align:left; border-bottom:1px solid #2a2a3e; }
+    .guide-table td { padding:6px 10px; border-bottom:1px solid #1e1e2e; vertical-align:top; line-height:1.6; }
+    .guide-table tr:hover td { background:rgba(120,126,231,0.04); }
+    .bull { color:#4BFFB3; font-weight:600; }
+    .bear { color:#FF4B6E; font-weight:600; }
+    .neut { color:#C8C850; font-weight:600; }
+    </style>
+
+    <table class="guide-table">
+    <tr>
+      <th>지표 이름</th>
+      <th>한 줄 설명 (쉽게)</th>
+      <th>🟢 좋은 신호</th>
+      <th>🔴 나쁜 신호</th>
+      <th>결론 내리는 법</th>
+    </tr>
+    <tr>
+      <td><b>시총가중 지수</b></td>
+      <td>삼성·애플 같은 큰 회사 위주로 시장이 얼마나 올랐나</td>
+      <td class="bull">꾸준히 우상향</td>
+      <td class="bear">꺾이며 하락</td>
+      <td>우리가 흔히 보는 코스피·S&P500 과 같은 개념. 가장 기본 지표</td>
+    </tr>
+    <tr>
+      <td><b>균일가중 지수</b></td>
+      <td>큰 회사·작은 회사 모두 똑같이 1표씩 줬을 때의 시장. "골고루 오르나?" 확인용</td>
+      <td class="bull">시총가중과 함께 오름</td>
+      <td class="bear">시총가중만 오르고 이건 제자리</td>
+      <td>둘이 같이 오르면 건강한 장. 시총가중만 오르면 일부 대형주만 끌어올리는 불안한 장</td>
+    </tr>
+    <tr>
+      <td><b>ADL (등락누적선)</b></td>
+      <td>매일 오른 종목 수 − 내린 종목 수를 계속 더한 값. 시장이 진짜 건강한지 보여줌</td>
+      <td class="bull">계속 우상향</td>
+      <td class="bear">지수는 오르는데 ADL은 내려감 (위험 신호!)</td>
+      <td><b>가장 중요한 선행지표.</b> 지수보다 ADL이 먼저 꺾이면 조정이 곧 온다는 경고. ADL이 먼저 올라오면 반등 시작 신호</td>
+    </tr>
+    <tr>
+      <td><b>52주 신고가 비율</b></td>
+      <td>오늘 1년(52주) 내 최고가를 찍은 종목 수 ÷ 전체 유효 종목 수 × 100. 진짜 상승 모멘텀이 있는지 확인</td>
+      <td class="bull">30% 이상 = 강한 상승 모멘텀</td>
+      <td class="bear">5% 이하 = 신고가 거의 없음 (약세 신호)</td>
+      <td>지수가 오르는데 신고가 비율이 낮으면 소수 대형주만 끌어올리는 불안한 장. 역대 최고가 갱신 구간에서 30%+ 유지되면 진짜 상승장</td>
+    </tr>
+    <tr>
+      <td><b>20일선 상위 비율</b></td>
+      <td>20일(약 1달) 평균 가격보다 지금 비싼 종목이 몇 %인지. 단기 추세의 건강도를 빠르게 파악</td>
+      <td class="bull">50% 이상 = 단기 강세 흐름</td>
+      <td class="bear">50% 이하 = 단기 약세 흐름</td>
+      <td>100일선 상위 비율보다 민감하게 반응해서 추세 전환을 더 빨리 알려줌. 50%선을 뚫고 올라오면 단기 반등 확인 신호</td>
+    </tr>
+    <tr>
+      <td><b>맥클렐란 서머레이션</b></td>
+      <td>단기·장기 평균 등락 차이를 계속 누적한 값. "지금 강세장인지 약세장인지" 큰 그림</td>
+      <td class="bull">0 이상 (강세장 영역)</td>
+      <td class="bear">0 이하 (약세장 영역)</td>
+      <td>0선 위면 강세장, 아래면 약세장. 0선을 뚫고 올라오면 장세 전환 신호. 0선 위에서 하락 전환하면 조정 경고</td>
+    </tr>
+    <tr>
+      <td><b>VIX / 역사적변동성(HV20)</b></td>
+      <td>투자자들이 얼마나 겁먹고 있나. 미국=VIX(옵션 내재변동성), 한국=HV20(지수 20일 실현변동성). 숫자 클수록 불안</td>
+      <td class="bull">급등 후 빠르게 내려올 때 → 공포 해소 = 반등 신호</td>
+      <td class="bear">낮은 수준에서 갑자기 급등 → 조정 시작 신호</td>
+      <td>미국 VIX: 20 이하=안심, 20~30=주의, 30 이상=공포. 한국 HV20: 15 이하=안심, 20 이상=주의, 25 이상=경계. <b>공포 극대일 때가 역발상 매수 타이밍</b>인 경우 많음</td>
+    </tr>
+    <tr>
+      <td><b>상승비율 MA20</b></td>
+      <td>오늘 전체 종목 중 오른 종목이 몇 %인지를 20일 평균낸 것</td>
+      <td class="bull">60% 이상 유지</td>
+      <td class="bear">40% 이하로 내려감</td>
+      <td>50% 위면 "대부분 오르는 중", 아래면 "대부분 내리는 중". 하루치 수치는 변동 크니 20일 평균선만 봐도 충분</td>
+    </tr>
+    <tr>
+      <td><b>100일선 상위 비율</b></td>
+      <td>100일(약 5개월) 평균 가격보다 지금 비싼 종목이 몇 %인지</td>
+      <td class="bull">70% 이상 = 강세장</td>
+      <td class="bear">30% 이하 = 약세장 / 20% 이하 = 침체 바닥권</td>
+      <td>중장기 건강도 지표. 30% 이하까지 내려간 뒤 반등하면 강력한 바닥 신호로 자주 활용됨</td>
+    </tr>
+    </table>
+
+    <br>
+
+    **🗺️ 지표 조합으로 지금 어느 상황인지 판단하기**
+
+    | 시장 상황 | ADL | 서머레이션 | 52주신고가 비율 | 100일선 상위 | 공포지수 | 내가 할 행동 |
+    |---------|-----|----------|------------|------------|---------|------------|
+    | 🟢 **상승 시작** | 바닥 찍고 올라오는 중 | 0선 위로 뚫음 | 30%→50% 회복 | 30%→50% 회복 중 | 30 이상에서 내려오는 중 | 적극적으로 매수할 타이밍 |
+    | 🟢 **상승 중반** | 계속 우상향 | +500 이상 | 70% 이상 유지 | 60~80% | 20 이하 (안심 구간) | 보유 유지. 추격 매수는 자제 |
+    | 🟡 **상승 막바지** | 지수는 오르는데 ADL은 정체 | +1000 이상이지만 더 안 오름 | 지수 오르는데 70% 이하 | 70% 이상 | 15 이하 (과도한 안심) | 비중 줄이고 차익실현 준비 |
+    | 🔴 **하락장** | 계속 우하향 | 0선 아래 | 30% 이하 | 30% 이하 | 30 이상 (공포) | 현금 비중 늘리기. 반등해도 매도 기회 |
+
+    > 균일가중 지수는 공식 지수가 아니라 직접 계산한 참고용 지표입니다.
+    > 첫 로딩 시 전체 종목 다운로드로 1~2분 소요됩니다.
+                    """, unsafe_allow_html=True)
+
+
+                # ── 지표 선행성 분석
+                with st.expander("🔬 지표 선행성 분석 (지수 예측력)", expanded=False):
+                    st.caption(
+                        "corr(지표[오늘], 지수[오늘+N일]) — 값이 높을수록 해당 지표가 N일 후 지수를 예측하는 경향이 있음. "
+                        "4년치 데이터를 별도 로딩합니다."
+                    )
+                    with st.spinner("4년 데이터 로딩 중..."):
+                        _ll_df, _ = get_market_internals(market_choice, lookback_days=1008)
+
+                    if _ll_df is not None and not _ll_df.empty:
+                        _ll_tbl = compute_lead_lag_table(_ll_df)
+                        _ll_tbl = make_arrow_safe(_ll_tbl)  # Arrow 직렬화 안전장치
+                        if not _ll_tbl.empty:
+                            # 색상 함수
+                            def _style_corr(v):
+                                if pd.isna(v):
+                                    return 'color:#444'
+                                ab = abs(v)
+                                if ab >= 0.8:
+                                    c = '#00FF7F' if v > 0 else '#FF4B6E'
+                                elif ab >= 0.6:
+                                    c = '#4BFFB3' if v > 0 else '#FF6B6B'
+                                elif ab >= 0.4:
+                                    c = '#88D0B3' if v > 0 else '#FF9A6C'
+                                else:
+                                    c = '#555'
+                                return f'color:{c};font-weight:{"700" if ab>=0.7 else "400"}'
+
+                            _styled = _ll_tbl.style.map(_style_corr).format(
+                                lambda v: f"{v:+.2f}" if not pd.isna(v) else "—"
+                            )
+                            st.dataframe(_styled, width="stretch")
+                            st.download_button(
+                                "⬇ CSV 다운로드",
+                                data=_ll_tbl.to_csv(float_format="%.2f"),
+                                file_name=f"lead_lag_{market_choice}.csv",
+                                mime="text/csv",
+                            )
+                        else:
+                            st.info("데이터 부족으로 선행성 분석을 계산할 수 없습니다.")
+
+        # ═══════════════════════════════════════════════════════════
+        # TAB 3 — 매크로 지표
+        # ═══════════════════════════════════════════════════════════
+    if page in ("all", "macro"):
+        with tab3:
+            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 미국 데이터 위주이며 참고용. 주황 점선=누적변화, 노란 파선=S&P500%.")
+
+            _c1, _c2 = st.columns([3, 1])
+            with _c1:
+                _yr_opts = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
+                _macro_years = st.select_slider(
+                    "기간",
+                    options=list(_yr_opts.keys()),
+                    value=5,
+                    format_func=lambda x: _yr_opts[x],
+                    label_visibility='collapsed',
+                )
+            with _c2:
+                _show_spx = st.checkbox("S&P500 오버레이", value=True)
+
+            with st.spinner("📡 S&P500 데이터 로딩 중..."):
+                _spx_s = _yf_close('^GSPC', _macro_years) if _show_spx else None
+
+            with st.spinner("📡 매크로 데이터 로딩 중..."):
+                _macro_charts = [
+                    make_macro_credit_spread_chart(_macro_years, _spx_s),   # ① 크레딧 스프레드
+                    make_macro_credit_stress_chart(_macro_years, _spx_s),   # ② 크레딧 스트레스 복합
+                    make_macro_options_chart(_macro_years,       _spx_s),   # ③ 옵션 심리 (VIX/SKEW)
+                    make_macro_pmi_chart(_macro_years,           _spx_s),   # ④ 경기 모멘텀
+                    make_macro_liquidity_chart(_macro_years,     _spx_s),   # ⑤ 유동성 (M2/Fed)
+                    make_macro_yield_curve_chart(_macro_years,   _spx_s),   # ⑥ 장단기 금리차
+                ]
+
+            _mc = st.columns(2)
+            for i, ch in enumerate(_macro_charts):
+                if ch is not None:
+                    with _mc[i % 2]:
+                        st.plotly_chart(ch, width="stretch", config={"displayModeBar": False})
+                else:
+                    with _mc[i % 2]:
+                        _labels = ['① 크레딧 스프레드', '② 크레딧 스트레스', '③ VIX/SKEW',
+                                   '④ 경기 모멘텀', '⑤ 유동성', '⑥ 금리차']
+                        st.warning(f"{_labels[i]} 데이터 로딩 실패 — FRED 일시 불가. 잠시 후 재시도해 주세요.")
+
+            # ⑦ 외국인 순매수 누적 — KOSPI / KOSDAQ 선택
+            st.divider()
+            _ff_code = st.radio("외국인 순매수 시장", ['KOSPI', 'KOSDAQ'], horizontal=True,
+                                label_visibility='visible')
+            with st.spinner("📡 외국인 순매수 데이터 로딩 중..."):
+                _ff, _ff_err = make_macro_foreign_flow_chart(_ff_code, _macro_years, _spx_s)
+            if _ff is not None:
+                st.plotly_chart(_ff, width="stretch", config={"displayModeBar": False})
+            else:
+                _err_detail = f" — {_ff_err}" if _ff_err else ""
+                st.warning(f"⑦ 외국인 순매수 데이터 로딩 실패{_err_detail}")
+
+            # ── 매크로 지표 상관계수 테이블 ───────────────────────────────────
+            st.divider()
+            st.markdown("##### 📊 매크로 지표 × S&P500 상관계수")
+            st.caption("r > +0.3 🟢 양의 상관  /  r < -0.3 🔴 음의 상관  /  선행(1M·3M): 지표가 시장을 N개월 앞설 때")
+
+            with st.spinner("상관계수 계산 중..."):
+                # 각 지표 주요 시리즈 수집 (FRED 캐시 재사용)
+                _cy = _macro_years
+                _hy_s   = _fred('BAMLH0A0HYM2', _cy)
+                _nfci_s = _fred('NFCI', _cy)
+                _vix_s  = _yf_close('^VIX', _cy)
+                _m2_s_raw = _fred('M2SL', _cy + 2)
+                _m2_yoy = (_m2_s_raw.pct_change(12) * 100).dropna() if not _m2_s_raw.empty else pd.Series(dtype=float)
+                _t3m_s  = _fred('T10Y3M', _cy)
+                if _t3m_s.empty:
+                    _dgs10 = _fred('DGS10', _cy); _dtb3 = _fred('DTB3', _cy)
+                    if not _dgs10.empty and not _dtb3.empty:
+                        _t3m_s = (_dgs10 - _dtb3.reindex(_dgs10.index).interpolate()).dropna()
+                # ISM proxy
+                _ord_s = pd.Series(dtype=float)
+                for _sid in ('AMTMNO', 'NEWORDER', 'DGORDER'):
+                    _ord_s = _fred(_sid, _cy + 2)
+                    if not _ord_s.empty: break
+                _ord_yoy = (_ord_s.pct_change(12) * 100).dropna() if not _ord_s.empty else pd.Series(dtype=float)
+
+                _macro_named = {
+                    '① HY 스프레드':     _hy_s,
+                    '② NFCI':            _nfci_s,
+                    '③ VIX':             _vix_s,
+                    '④ 신규주문 YoY%':   _ord_yoy,
+                    '⑤ M2 YoY%':         _m2_yoy,
+                    '⑥ 10Y-3M 스프레드': _t3m_s,
+                }
+
+                if _spx_s is not None and not _spx_s.empty:
+                    _spx_ret = _spx_s.pct_change().dropna()
+                    _corr_rows = []
+                    for _nm, _s in _macro_named.items():
+                        if _s.empty:
+                            # 문자열 '—' 대신 NaN 사용: 컬럼을 숫자형으로 유지해야
+                            # st.dataframe의 Arrow 변환(ArrowInvalid)이 깨지지 않음.
+                            # 화면 표시는 아래 .format()에서 NaN -> '—'로 처리됨.
+                            _corr_rows.append({'지표': _nm, '동기(r)': float('nan'),
+                                                '1M 선행(r)': float('nan'), '3M 선행(r)': float('nan')})
+                            continue
+                        def _calc_r(series, shift_days=0):
+                            try:
+                                _spx_shifted = _spx_ret.shift(-shift_days) if shift_days else _spx_ret
+                                _al = pd.concat([series.rename('x'), _spx_shifted.rename('y')], axis=1).dropna()
+                                if len(_al) < 20: return float('nan')
+                                return round(float(_al['x'].corr(_al['y'])), 2)
+                            except Exception:
+                                return float('nan')
+                        _corr_rows.append({
+                            '지표': _nm,
+                            '동기(r)':     _calc_r(_s),
+                            '1M 선행(r)': _calc_r(_s, 21),
+                            '3M 선행(r)': _calc_r(_s, 63),
+                        })
+
+                    _corr_df = pd.DataFrame(_corr_rows).set_index('지표')
+                    _corr_df = make_arrow_safe(_corr_df)  # Arrow 직렬화 안전장치
+
+                    def _style_r(v):
+                        if not isinstance(v, (int, float)) or pd.isna(v): return 'color:#666'
+                        if v >= 0.5:  return 'color:#4BFFB3;font-weight:600'
+                        if v >= 0.3:  return 'color:#4BFFB3'
+                        if v <= -0.5: return 'color:#FF4B6E;font-weight:600'
+                        if v <= -0.3: return 'color:#FF4B6E'
+                        return 'color:#AAAAAA'
+
+                    _styled_corr = (
+                        _corr_df.style
+                        .map(_style_r)
+                        .format(lambda v: f'{v:+.2f}' if isinstance(v, float) and not pd.isna(v) else '—')
+                    )
+                    st.dataframe(_styled_corr, width="stretch")
+                else:
+                    st.info("S&P500 오버레이를 체크해야 상관계수를 계산할 수 있습니다.")
 
 
 if __name__ == "__main__":
