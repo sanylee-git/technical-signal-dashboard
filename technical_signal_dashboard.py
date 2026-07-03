@@ -96,7 +96,6 @@ DEFAULT_FAVORITES = [
     {"code": "0019K0.KS",  "name": "TIME 미국나스닥100채권혼합50액티브 (0019K0)"},
     {"code": "491010.KS",  "name": "TIGER 글로벌AI전력인프라액티브 (491010)"},
     {"code": "487240.KS",  "name": "KODEX AI전력핵심설비 (487240)"},
-    {"code": "472170.KS",  "name": "TIGER 미국테크TOP10채권혼합 (472170)"},
     {"code": "456600.KS",  "name": "TIME 글로벌AI인공지능액티브 (456600)"},
     {"code": "446770.KS",  "name": "ACE 글로벌반도체TOP4 Plus (446770)"},
     {"code": "441800.KS",  "name": "TIME Korea플러스배당액티브 (441800)"},
@@ -133,7 +132,6 @@ STOCK_SEARCH_LIST = [
     {"code": "0025N0.KS", "name": "TIGER TDF2045 적격"},
     {"code": "0162Z0.KS", "name": "RISE 삼성전자SK하이닉스채권혼합50"},
     {"code": "442570.KS", "name": "RISE TDF2050액티브 적격"},
-    {"code": "472170.KS", "name": "TIGER 미국테크TOP10채권혼합"},
     {"code": "491010.KS", "name": "TIGER 글로벌AI전력인프라액티브"},
     {"code": "445290.KS", "name": "KODEX K-로봇액티브"},
     {"code": "228790.KS", "name": "TIGER 화장품"},
@@ -3938,7 +3936,6 @@ def main():
             {"code": "ETH-USD", "name": "이더리움 (ETH-USD)"},
             # ── 주식 본주: 개별종목 (이름 오름차순: ASCII → 가나다)
             {"code": "GOOGL",  "name": "구글 알파벳 (GOOGL)"},
-            {"code": "MSFT",   "name": "마이크로소프트 (MSFT)"},
             {"code": "AMZN",   "name": "아마존 (AMZN)"},
             # ── 주식 본주: ETF 1배 (코드 오름차순)
             {"code": "AIPO",   "name": "AIPO AI·IPO ETF"},
@@ -3951,7 +3948,6 @@ def main():
             # ── 2배 레버리지 (코드 오름차순)
             {"code": "AMZU",   "name": "AMZU 아마존 2X"},
             {"code": "GGLL",   "name": "GGLL 구글 2X"},
-            {"code": "MSFU",   "name": "MSFU 마이크로소프트 2X"},
             {"code": "UGL",    "name": "UGL 금 2X"},
             {"code": "USD",    "name": "USD 반도체 2X (ProShares)"},
             # ── 3배 레버리지 (코드 오름차순)
@@ -4204,7 +4200,6 @@ def main():
             "비트코인 (BTC-USD)",
             "이더리움 (ETH-USD)",
             "구글 알파벳 (GOOGL)",
-            "마이크로소프트 (MSFT)",
             "아마존 (AMZN)",
             _us_divider("1배 ETF"),
             "AIPO AI·IPO ETF",
@@ -4217,7 +4212,6 @@ def main():
             _us_divider("레버리지 ETF"),
             "AMZU 아마존 2X",
             "GGLL 구글 2X",
-            "MSFU 마이크로소프트 2X",
             "UGL 금 2X",
             "USD 반도체 2X (ProShares)",
             "SOXL 반도체 3X",
