@@ -102,11 +102,11 @@ DEFAULT_FAVORITES = [
     {"code": "441800.KS",  "name": "TIME Korea플러스배당액티브 (441800)"},
     {"code": "396500.KS",  "name": "TIGER Fn반도체TOP10 (396500)"},
     {"code": "091160.KS",  "name": "KODEX 반도체 (091160)"},
-    {"code": "0195S0.KS",  "name": "TIGER SK하이닉스단일종목레버리지 (0195S0)"},
-    {"code": "0195R0.KS",  "name": "TIGER 삼성전자단일종목레버리지 (0195R0)"},
     {"code": "0173Y0.KS",  "name": "KODEX 미국AI광통신네트워크 (0173Y0)"},
     {"code": "0164G0.KS",  "name": "RISE 차이나AI반도체TOP4Plus (0164G0)"},
     {"code": "0041D0.KS",  "name": "KODEX 미국AI소프트웨어TOP10 (0041D0)"},
+    {"code": "0195S0.KS",  "name": "TIGER SK하이닉스단일종목레버리지 (0195S0)"},
+    {"code": "0195R0.KS",  "name": "TIGER 삼성전자단일종목레버리지 (0195R0)"},
 ]
 
 STOCK_SEARCH_LIST = [
@@ -4162,6 +4162,7 @@ def main():
             "0025N0.KS",
             "0019K0.KS",
         }
+        _kr_leverage_codes = {"0195S0.KS", "0195R0.KS"}
         _kr_front_names = [f['name'] for f in favorites if f['code'] in _kr_front_codes]
         _kr_retirement_100_names = [
             f['name'] for f in favorites
@@ -4171,6 +4172,11 @@ def main():
             f['name'] for f in favorites
             if f['code'] not in _kr_front_codes
             and f['code'] not in _kr_retirement_100_codes
+            and f['code'] not in _kr_leverage_codes
+        ]
+        _kr_leverage_names = [
+            f['name'] for f in favorites
+            if f['code'] in _kr_leverage_codes
         ]
         kr_select_names = (
             _kr_front_names
@@ -4178,6 +4184,8 @@ def main():
             + _kr_retirement_100_names
             + [_kr_divider("퇴직연금 70%")]
             + _kr_retirement_70_names
+            + [_kr_divider("레버리지 ETF")]
+            + _kr_leverage_names
         )
 
         _us_divider_prefix = "────────"

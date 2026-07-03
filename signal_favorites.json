@@ -20,9 +20,10 @@
   {"code": "441800.KS",  "name": "TIME Korea플러스배당액티브 (441800)"},
   {"code": "396500.KS",  "name": "TIGER Fn반도체TOP10 (396500)"},
   {"code": "091160.KS",  "name": "KODEX 반도체 (091160)"},
-  {"code": "0195S0.KS",  "name": "TIGER SK하이닉스단일종목레버리지 (0195S0)"},
-  {"code": "0195R0.KS",  "name": "TIGER 삼성전자단일종목레버리지 (0195R0)"},
   {"code": "0173Y0.KS",  "name": "KODEX 미국AI광통신네트워크 (0173Y0)"},
   {"code": "0164G0.KS",  "name": "RISE 차이나AI반도체TOP4Plus (0164G0)"},
-  {"code": "0041D0.KS",  "name": "KODEX 미국AI소프트웨어TOP10 (0041D0)"}
+  {"code": "0041D0.KS",  "name": "KODEX 미국AI소프트웨어TOP10 (0041D0)"},
+
+  {"code": "0195S0.KS",  "name": "TIGER SK하이닉스단일종목레버리지 (0195S0)"},
+  {"code": "0195R0.KS",  "name": "TIGER 삼성전자단일종목레버리지 (0195R0)"}
 ]
