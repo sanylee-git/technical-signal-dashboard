@@ -3241,28 +3241,85 @@ def _add_corr_annotation(fig, main_s: pd.Series, spx_s, label='vs S&P500'):
         pass
 
 
-def make_macro_credit_spread_chart(years: int = 5, spx_s=None):
-    """① 크레딧 스프레드: HY OAS + IG OAS + 누적 + 지수"""
-    hy = _fred('BAMLH0A0HYM2', years)
-    ig = _fred('BAMLC0A0CM',   years)
-    if hy.empty:
+def _add_spx_overlay(fig, main_s: pd.Series, spx_s, yaxis='y2'):
+    """S&P500 % 변화만 숨김 축으로 오버레이."""
+    if spx_s is None or spx_s.empty or main_s is None or main_s.empty:
+        return
+    t0 = main_s.index[0]
+    spx_t = spx_s[spx_s.index >= t0]
+    if len(spx_t) <= 2:
+        return
+    spx_pct = ((spx_t / spx_t.iloc[0]) - 1) * 100
+    fig.add_trace(go.Scatter(
+        x=spx_pct.index, y=spx_pct, name='S&P500(%)',
+        line=dict(color='rgba(200,200,80,0.45)', width=1.0, dash='dash'),
+        showlegend=True, hoverinfo='skip', yaxis=yaxis,
+    ))
+
+
+def _add_moving_averages(fig, s: pd.Series, color='rgba(255,255,255,0.55)'):
+    """5/10/20 이동평균선을 같은 축에 추가."""
+    for window, width, dash in ((5, 1.0, 'dot'), (10, 1.1, 'dash'), (20, 1.2, 'solid')):
+        ma = s.rolling(window, min_periods=max(2, window // 2)).mean().dropna()
+        if ma.empty:
+            continue
+        fig.add_trace(go.Scatter(
+            x=ma.index, y=ma, name=f'{window}MA',
+            line=dict(color=color, width=width, dash=dash),
+            hoverinfo='skip',
+        ))
+
+
+def _make_inverted_spread_chart(
+    s: pd.Series,
+    title: str,
+    trace_name: str,
+    spx_s=None,
+    color='#FF8C69',
+    height=300,
+    suffix='%',
+):
+    """스프레드는 -1배로 표시해 위험 확대가 아래쪽으로 보이게 한다."""
+    if s is None or s.empty:
+        return None
+    plot_s = (-s).dropna()
+    if plot_s.empty:
         return None
     fig = go.Figure()
-    fig.add_hline(y=5, line=dict(color='rgba(255,75,110,0.3)', dash='dot', width=1))
-    fig.add_trace(go.Scatter(x=hy.index, y=hy, name='HY 스프레드',
-                             line=dict(color='#FF4B6E', width=1.5)))
-    if not ig.empty:
-        fig.add_trace(go.Scatter(x=ig.index, y=ig, name='IG 스프레드',
-                                 line=dict(color='#4BFFB3', width=1.3), yaxis='y2'))
-    _add_spx_cum_overlays(fig, hy, spx_s, cum_yaxis='y3', spx_yaxis='y4', cum_label='HY 누적변화')
+    fig.add_hline(y=0, line=dict(color='rgba(255,255,255,0.20)', width=1))
+    fig.add_trace(go.Scatter(
+        x=plot_s.index, y=plot_s,
+        name=f'{trace_name} (반전)',
+        line=dict(color=color, width=1.7),
+        hovertemplate='<b>%{x|%Y-%m-%d}</b>  반전값 %{y:.2f}<extra></extra>',
+    ))
+    _add_moving_averages(fig, plot_s)
+    _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2')
     fig.update_layout(
-        **_ml('① 크레딧 스프레드 (HY · IG OAS, %)'),
-        yaxis2=dict(overlaying='y', side='right', showgrid=False, tickfont=dict(size=9), zeroline=False),
-        yaxis3=_hidden_yaxis('y', 'right'),
-        yaxis4=_hidden_yaxis('y', 'right'),
+        **_ml(title, height=height),
+        yaxis2=_hidden_yaxis('y', 'right'),
     )
-    _add_corr_annotation(fig, hy, spx_s)
+    fig.update_yaxes(ticksuffix=suffix)
+    _add_corr_annotation(fig, plot_s, spx_s)
     return fig
+
+
+def make_macro_hy_spread_chart(years: int = 5, spx_s=None):
+    """① HY 크레딧 스프레드: 반전 표시 + 5/10/20MA."""
+    hy = _fred('BAMLH0A0HYM2', years)
+    return _make_inverted_spread_chart(
+        hy, '① HY 크레딧 스프레드 (반전, OAS %)', 'HY 스프레드',
+        spx_s=spx_s, color='#FF4B6E',
+    )
+
+
+def make_macro_ig_spread_chart(years: int = 5, spx_s=None):
+    """② IG 크레딧 스프레드: 반전 표시 + 5/10/20MA."""
+    ig = _fred('BAMLC0A0CM', years)
+    return _make_inverted_spread_chart(
+        ig, '② IG 크레딧 스프레드 (반전, OAS %)', 'IG 스프레드',
+        spx_s=spx_s, color='#4BFFB3',
+    )
 
 
 def make_macro_credit_stress_chart(years: int = 5, spx_s=None):
@@ -3281,8 +3338,6 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None):
     stress = stress[stress.index >= cutoff]
     if stress.empty:
         return None
-    # ADL식 누적 스트레스
-    cum_stress = stress.cumsum()
     fig = go.Figure()
     fig.add_hline(y=0,  line=dict(color='rgba(255,255,255,0.2)', width=1))
     fig.add_hline(y=1,  line=dict(color='rgba(255,75,110,0.25)',  dash='dot', width=1))
@@ -3296,23 +3351,10 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None):
     fig.add_trace(go.Scatter(x=stress.index, y=stress, name='신용 스트레스',
                              line=dict(color='#787EE7', width=1.5),
                              hovertemplate='<b>%{x|%Y-%m-%d}</b>  %{y:.2f}<extra></extra>'))
-    # 누적 스트레스
-    fig.add_trace(go.Scatter(x=cum_stress.index, y=cum_stress, name='누적 스트레스(ADL식)',
-                             line=dict(color='rgba(255,140,100,0.65)', width=1.1, dash='dot'),
-                             showlegend=True, hoverinfo='skip', yaxis='y2'))
-    # SPX 오버레이
-    if spx_s is not None and not spx_s.empty:
-        t0 = stress.index[0]
-        spx_t = spx_s[spx_s.index >= t0]
-        if len(spx_t) > 2:
-            spx_pct = ((spx_t / spx_t.iloc[0]) - 1) * 100
-            fig.add_trace(go.Scatter(x=spx_pct.index, y=spx_pct, name='S&P500(%)',
-                                     line=dict(color='rgba(200,200,80,0.45)', width=1.0, dash='dash'),
-                                     showlegend=True, hoverinfo='skip', yaxis='y3'))
+    _add_spx_overlay(fig, stress, spx_s, yaxis='y2')
     fig.update_layout(
-        **_ml('② 신용 스트레스 지수 (HY + NFCI + VIX z-score 합성)'),
+        **_ml('③ 신용 스트레스 지수 (HY + NFCI + VIX z-score 합성)'),
         yaxis2=_hidden_yaxis('y', 'right'),
-        yaxis3=_hidden_yaxis('y', 'right'),
     )
     fig.update_yaxes(tickformat='+.1f')
     _add_corr_annotation(fig, stress, spx_s)
@@ -3320,9 +3362,8 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None):
 
 
 def make_macro_options_chart(years: int = 5, spx_s=None):
-    """③ VIX 텀스트럭처: VIX 레벨 + VIX-VIX3M 스프레드(역전=공포 극대) + SKEW"""
+    """③ VIX 레벨 + SKEW."""
     vix   = _yf_close('^VIX',   years)
-    vix3m = _yf_close('^VIX3M', years)
     skew  = _yf_close('^SKEW',  years)
     if vix.empty:
         return None
@@ -3332,7 +3373,7 @@ def make_macro_options_chart(years: int = 5, spx_s=None):
         row_heights=[0.60, 0.40],
         shared_xaxes=True,
         vertical_spacing=0.06,
-        subplot_titles=['VIX 레벨  /  VIX-VIX3M 스프레드 (우, 역전=붉은 영역)', 'SKEW 지수'],
+        subplot_titles=['VIX 레벨', 'SKEW 지수'],
     )
 
     # ── Row 1: VIX 레벨
@@ -3344,34 +3385,6 @@ def make_macro_options_chart(years: int = 5, spx_s=None):
         hovertemplate='<b>%{x|%Y-%m-%d}</b>  VIX %{y:.1f}<extra></extra>',
     ), row=1, col=1)
 
-    # ── Row 1 우축: VIX - VIX3M 스프레드 (핵심 시그널)
-    #   양수(VIX > VIX3M) = 단기 공포 > 장기 → 역전 = 공포 극대 (빨간 영역)
-    #   역전 해소(0 하향 돌파) = 매수 타이밍
-    if not vix3m.empty:
-        spread = (vix - vix3m.reindex(vix.index)).dropna()
-        if len(spread) > 2:
-            # 역전 구간 (양수, 빨간)
-            fig.add_trace(go.Scatter(
-                x=spread.index, y=spread.clip(lower=0),
-                fill='tozeroy', fillcolor='rgba(255,75,110,0.18)',
-                line=dict(width=0), showlegend=False, hoverinfo='skip',
-                yaxis='y3',
-            ))
-            # 정상 컨탱고 구간 (음수, 초록)
-            fig.add_trace(go.Scatter(
-                x=spread.index, y=spread.clip(upper=0),
-                fill='tozeroy', fillcolor='rgba(75,255,179,0.08)',
-                line=dict(width=0), showlegend=False, hoverinfo='skip',
-                yaxis='y3',
-            ))
-            fig.add_trace(go.Scatter(
-                x=spread.index, y=spread,
-                name='VIX-VIX3M 스프레드 (우)',
-                line=dict(color='#FF8C69', width=1.4),
-                hovertemplate='<b>%{x|%Y-%m-%d}</b>  스프레드 %{y:.2f}<extra></extra>',
-                yaxis='y3',
-            ))
-
     # ── Row 2: SKEW
     if not skew.empty:
         fig.add_hline(y=130, line=dict(color='rgba(120,126,231,0.30)', dash='dot', width=1), row=2, col=1)
@@ -3381,7 +3394,7 @@ def make_macro_options_chart(years: int = 5, spx_s=None):
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  SKEW %{y:.1f}<extra></extra>',
         ), row=2, col=1)
 
-    # ── SPX 오버레이 (row1 숨김 우축)
+    # ── SPX 오버레이 (숨김 우축)
     if spx_s is not None and not spx_s.empty and len(vix) > 2:
         t0 = vix.index[0]
         spx_t = spx_s[spx_s.index >= t0]
@@ -3396,7 +3409,7 @@ def make_macro_options_chart(years: int = 5, spx_s=None):
     fig.update_layout(
         height=400,
         title=dict(
-            text='③ VIX 텀스트럭처 · SKEW  (VIX>VIX3M 역전=공포 극대, 해소=매수 시점)',
+            text='④ VIX 레벨 · SKEW',
             font=dict(size=12, color='#9B9B9B'), x=0, y=0.98,
         ),
         paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
@@ -3405,13 +3418,6 @@ def make_macro_options_chart(years: int = 5, spx_s=None):
                     font=dict(size=9), bgcolor='rgba(0,0,0,0)'),
         margin=dict(l=50, r=55, t=45, b=30),
         hovermode='x unified',
-        # y3: 스프레드 우측 축 (눈금 표시)
-        yaxis3=dict(
-            overlaying='y', anchor='x', side='right',
-            showgrid=False, showticklabels=True, showline=True,
-            linecolor='rgba(255,140,100,0.3)', tickfont=dict(size=8, color='#FF8C69'),
-            zeroline=True, zerolinecolor='rgba(255,75,110,0.6)', zerolinewidth=1.5,
-        ),
         # y4: SPX 숨김
         yaxis4=dict(overlaying='y', anchor='x', side='right',
                     showgrid=False, showticklabels=False, showline=False, zeroline=False),
@@ -3424,6 +3430,19 @@ def make_macro_options_chart(years: int = 5, spx_s=None):
         ann.font.color = '#666'
     _add_corr_annotation(fig, vix, spx_s, label='VIX vs S&P500')
     return fig
+
+
+def make_macro_vix_spread_chart(years: int = 5, spx_s=None):
+    """④ VIX-VIX3M 스프레드: 반전 표시 + 5/10/20MA."""
+    vix   = _yf_close('^VIX',   years)
+    vix3m = _yf_close('^VIX3M', years)
+    if vix.empty or vix3m.empty:
+        return None
+    spread = (vix - vix3m.reindex(vix.index)).dropna()
+    return _make_inverted_spread_chart(
+        spread, '⑤ VIX-VIX3M 스프레드 (반전)', 'VIX-VIX3M 스프레드',
+        spx_s=spx_s, color='#FF8C69', suffix='',
+    )
 
 
 def make_macro_pmi_chart(years: int = 5, spx_s=None):
@@ -3456,30 +3475,12 @@ def make_macro_pmi_chart(years: int = 5, spx_s=None):
     ord_yoy = (ord_s.pct_change(12) * 100).dropna()
     ord_yoy = ord_yoy[ord_yoy.index >= cutoff]
 
-    fig = go.Figure()
-    fig.add_hline(y=0, line=dict(color='rgba(255,255,255,0.20)', width=1))
-
-    fig.add_trace(go.Scatter(
-        x=ord_yoy.index, y=ord_yoy,
-        name=f'{ord_label} YoY%',
-        line=dict(color='#4BFFB3', width=1.6),
-        hovertemplate='<b>%{x|%Y-%m-%d}</b>  %{y:.1f}%<extra></extra>',
-    ))
-
     main_s = ord_yoy
     spread_s = pd.Series(dtype=float)
 
     if not inv_s.empty:
         inv_yoy = (inv_s.pct_change(12) * 100).dropna()
         inv_yoy = inv_yoy[inv_yoy.index >= cutoff]
-        # 재고 악화(+) → 시그널 반전해서 표시 (재고 줄면 좋음 → 양의 기여)
-        fig.add_trace(go.Scatter(
-            x=inv_yoy.index, y=-inv_yoy,
-            name=f'{inv_label} YoY% (부호반전, 우)',
-            line=dict(color='#FF8C69', width=1.2, dash='dot'),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b>  %{y:.1f}%<extra></extra>',
-            yaxis='y2',
-        ))
         # 스프레드 = 신규주문 YoY% + 재고비율 YoY% 반전 (클수록 수요>공급)
         aligned = ord_yoy.reindex(inv_yoy.index).dropna()
         inv_aligned = inv_yoy.reindex(aligned.index).dropna()
@@ -3487,36 +3488,11 @@ def make_macro_pmi_chart(years: int = 5, spx_s=None):
         spread_s = (aligned - inv_aligned).dropna()
 
     if not spread_s.empty:
-        fig.add_trace(go.Scatter(
-            x=spread_s.index, y=spread_s.clip(lower=0),
-            fill='tozeroy', fillcolor='rgba(75,255,179,0.10)',
-            line=dict(width=0), showlegend=False, hoverinfo='skip',
-        ))
-        fig.add_trace(go.Scatter(
-            x=spread_s.index, y=spread_s.clip(upper=0),
-            fill='tozeroy', fillcolor='rgba(255,75,110,0.10)',
-            line=dict(width=0), showlegend=False, hoverinfo='skip',
-        ))
-        fig.add_trace(go.Scatter(
-            x=spread_s.index, y=spread_s,
-            name='신규주문-재고 스프레드 ★',
-            line=dict(color='#C8C850', width=1.8),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b>  스프레드 %{y:.1f}<extra></extra>',
-        ))
         main_s = spread_s
-
-    _add_spx_cum_overlays(fig, main_s, spx_s, cum_yaxis='y3', spx_yaxis='y4',
-                          cum_label='스프레드 누적')
-    fig.update_layout(
-        **_ml('④ ISM 신규주문-재고 스프레드 (대리: 제조업 신규주문 vs 재고비율)'),
-        yaxis2=dict(overlaying='y', side='right', showgrid=False,
-                    tickfont=dict(size=9), zeroline=False, ticksuffix='%'),
-        yaxis3=_hidden_yaxis('y', 'right'),
-        yaxis4=_hidden_yaxis('y', 'right'),
+    return _make_inverted_spread_chart(
+        main_s, '⑥ 신규주문-재고 스프레드 (반전, YoY%)', '신규주문-재고 스프레드',
+        spx_s=spx_s, color='#C8C850',
     )
-    fig.update_yaxes(ticksuffix='%')
-    _add_corr_annotation(fig, main_s, spx_s)
-    return fig
 
 
 def make_macro_liquidity_chart(years: int = 5, spx_s=None):
@@ -3542,14 +3518,12 @@ def make_macro_liquidity_chart(years: int = 5, spx_s=None):
                                  line=dict(color='#787EE7', width=1.3, dash='dot'), yaxis='y2'))
         if main_s is None:
             main_s = fed_yoy
-    _add_spx_cum_overlays(fig, main_s, spx_s, cum_yaxis='y3', spx_yaxis='y4',
-                          cum_label='M2 누적변화')
+    _add_spx_overlay(fig, main_s, spx_s, yaxis='y3')
     fig.update_layout(
-        **_ml('⑤ 유동성 지표 (M2 · Fed 자산 YoY%)'),
+        **_ml('⑦ 유동성 지표 (M2 · Fed 자산 YoY%)'),
         yaxis2=dict(overlaying='y', side='right', showgrid=False, tickfont=dict(size=9),
                     zeroline=False, ticksuffix='%'),
         yaxis3=_hidden_yaxis('y', 'right'),
-        yaxis4=_hidden_yaxis('y', 'right'),
     )
     fig.update_yaxes(ticksuffix='%')
     _add_corr_annotation(fig, main_s, spx_s)
@@ -3557,51 +3531,22 @@ def make_macro_liquidity_chart(years: int = 5, spx_s=None):
 
 
 def make_macro_yield_curve_chart(years: int = 5, spx_s=None):
-    """⑥ 장단기 금리차: T10Y3M(10Y-3M) + T10Y2Y(10Y-2Y)
+    """⑦ 장단기 금리차: T10Y3M(10Y-3M)
     1순위: FRED 사전계산 시리즈 (T10Y3M, T10Y2Y) — 더 안정적
     2순위: 구성 금리 직접 차감 (DGS10 - DTB3 / DGS2) — fallback
     """
     # 1순위: FRED 사전계산
     t3m = _fred('T10Y3M', years)
-    t2y = _fred('T10Y2Y', years)
     # 2순위: 직접 계산 (어느 한 쪽이라도 비었으면 시도)
-    if t3m.empty or t2y.empty:
+    if t3m.empty:
         dgs10 = _fred('DGS10', years)
         dtb3  = _fred('DTB3',  years)
-        dgs2  = _fred('DGS2',  years)
-        if not dgs10.empty:
-            idx = dgs10.index
-            if t3m.empty and not dtb3.empty:
-                t3m = (dgs10 - dtb3.reindex(idx).interpolate()).dropna()
-            if t2y.empty and not dgs2.empty:
-                t2y = (dgs10 - dgs2.reindex(idx).interpolate()).dropna()
-    if t3m.empty and t2y.empty:
-        return None
-    main_s = t3m if not t3m.empty else t2y
-    fig = go.Figure()
-    fig.add_hline(y=0, line=dict(color='rgba(255,75,110,0.5)', width=1.2))
-    if not t3m.empty:
-        fig.add_trace(go.Scatter(x=t3m.index, y=t3m.clip(lower=0),
-                                 fill='tozeroy', fillcolor='rgba(75,255,179,0.08)',
-                                 line=dict(width=0), showlegend=False, hoverinfo='skip'))
-        fig.add_trace(go.Scatter(x=t3m.index, y=t3m.clip(upper=0),
-                                 fill='tozeroy', fillcolor='rgba(255,75,110,0.12)',
-                                 line=dict(width=0), showlegend=False, hoverinfo='skip'))
-        fig.add_trace(go.Scatter(x=t3m.index, y=t3m, name='10Y-3M',
-                                 line=dict(color='#4BFFB3', width=1.5)))
-    if not t2y.empty:
-        fig.add_trace(go.Scatter(x=t2y.index, y=t2y, name='10Y-2Y',
-                                 line=dict(color='#C8C850', width=1.2, dash='dot')))
-    _add_spx_cum_overlays(fig, main_s, spx_s, cum_yaxis='y2', spx_yaxis='y3',
-                          cum_label='10Y-3M 누적변화')
-    fig.update_layout(
-        **_ml('⑥ 장단기 금리차 (0 이하 = 역전 = 경기침체 선행 신호)'),
-        yaxis2=_hidden_yaxis('y', 'right'),
-        yaxis3=_hidden_yaxis('y', 'right'),
+        if not dgs10.empty and not dtb3.empty:
+            t3m = (dgs10 - dtb3.reindex(dgs10.index).interpolate()).dropna()
+    return _make_inverted_spread_chart(
+        t3m, '⑧ 10Y-3M 금리차 (반전, 0 이상 = 원래 역전)', '10Y-3M 스프레드',
+        spx_s=spx_s, color='#4BFFB3',
     )
-    fig.update_yaxes(ticksuffix='%')
-    _add_corr_annotation(fig, main_s, spx_s)
-    return fig
 
 
 def make_macro_foreign_flow_chart(market_code: str, years: int = 5, spx_s=None):
@@ -4707,7 +4652,7 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
     if page in ("all", "macro", "market_macro"):
         with tab3:
-            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 미국 데이터 위주이며 참고용. 주황 점선=누적변화, 노란 파선=S&P500%.")
+            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 미국 데이터 위주이며 참고용. 스프레드 차트는 반전 표시, 흰색 선=5/10/20MA, 노란 파선=S&P500%.")
 
             _c1, _c2 = st.columns([3, 1])
             with _c1:
@@ -4727,12 +4672,14 @@ def main(page="signal"):
 
             with st.spinner("📡 매크로 데이터 로딩 중..."):
                 _macro_charts = [
-                    make_macro_credit_spread_chart(_macro_years, _spx_s),   # ① 크레딧 스프레드
-                    make_macro_credit_stress_chart(_macro_years, _spx_s),   # ② 크레딧 스트레스 복합
-                    make_macro_options_chart(_macro_years,       _spx_s),   # ③ 옵션 심리 (VIX/SKEW)
-                    make_macro_pmi_chart(_macro_years,           _spx_s),   # ④ 경기 모멘텀
-                    make_macro_liquidity_chart(_macro_years,     _spx_s),   # ⑤ 유동성 (M2/Fed)
-                    make_macro_yield_curve_chart(_macro_years,   _spx_s),   # ⑥ 장단기 금리차
+                    make_macro_hy_spread_chart(_macro_years,     _spx_s),   # ① HY 스프레드
+                    make_macro_ig_spread_chart(_macro_years,     _spx_s),   # ② IG 스프레드
+                    make_macro_credit_stress_chart(_macro_years, _spx_s),   # ③ 크레딧 스트레스 복합
+                    make_macro_options_chart(_macro_years,       _spx_s),   # ④ VIX/SKEW
+                    make_macro_vix_spread_chart(_macro_years,    _spx_s),   # ⑤ VIX 텀스프레드
+                    make_macro_pmi_chart(_macro_years,           _spx_s),   # ⑥ 경기 모멘텀
+                    make_macro_liquidity_chart(_macro_years,     _spx_s),   # ⑦ 유동성 (M2/Fed)
+                    make_macro_yield_curve_chart(_macro_years,   _spx_s),   # ⑧ 장단기 금리차
                 ]
 
             _mc = st.columns(2)
@@ -4742,8 +4689,8 @@ def main(page="signal"):
                         st.plotly_chart(ch, width="stretch", config={"displayModeBar": False})
                 else:
                     with _mc[i % 2]:
-                        _labels = ['① 크레딧 스프레드', '② 크레딧 스트레스', '③ VIX/SKEW',
-                                   '④ 경기 모멘텀', '⑤ 유동성', '⑥ 금리차']
+                        _labels = ['① HY 스프레드', '② IG 스프레드', '③ 크레딧 스트레스', '④ VIX/SKEW',
+                                   '⑤ VIX 스프레드', '⑥ 경기 모멘텀', '⑦ 유동성', '⑧ 금리차']
                         st.warning(f"{_labels[i]} 데이터 로딩 실패 — FRED 일시 불가. 잠시 후 재시도해 주세요.")
 
             # ⑦ 외국인 순매수 누적 — KOSPI / KOSDAQ 선택
@@ -4767,8 +4714,11 @@ def main(page="signal"):
                 # 각 지표 주요 시리즈 수집 (FRED 캐시 재사용)
                 _cy = _macro_years
                 _hy_s   = _fred('BAMLH0A0HYM2', _cy)
+                _ig_s   = _fred('BAMLC0A0CM', _cy)
                 _nfci_s = _fred('NFCI', _cy)
                 _vix_s  = _yf_close('^VIX', _cy)
+                _vix3m_s = _yf_close('^VIX3M', _cy)
+                _vix_spread = (_vix_s - _vix3m_s.reindex(_vix_s.index)).dropna() if not _vix_s.empty and not _vix3m_s.empty else pd.Series(dtype=float)
                 _m2_s_raw = _fred('M2SL', _cy + 2)
                 _m2_yoy = (_m2_s_raw.pct_change(12) * 100).dropna() if not _m2_s_raw.empty else pd.Series(dtype=float)
                 _t3m_s  = _fred('T10Y3M', _cy)
@@ -4782,14 +4732,24 @@ def main(page="signal"):
                     _ord_s = _fred(_sid, _cy + 2)
                     if not _ord_s.empty: break
                 _ord_yoy = (_ord_s.pct_change(12) * 100).dropna() if not _ord_s.empty else pd.Series(dtype=float)
+                _inv_s = _fred('ISRATIO', _cy + 2)
+                _pmi_spread = pd.Series(dtype=float)
+                if not _ord_yoy.empty and not _inv_s.empty:
+                    _inv_yoy = (_inv_s.pct_change(12) * 100).dropna()
+                    _al_ord = _ord_yoy.reindex(_inv_yoy.index).dropna()
+                    _al_inv = _inv_yoy.reindex(_al_ord.index).dropna()
+                    _al_ord = _al_ord.reindex(_al_inv.index)
+                    _pmi_spread = (_al_ord - _al_inv).dropna()
 
                 _macro_named = {
-                    '① HY 스프레드':     _hy_s,
-                    '② NFCI':            _nfci_s,
-                    '③ VIX':             _vix_s,
-                    '④ 신규주문 YoY%':   _ord_yoy,
-                    '⑤ M2 YoY%':         _m2_yoy,
-                    '⑥ 10Y-3M 스프레드': _t3m_s,
+                    '① HY 스프레드(반전)':       -_hy_s,
+                    '② IG 스프레드(반전)':       -_ig_s,
+                    '③ 신용 스트레스':            _nfci_s,
+                    '④ VIX':                      _vix_s,
+                    '⑤ VIX-VIX3M(반전)':          -_vix_spread,
+                    '⑥ 신규주문-재고(반전)':      -_pmi_spread,
+                    '⑦ M2 YoY%':                  _m2_yoy,
+                    '⑧ 10Y-3M 스프레드(반전)':    -_t3m_s,
                 }
 
                 if _spx_s is not None and not _spx_s.empty:
