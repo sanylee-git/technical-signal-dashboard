@@ -84,26 +84,29 @@ _DIR = os.path.dirname(os.path.abspath(__file__))
 FAVORITES_FILE = os.path.join(_DIR, "signal_favorites.json")
 
 DEFAULT_FAVORITES = [
-    {"code": "441800.KS",  "name": "TIME Korea플러스배당액티브 (441800)"},
-    {"code": "446770.KS",  "name": "ACE 글로벌반도체TOP4 Plus (446770)"},
-    {"code": "456600.KS",  "name": "TIME 글로벌AI인공지능액티브 (456600)"},
-    {"code": "091160.KS",  "name": "KODEX 반도체 (091160)"},
-    {"code": "487240.KS",  "name": "KODEX AI전력핵심설비 (487240)"},
-    {"code": "0041D0.KS",  "name": "KODEX 미국AI소프트웨어TOP10 (0041D0)"},
-    {"code": "0173Y0.KS",  "name": "KODEX 미국AI광통신네트워크 (0173Y0)"},
-    {"code": "396500.KS",  "name": "TIGER Fn반도체TOP10 (396500)"},
-    {"code": "284430.KS",  "name": "KODEX 200미국채혼합 (284430)"},
-    {"code": "0019K0.KS",  "name": "TIME 미국나스닥100채권혼합50액티브 (0019K0)"},
-    {"code": "0025N0.KS",  "name": "TIGER TDF2045 적격 (0025N0)"},
-    {"code": "0162Z0.KS",  "name": "RISE 삼성전자SK하이닉스채권혼합50 (0162Z0)"},
+    {"code": "^KQ11",      "name": "코스닥 지수 (^KQ11)"},
+    {"code": "^KS11",      "name": "코스피 지수 (^KS11)"},
+    {"code": "373220.KS",  "name": "LG에너지솔루션 (373220)"},
+    {"code": "000660.KS",  "name": "SK하이닉스 (000660)"},
+    {"code": "005930.KS",  "name": "삼성전자 (005930)"},
     {"code": "442570.KS",  "name": "RISE TDF2050액티브 적격 (442570)"},
-    {"code": "472170.KS",  "name": "TIGER 미국테크TOP10채권혼합 (472170)"},
+    {"code": "284430.KS",  "name": "KODEX 200미국채혼합 (284430)"},
+    {"code": "0162Z0.KS",  "name": "RISE 삼성전자SK하이닉스채권혼합50 (0162Z0)"},
+    {"code": "0025N0.KS",  "name": "TIGER TDF2045 적격 (0025N0)"},
+    {"code": "0019K0.KS",  "name": "TIME 미국나스닥100채권혼합50액티브 (0019K0)"},
     {"code": "491010.KS",  "name": "TIGER 글로벌AI전력인프라액티브 (491010)"},
+    {"code": "487240.KS",  "name": "KODEX AI전력핵심설비 (487240)"},
+    {"code": "472170.KS",  "name": "TIGER 미국테크TOP10채권혼합 (472170)"},
+    {"code": "456600.KS",  "name": "TIME 글로벌AI인공지능액티브 (456600)"},
+    {"code": "446770.KS",  "name": "ACE 글로벌반도체TOP4 Plus (446770)"},
+    {"code": "441800.KS",  "name": "TIME Korea플러스배당액티브 (441800)"},
+    {"code": "396500.KS",  "name": "TIGER Fn반도체TOP10 (396500)"},
+    {"code": "091160.KS",  "name": "KODEX 반도체 (091160)"},
     {"code": "0195S0.KS",  "name": "TIGER SK하이닉스단일종목레버리지 (0195S0)"},
     {"code": "0195R0.KS",  "name": "TIGER 삼성전자단일종목레버리지 (0195R0)"},
-    {"code": "005930.KS",  "name": "삼성전자 (005930)"},
-    {"code": "000660.KS",  "name": "SK하이닉스 (000660)"},
-    {"code": "373220.KS",  "name": "LG에너지솔루션 (373220)"},
+    {"code": "0173Y0.KS",  "name": "KODEX 미국AI광통신네트워크 (0173Y0)"},
+    {"code": "0164G0.KS",  "name": "RISE 차이나AI반도체TOP4Plus (0164G0)"},
+    {"code": "0041D0.KS",  "name": "KODEX 미국AI소프트웨어TOP10 (0041D0)"},
 ]
 
 STOCK_SEARCH_LIST = [
@@ -4146,6 +4149,37 @@ def main():
         kr_names = [f['name'] for f in favorites]
         us_names = [t['name'] for t in _US_WATCHLIST]
 
+        _kr_divider_prefix = "────────"
+
+        def _kr_divider(label):
+            return f"{_kr_divider_prefix} {label} {_kr_divider_prefix}"
+
+        _kr_front_codes = {"^KQ11", "^KS11", "000660.KS", "005930.KS", "373220.KS"}
+        _kr_retirement_100_codes = {
+            "442570.KS",
+            "284430.KS",
+            "0162Z0.KS",
+            "0025N0.KS",
+            "0019K0.KS",
+        }
+        _kr_front_names = [f['name'] for f in favorites if f['code'] in _kr_front_codes]
+        _kr_retirement_100_names = [
+            f['name'] for f in favorites
+            if f['code'] in _kr_retirement_100_codes
+        ]
+        _kr_retirement_70_names = [
+            f['name'] for f in favorites
+            if f['code'] not in _kr_front_codes
+            and f['code'] not in _kr_retirement_100_codes
+        ]
+        kr_select_names = (
+            _kr_front_names
+            + [_kr_divider("퇴직연금 100%")]
+            + _kr_retirement_100_names
+            + [_kr_divider("퇴직연금 70%")]
+            + _kr_retirement_70_names
+        )
+
         _us_divider_prefix = "────────"
 
         def _us_divider(label):
@@ -4188,8 +4222,19 @@ def main():
                 if 'scan_kr_name' not in st.session_state or \
                         st.session_state.scan_kr_name not in kr_names:
                     st.session_state.scan_kr_name = kr_names[0]
-                st.selectbox("한국종목선택", kr_names,
-                             key='scan_kr_name', on_change=_set_kr,
+                if 'scan_kr_prev_name' not in st.session_state or \
+                        st.session_state.scan_kr_prev_name not in kr_names:
+                    st.session_state.scan_kr_prev_name = st.session_state.scan_kr_name
+
+                def _set_kr_select():
+                    if st.session_state.scan_kr_name.startswith(_kr_divider_prefix):
+                        st.session_state.scan_kr_name = st.session_state.scan_kr_prev_name
+                    else:
+                        st.session_state.scan_kr_prev_name = st.session_state.scan_kr_name
+                        _set_kr()
+
+                st.selectbox("한국종목선택", kr_select_names,
+                             key='scan_kr_name', on_change=_set_kr_select,
                              label_visibility='collapsed')
 
         with col_us:
