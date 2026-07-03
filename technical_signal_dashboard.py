@@ -3878,6 +3878,7 @@ def main(page="signal"):
         "signal": ("TECHNICAL SIGNAL SCANNER", "🎯 기술적 신호 스캐너"),
         "market": ("MARKET INTERNALS", "🌐 시장 내부지표"),
         "macro": ("MACRO INDICATORS", "🌍 매크로 지표"),
+        "market_macro": ("MARKET & MACRO DASHBOARD", "🌐 시장/매크로 지표"),
         "all": ("TECHNICAL SIGNAL SCANNER", "🎯 기술적 신호 스캐너"),
     }
     _eyebrow, _title = _page_titles.get(page, _page_titles["signal"])
@@ -3901,6 +3902,9 @@ def main(page="signal"):
         tab1, tab2, tab3 = None, st.container(), None
     elif page == "macro":
         tab1, tab2, tab3 = None, None, st.container()
+    elif page == "market_macro":
+        tab2, tab3 = st.tabs(["🌐 시장 내부지표", "🌍 매크로 지표"])
+        tab1 = None
     else:
         st.error(f"알 수 없는 페이지입니다: {page}")
         return
@@ -4414,7 +4418,7 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
         # TAB 2 — 시장 내부지표
         # ═══════════════════════════════════════════════════════════
-    if page in ("all", "market"):
+    if page in ("all", "market", "market_macro"):
         with tab2:
             col_mkt, col_period, _ = st.columns([2, 2, 2])
             with col_mkt:
@@ -4687,7 +4691,7 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
         # TAB 3 — 매크로 지표
         # ═══════════════════════════════════════════════════════════
-    if page in ("all", "macro"):
+    if page in ("all", "macro", "market_macro"):
         with tab3:
             st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 미국 데이터 위주이며 참고용. 주황 점선=누적변화, 노란 파선=S&P500%.")
 
