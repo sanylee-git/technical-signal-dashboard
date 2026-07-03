@@ -4146,6 +4146,43 @@ def main():
         kr_names = [f['name'] for f in favorites]
         us_names = [t['name'] for t in _US_WATCHLIST]
 
+        _us_divider_prefix = "────────"
+
+        def _us_divider(label):
+            return f"{_us_divider_prefix} {label} {_us_divider_prefix}"
+
+        us_select_names = [
+            "S&P 500 (^GSPC)",
+            "나스닥 (^IXIC)",
+            "다우존스 (^DJI)",
+            "구리 현물 (Copper Futures)",
+            "금 현물 (Gold Futures)",
+            "은 현물 (Silver Futures)",
+            _us_divider("코인 / 단일종목"),
+            "비트코인 (BTC-USD)",
+            "이더리움 (ETH-USD)",
+            "구글 알파벳 (GOOGL)",
+            "마이크로소프트 (MSFT)",
+            "아마존 (AMZN)",
+            _us_divider("1배 ETF"),
+            "AIPO AI·IPO ETF",
+            "BLOK 블록체인 ETF",
+            "GRID 스마트그리드 ETF",
+            "QTUM 퀀텀컴퓨팅/AI ETF",
+            "SOXX 반도체 ETF",
+            "TAN 태양광 ETF",
+            "UFO 우주항공 ETF",
+            _us_divider("레버리지 ETF"),
+            "AMZU 아마존 2X",
+            "GGLL 구글 2X",
+            "MSFU 마이크로소프트 2X",
+            "UGL 금 2X",
+            "USD 반도체 2X (ProShares)",
+            "SOXL 반도체 3X",
+            "TECL 테크 3X",
+            "TQQQ 나스닥 3X",
+        ]
+
         with col_kr:
             with st.expander("🇰🇷 한국 즐겨찾기", expanded=True):
                 if 'scan_kr_name' not in st.session_state or \
@@ -4160,8 +4197,19 @@ def main():
                 if 'scan_us_name' not in st.session_state or \
                         st.session_state.scan_us_name not in us_names:
                     st.session_state.scan_us_name = us_names[0]
-                st.selectbox("미국종목선택", us_names,
-                             key='scan_us_name', on_change=_set_us,
+                if 'scan_us_prev_name' not in st.session_state or \
+                        st.session_state.scan_us_prev_name not in us_names:
+                    st.session_state.scan_us_prev_name = st.session_state.scan_us_name
+
+                def _set_us_select():
+                    if st.session_state.scan_us_name.startswith(_us_divider_prefix):
+                        st.session_state.scan_us_name = st.session_state.scan_us_prev_name
+                    else:
+                        st.session_state.scan_us_prev_name = st.session_state.scan_us_name
+                        _set_us()
+
+                st.selectbox("미국종목선택", us_select_names,
+                             key='scan_us_name', on_change=_set_us_select,
                              label_visibility='collapsed')
 
         # 활성 티커 결정
