@@ -3346,24 +3346,24 @@ def _compute_downturn_signal_frame(s: pd.Series) -> pd.DataFrame:
     """단일 지표의 Risk-off 사이클 상태를 계산한다."""
     if s is None or s.empty:
         return pd.DataFrame()
-    ema20 = s.ewm(span=20, adjust=False, min_periods=5).mean().dropna()
-    aligned = pd.concat([s.rename('value'), ema20.rename('ema20')], axis=1).dropna()
+    ema10 = s.ewm(span=10, adjust=False, min_periods=5).mean().dropna()
+    aligned = pd.concat([s.rename('value'), ema10.rename('ema10')], axis=1).dropna()
     if len(aligned) < 50:
         return pd.DataFrame()
 
-    slope = aligned['ema20'].diff()
-    threshold = 0.5 * slope.rolling(40, min_periods=20).std()
+    slope = aligned['ema10'].diff()
+    threshold = 0.5 * slope.rolling(20, min_periods=10).std()
     down_count = slope.lt(-threshold).rolling(5, min_periods=5).sum()
     up_count = slope.gt(threshold).rolling(5, min_periods=5).sum()
-    ema20_vs_10d = aligned['ema20'] - aligned['ema20'].shift(10)
+    ema10_vs_10d = aligned['ema10'] - aligned['ema10'].shift(10)
 
     out = aligned.copy()
-    out['ema20_slope'] = slope
+    out['ema10_slope'] = slope
     out['threshold'] = threshold
     out['down_count'] = down_count
     out['up_count'] = up_count
-    out['start_ready'] = down_count.ge(4) & ema20_vs_10d.lt(0)
-    out['end_ready'] = up_count.ge(4) & ema20_vs_10d.gt(0)
+    out['start_ready'] = down_count.ge(4) & ema10_vs_10d.lt(0)
+    out['end_ready'] = up_count.ge(3) & ema10_vs_10d.gt(0)
     out['down_flag'] = False
     out['down_start_signal'] = False
     out['down_end_signal'] = False
@@ -3381,13 +3381,13 @@ def _compute_downturn_signal_frame(s: pd.Series) -> pd.DataFrame:
 
 
 def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True, overlay_price=None, overlay_yaxis='y2'):
-    """EMA20과 EMA20 기반 Risk-off 시작/종료 이벤트를 추가."""
+    """EMA10 기반 Risk-off 시작/종료 이벤트를 추가."""
     signal_df = _compute_downturn_signal_frame(s)
     if signal_df.empty:
         return
 
     fig.add_trace(go.Scatter(
-        x=signal_df.index, y=signal_df['ema20'], name='EMA20',
+        x=signal_df.index, y=signal_df['ema10'], name='EMA10',
         line=dict(color='rgba(255,255,255,0.28)', width=1.0, dash='dot'),
         hoverinfo='skip',
     ))
@@ -3398,22 +3398,22 @@ def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True, overlay_p
         _add_price_signal_markers(fig, signal_df, overlay_price, yaxis=overlay_yaxis)
         return
 
-    sig1_start = signal_df.loc[signal_df['down_start_signal'], 'ema20']
-    sig1_end = signal_df.loc[signal_df['down_end_signal'], 'ema20']
+    sig1_start = signal_df.loc[signal_df['down_start_signal'], 'ema10']
+    sig1_end = signal_df.loc[signal_df['down_end_signal'], 'ema10']
 
     if not sig1_start.empty:
         fig.add_trace(go.Scatter(
-            x=sig1_start.index, y=sig1_start, name='1: Risk-off 시작 (동적 4/5 하락 + EMA20<10D전)',
+            x=sig1_start.index, y=sig1_start, name='1: Risk-off 시작 (동적 4/5 하락 + EMA10<10D전)',
             mode='markers',
             marker=dict(symbol='triangle-down', size=8, color='rgba(255,140,105,0.80)'),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>최근 5일 중 slope < -0.5*40일 std 가 4일 이상<br>현재 EMA20 < 10일 전 EMA20<extra></extra>',
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>최근 5일 중 slope < -0.5*20일 std 가 4일 이상<br>현재 EMA10 < 10일 전 EMA10<extra></extra>',
         ))
     if not sig1_end.empty:
         fig.add_trace(go.Scatter(
-            x=sig1_end.index, y=sig1_end, name='1: Risk-off 종료 (동적 4/5 상승 + EMA20>10D전)',
+            x=sig1_end.index, y=sig1_end, name='1: Risk-off 종료 (동적 3/5 상승 + EMA10>10D전)',
             mode='markers',
             marker=dict(symbol='triangle-up', size=8, color='rgba(75,255,179,0.80)'),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>최근 5일 중 slope > +0.5*40일 std 가 4일 이상<br>현재 EMA20 > 10일 전 EMA20<extra></extra>',
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>최근 5일 중 slope > +0.5*20일 std 가 3일 이상<br>현재 EMA10 > 10일 전 EMA10<extra></extra>',
         ))
 
 
@@ -3464,7 +3464,7 @@ def _compute_combo_downturn_frame(parts: dict[str, pd.Series]) -> pd.DataFrame:
 
 
 def make_macro_index_cycle_chart(years: int = 5, spx_s=None, show_raw=True):
-    """⓪ S&P500 지수 자체의 EMA20 기반 Risk-off 사이클."""
+    """⓪ S&P500 지수 자체의 EMA10 기반 Risk-off 사이클."""
     if spx_s is None or spx_s.empty:
         spx_s = _yf_close('^GSPC', years)
     if spx_s is None or spx_s.empty:
@@ -3596,13 +3596,13 @@ def _make_inverted_spread_chart(
         **_ml(title, height=height),
         yaxis2=_visible_price_yaxis('y', 'right'),
     )
-    fig.update_yaxes(ticksuffix=suffix)
+    fig.layout.yaxis.ticksuffix = suffix
     _add_corr_annotation(fig, plot_s, spx_s)
     return fig
 
 
 def make_macro_hy_spread_chart(years: int = 5, spx_s=None, show_raw=True):
-    """① HY 크레딧 스프레드: 반전 표시 + EMA20 하락 경고."""
+    """① HY 크레딧 스프레드: 반전 표시 + EMA10 하락 경고."""
     hy = _credit_spread_series('BAMLH0A0HYM2', years)
     return _make_inverted_spread_chart(
         hy, '① HY 크레딧 스프레드 (반전, OAS %)', 'HY 스프레드',
@@ -3611,7 +3611,7 @@ def make_macro_hy_spread_chart(years: int = 5, spx_s=None, show_raw=True):
 
 
 def make_macro_ig_spread_chart(years: int = 5, spx_s=None, show_raw=True):
-    """② IG 크레딧 스프레드: 반전 표시 + EMA20 하락 경고."""
+    """② IG 크레딧 스프레드: 반전 표시 + EMA10 하락 경고."""
     ig = _credit_spread_series('BAMLC0A0CM', years)
     return _make_inverted_spread_chart(
         ig, '② IG 크레딧 스프레드 (반전, OAS %)', 'IG 스프레드',
@@ -3663,7 +3663,7 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True):
 
 
 def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True):
-    """④ VIX 레벨: 반전 표시 + EMA20 하락 경고."""
+    """④ VIX 레벨: 반전 표시 + EMA10 하락 경고."""
     vix   = _yf_close('^VIX',   years)
     if vix.empty:
         return None
@@ -3689,7 +3689,7 @@ def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True):
 
 
 def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True):
-    """⑥ VIX-VIX3M 스프레드: 반전 표시 + EMA20 하락 경고."""
+    """⑥ VIX-VIX3M 스프레드: 반전 표시 + EMA10 하락 경고."""
     vix   = _yf_close('^VIX',   years)
     vix3m = _yf_close('^VIX3M', years)
     if vix.empty or vix3m.empty:
@@ -4906,7 +4906,7 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
     if page in ("all", "macro", "market_macro"):
         with tab3:
-            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 흰색 실선=EMA20. 개별 지표는 동적 slope + 10일 EMA 비교로 Risk-off 시작/종료를 잡고, ⑤는 0~4 중 3개 이상이면 Watch(노랑/초록), 4개 이상이면 Risk(빨강/파랑) 신호를 S&P500 위에 표시한다. HY/IG는 최근 구간은 ICE OAS 원본, 더 긴 과거 구간은 Moody's-10Y Treasury 프록시로 이어 붙인다.")
+            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 옅은 점선=EMA10. 개별 지표는 동적 slope + 10일 EMA 비교로 Risk-off 시작/종료를 잡고, 시작은 최근 5일 중 4일 하락, 종료는 최근 5일 중 3일 상승 기준을 쓴다. ⑤는 0~4 중 3개 이상이면 Watch(노랑/초록), 4개 이상이면 Risk(빨강/파랑) 신호를 S&P500 위에 표시한다. HY/IG는 최근 구간은 ICE OAS 원본, 더 긴 과거 구간은 Moody's-10Y Treasury 프록시로 이어 붙인다.")
 
             _c1, _c2, _c3, _c4 = st.columns([3, 1, 1, 1.4])
             with _c1:
