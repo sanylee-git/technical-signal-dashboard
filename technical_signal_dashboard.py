@@ -3257,51 +3257,60 @@ def _add_spx_overlay(fig, main_s: pd.Series, spx_s, yaxis='y2'):
     ))
 
 
+def _compute_downturn_signal_frame(s: pd.Series) -> pd.DataFrame:
+    """단일 지표의 Risk-off 사이클 상태를 계산한다."""
+    if s is None or s.empty:
+        return pd.DataFrame()
+    ema20 = s.ewm(span=20, adjust=False, min_periods=5).mean().dropna()
+    aligned = pd.concat([s.rename('value'), ema20.rename('ema20')], axis=1).dropna()
+    if len(aligned) < 50:
+        return pd.DataFrame()
+
+    slope = aligned['ema20'].diff()
+    threshold = 0.5 * slope.rolling(40, min_periods=20).std()
+    down_count = slope.lt(-threshold).rolling(5, min_periods=5).sum()
+    up_count = slope.gt(threshold).rolling(5, min_periods=5).sum()
+    ema20_vs_10d = aligned['ema20'] - aligned['ema20'].shift(10)
+
+    out = aligned.copy()
+    out['ema20_slope'] = slope
+    out['threshold'] = threshold
+    out['down_count'] = down_count
+    out['up_count'] = up_count
+    out['start_ready'] = down_count.ge(4) & ema20_vs_10d.lt(0)
+    out['end_ready'] = up_count.ge(4) & ema20_vs_10d.gt(0)
+    out['down_flag'] = False
+    out['down_start_signal'] = False
+    out['down_end_signal'] = False
+
+    risk_off = False
+    for idx in out.index:
+        if not risk_off and bool(out.at[idx, 'start_ready']):
+            risk_off = True
+            out.at[idx, 'down_start_signal'] = True
+        elif risk_off and bool(out.at[idx, 'end_ready']):
+            risk_off = False
+            out.at[idx, 'down_end_signal'] = True
+        out.at[idx, 'down_flag'] = risk_off
+    return out
+
+
 def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True):
     """EMA20과 EMA20 기반 Risk-off 시작/종료 이벤트를 추가."""
-    ema20 = s.ewm(span=20, adjust=False, min_periods=5).mean().dropna()
-    if ema20.empty:
+    signal_df = _compute_downturn_signal_frame(s)
+    if signal_df.empty:
         return
 
     fig.add_trace(go.Scatter(
-        x=ema20.index, y=ema20, name='EMA20',
+        x=signal_df.index, y=signal_df['ema20'], name='EMA20',
         line=dict(color='rgba(255,255,255,0.78)', width=1.5),
         hoverinfo='skip',
     ))
     if not show_downturn:
         return
 
-    aligned = pd.concat([s.rename('value'), ema20.rename('ema20')], axis=1).dropna()
-    if len(aligned) < 50:
-        return
-    slope = aligned['ema20'].diff()
-    slope_std_40 = slope.rolling(40, min_periods=20).std()
-    threshold = 0.5 * slope_std_40
-    down_count = slope.lt(-threshold).rolling(5, min_periods=5).sum()
-    up_count = slope.gt(threshold).rolling(5, min_periods=5).sum()
-    slope_down_4of5 = down_count.ge(4)
-    slope_up_4of5 = up_count.ge(4)
-    ema20_vs_10d = aligned['ema20'] - aligned['ema20'].shift(10)
-    ema20_lower_than_10d = ema20_vs_10d.lt(0)
-    ema20_higher_than_10d = ema20_vs_10d.gt(0)
-    start_ready = slope_down_4of5 & ema20_lower_than_10d
-    end_ready = slope_up_4of5 & ema20_higher_than_10d
-
-    # 하나의 Risk-off 사이클에서는 시작 신호를 한 번만 찍고,
-    # 종료 신호가 나온 뒤에야 다음 시작 신호를 허용한다.
-    start_idx = []
-    end_idx = []
-    risk_off = False
-    for idx in aligned.index:
-        if not risk_off and bool(start_ready.loc[idx]):
-            start_idx.append(idx)
-            risk_off = True
-        elif risk_off and bool(end_ready.loc[idx]):
-            end_idx.append(idx)
-            risk_off = False
-
-    sig1_start = aligned.loc[start_idx, 'ema20']
-    sig1_end = aligned.loc[end_idx, 'ema20']
+    sig1_start = signal_df.loc[signal_df['down_start_signal'], 'ema20']
+    sig1_end = signal_df.loc[signal_df['down_end_signal'], 'ema20']
 
     if not sig1_start.empty:
         fig.add_trace(go.Scatter(
@@ -3317,6 +3326,97 @@ def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True):
             marker=dict(symbol='triangle-up', size=8, color='rgba(75,255,179,0.80)'),
             hovertemplate='<b>%{x|%Y-%m-%d}</b><br>최근 5일 중 slope > +0.5*40일 std 가 4일 이상<br>현재 EMA20 > 10일 전 EMA20<extra></extra>',
         ))
+
+
+def _compute_combo_downturn_frame(parts: dict[str, pd.Series]) -> pd.DataFrame:
+    """1~4 개별 Risk-off 상태를 합성한 종합 하락 사이클 상태를 계산한다."""
+    frames = {}
+    for name, series in parts.items():
+        sig = _compute_downturn_signal_frame(series)
+        if sig.empty:
+            continue
+        frames[name] = sig[['down_flag', 'down_start_signal', 'down_end_signal']].rename(columns={
+            'down_flag': f'{name}_down_flag',
+            'down_start_signal': f'{name}_down_start_signal',
+            'down_end_signal': f'{name}_down_end_signal',
+        })
+    if len(frames) < 4:
+        return pd.DataFrame()
+
+    combo = pd.concat(frames.values(), axis=1).sort_index().fillna(False)
+    flag_cols = [f'{name}_down_flag' for name in frames]
+    combo['active_down_count'] = combo[flag_cols].sum(axis=1).astype(int)
+    combo['combo_down_state'] = False
+    combo['combo_down_start_signal'] = False
+    combo['combo_down_end_signal'] = False
+
+    combo_state = False
+    for idx in combo.index:
+        active_count = int(combo.at[idx, 'active_down_count'])
+        if not combo_state and active_count >= 3:
+            combo_state = True
+            combo.at[idx, 'combo_down_start_signal'] = True
+        elif combo_state and active_count <= 2:
+            combo_state = False
+            combo.at[idx, 'combo_down_end_signal'] = True
+        combo.at[idx, 'combo_down_state'] = combo_state
+    return combo
+
+
+def make_macro_combo_downturn_chart(years: int = 5):
+    """⑤ 1~4 종합 Risk-off 사이클."""
+    hy = _fred('BAMLH0A0HYM2', years)
+    ig = _fred('BAMLC0A0CM', years)
+    nfci = _fred('NFCI', years + 1)
+    vix = _yf_close('^VIX', years + 1)
+    stress_parts = []
+    if not hy.empty:
+        stress_parts.append(_zscore(hy).rename('HY'))
+    if not nfci.empty:
+        stress_parts.append(_zscore(nfci).rename('NFCI'))
+    if not vix.empty:
+        stress_parts.append(_zscore(vix).rename('VIX'))
+    stress = pd.concat(stress_parts, axis=1).mean(axis=1).dropna() if stress_parts else pd.Series(dtype=float)
+
+    parts = {
+        'hy': (-hy).dropna(),
+        'ig': (-ig).dropna(),
+        'stress': (-stress).dropna(),
+        'vix': (-vix).dropna(),
+    }
+    combo = _compute_combo_downturn_frame(parts)
+    if combo.empty:
+        return None
+
+    fig = go.Figure()
+    fig.add_hline(y=3, line=dict(color='rgba(255,75,110,0.35)', dash='dot', width=1))
+    fig.add_hline(y=2, line=dict(color='rgba(255,255,255,0.14)', dash='dot', width=1))
+    fig.add_trace(go.Scatter(
+        x=combo.index, y=combo['active_down_count'], name='active_down_count',
+        line=dict(color='rgba(255,255,255,0.82)', width=1.8, shape='hv'),
+        hovertemplate='<b>%{x|%Y-%m-%d}</b><br>활성 down_flag %{y:d}개<extra></extra>',
+    ))
+    start_y = combo.loc[combo['combo_down_start_signal'], 'active_down_count']
+    end_y = combo.loc[combo['combo_down_end_signal'], 'active_down_count']
+    if not start_y.empty:
+        fig.add_trace(go.Scatter(
+            x=start_y.index, y=start_y, name='⑤ 종합 시작',
+            mode='markers',
+            marker=dict(symbol='triangle-down', size=9, color='rgba(255,140,105,0.85)'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>종합 Risk-off 시작<extra></extra>',
+        ))
+    if not end_y.empty:
+        fig.add_trace(go.Scatter(
+            x=end_y.index, y=end_y, name='⑤ 종합 종료',
+            mode='markers',
+            marker=dict(symbol='triangle-up', size=9, color='rgba(75,255,179,0.85)'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>종합 Risk-off 종료<extra></extra>',
+        ))
+    fig.update_layout(
+        **_ml('⑤ 종합 하락 사이클 (1~4 중 3개 이상 활성 시 시작)', height=300),
+    )
+    fig.update_yaxes(range=[-0.1, 4.1], dtick=1)
+    return fig
 
 
 def _make_inverted_spread_chart(
@@ -3445,20 +3545,20 @@ def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True):
 
 
 def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True):
-    """⑤ VIX-VIX3M 스프레드: 반전 표시 + EMA20 하락 경고."""
+    """⑥ VIX-VIX3M 스프레드: 반전 표시 + EMA20 하락 경고."""
     vix   = _yf_close('^VIX',   years)
     vix3m = _yf_close('^VIX3M', years)
     if vix.empty or vix3m.empty:
         return None
     spread = (vix - vix3m.reindex(vix.index)).dropna()
     return _make_inverted_spread_chart(
-        spread, '⑤ VIX-VIX3M 스프레드 (반전)', 'VIX-VIX3M 스프레드',
+        spread, '⑥ VIX-VIX3M 스프레드 (반전)', 'VIX-VIX3M 스프레드',
         spx_s=spx_s, color='#FF8C69', suffix='', show_raw=show_raw,
     )
 
 
 def make_macro_pmi_chart(years: int = 5, spx_s=None):
-    """④ ISM 신규주문-재고 스프레드 (대리지표: 제조업 신규주문 vs 재고-판매비율)
+    """⑦ ISM 신규주문-재고 스프레드 (대리지표: 제조업 신규주문 vs 재고-판매비율)
     ISM 원데이터는 FRED에 없으므로:
       - 신규주문 proxy: AMTMNO (전체 제조업 신규주문, SA) → NEWORDER → DGORDER 순 fallback
       - 재고 proxy: ISRATIO (재고/판매비율) 역방향 — 재고 증가=악화
@@ -3502,13 +3602,13 @@ def make_macro_pmi_chart(years: int = 5, spx_s=None):
     if not spread_s.empty:
         main_s = spread_s
     return _make_inverted_spread_chart(
-        main_s, '⑥ 신규주문-재고 스프레드 (반전, YoY%)', '신규주문-재고 스프레드',
+        main_s, '⑦ 신규주문-재고 스프레드 (반전, YoY%)', '신규주문-재고 스프레드',
         spx_s=spx_s, color='#C8C850', show_downturn=False,
     )
 
 
 def make_macro_liquidity_chart(years: int = 5, spx_s=None):
-    """⑤ 유동성: M2 YoY% + Fed 자산 YoY%"""
+    """⑧ 유동성: M2 YoY% + Fed 자산 YoY%"""
     m2  = _fred('M2SL',  years + 2)
     fed = _fred('WALCL', years + 2)
     if m2.empty and fed.empty:
@@ -3532,7 +3632,7 @@ def make_macro_liquidity_chart(years: int = 5, spx_s=None):
             main_s = fed_yoy
     _add_spx_overlay(fig, main_s, spx_s, yaxis='y3')
     fig.update_layout(
-        **_ml('⑦ 유동성 지표 (M2 · Fed 자산 YoY%)'),
+        **_ml('⑧ 유동성 지표 (M2 · Fed 자산 YoY%)'),
         yaxis2=dict(overlaying='y', side='right', showgrid=False, tickfont=dict(size=9),
                     zeroline=False, ticksuffix='%'),
         yaxis3=_hidden_yaxis('y', 'right'),
@@ -3543,7 +3643,7 @@ def make_macro_liquidity_chart(years: int = 5, spx_s=None):
 
 
 def make_macro_yield_curve_chart(years: int = 5, spx_s=None):
-    """⑦ 장단기 금리차: T10Y3M(10Y-3M)
+    """⑨ 장단기 금리차: T10Y3M(10Y-3M)
     1순위: FRED 사전계산 시리즈 (T10Y3M, T10Y2Y) — 더 안정적
     2순위: 구성 금리 직접 차감 (DGS10 - DTB3 / DGS2) — fallback
     """
@@ -3556,7 +3656,7 @@ def make_macro_yield_curve_chart(years: int = 5, spx_s=None):
         if not dgs10.empty and not dtb3.empty:
             t3m = (dgs10 - dtb3.reindex(dgs10.index).interpolate()).dropna()
     return _make_inverted_spread_chart(
-        t3m, '⑧ 10Y-3M 금리차 (반전, 0 이상 = 원래 역전)', '10Y-3M 스프레드',
+        t3m, '⑨ 10Y-3M 금리차 (반전, 0 이상 = 원래 역전)', '10Y-3M 스프레드',
         spx_s=spx_s, color='#4BFFB3', show_downturn=False,
     )
 
@@ -4690,10 +4790,11 @@ def main(page="signal"):
                     make_macro_ig_spread_chart(_macro_years,     _spx_s, _show_raw_macro),  # ② IG 스프레드
                     make_macro_credit_stress_chart(_macro_years, _spx_s, _show_raw_macro),  # ③ 크레딧 스트레스
                     make_macro_options_chart(_macro_years,       _spx_s, _show_raw_macro),  # ④ VIX
-                    make_macro_vix_spread_chart(_macro_years,    _spx_s, _show_raw_macro),  # ⑤ VIX 텀스프레드
-                    make_macro_pmi_chart(_macro_years,           _spx_s),   # ⑥ 경기 모멘텀
-                    make_macro_liquidity_chart(_macro_years,     _spx_s),   # ⑦ 유동성 (M2/Fed)
-                    make_macro_yield_curve_chart(_macro_years,   _spx_s),   # ⑧ 장단기 금리차
+                    make_macro_combo_downturn_chart(_macro_years),          # ⑤ 종합 하락 사이클
+                    make_macro_vix_spread_chart(_macro_years,    _spx_s, _show_raw_macro),  # ⑥ VIX 텀스프레드
+                    make_macro_pmi_chart(_macro_years,           _spx_s),   # ⑦ 경기 모멘텀
+                    make_macro_liquidity_chart(_macro_years,     _spx_s),   # ⑧ 유동성 (M2/Fed)
+                    make_macro_yield_curve_chart(_macro_years,   _spx_s),   # ⑨ 장단기 금리차
                 ]
 
             _mc = st.columns(2)
@@ -4704,7 +4805,7 @@ def main(page="signal"):
                 else:
                     with _mc[i % 2]:
                         _labels = ['① HY 스프레드', '② IG 스프레드', '③ 크레딧 스트레스', '④ VIX',
-                                   '⑤ VIX 스프레드', '⑥ 경기 모멘텀', '⑦ 유동성', '⑧ 금리차']
+                                   '⑤ 종합 하락 사이클', '⑥ VIX 스프레드', '⑦ 경기 모멘텀', '⑧ 유동성', '⑨ 금리차']
                         st.warning(f"{_labels[i]} 데이터 로딩 실패 — FRED 일시 불가. 잠시 후 재시도해 주세요.")
 
             # ⑦ 외국인 순매수 누적 — KOSPI / KOSDAQ 선택
