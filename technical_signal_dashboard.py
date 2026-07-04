@@ -3121,6 +3121,51 @@ def _fred(series_id: str, years: int = 5) -> pd.Series:
     return pd.Series(dtype=float, name=series_id)
 
 
+_CREDIT_SPREAD_PROXY_MAP = {
+    'BAMLH0A0HYM2': ('DBAA', 'DGS10', 'HY'),
+    'BAMLC0A0CM': ('DAAA', 'DGS10', 'IG'),
+}
+
+
+@st.cache_data(ttl=86400)
+def _credit_spread_series(series_id: str, years: int = 5) -> pd.Series:
+    """HY/IG OAS는 최근 3년 원본 + 이전 구간은 장기 프록시로 이어 붙여 반환."""
+    exact = _fred(series_id, years)
+    proxy_meta = _CREDIT_SPREAD_PROXY_MAP.get(series_id)
+    if proxy_meta is None:
+        return exact
+
+    corp_id, treasury_id, label = proxy_meta
+    cutoff = pd.Timestamp.now().normalize() - pd.DateOffset(years=years)
+    fetch_years = max(years + 2, 6)
+    corp_yield = _fred(corp_id, fetch_years)
+    treasury_yield = _fred(treasury_id, fetch_years)
+    if corp_yield.empty or treasury_yield.empty:
+        return exact
+
+    treasury_aligned = treasury_yield.reindex(corp_yield.index).interpolate(method='time').ffill().bfill()
+    proxy = (corp_yield - treasury_aligned).dropna()
+    proxy.name = f'{label}_proxy_spread'
+    if proxy.empty:
+        return exact
+
+    if exact.empty:
+        return proxy[proxy.index >= cutoff]
+
+    overlap = pd.concat(
+        [exact.rename('exact'), proxy.rename('proxy')],
+        axis=1,
+        join='inner',
+    ).dropna()
+    shift = (overlap['exact'] - overlap['proxy']).median() if len(overlap) >= 20 else 0.0
+    proxy_adjusted = proxy + shift
+    older_proxy = proxy_adjusted[proxy_adjusted.index < exact.index.min()]
+    stitched = pd.concat([older_proxy, exact]).sort_index()
+    stitched = stitched[~stitched.index.duplicated(keep='last')]
+    stitched.name = series_id
+    return stitched[stitched.index >= cutoff]
+
+
 @st.cache_data(ttl=86400)
 def _yf_close(ticker: str, years: int = 5) -> pd.Series:
     try:
@@ -3382,12 +3427,11 @@ def make_macro_index_cycle_chart(years: int = 5, spx_s=None, show_raw=True):
         return None
 
     fig = go.Figure()
-    if show_raw:
-        fig.add_trace(go.Scatter(
-            x=spx_s.index, y=spx_s, name='S&P500',
-            line=dict(color='rgba(255,255,255,0.82)', width=1.8),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>S&P500 %{y:,.1f}<extra></extra>',
-        ))
+    fig.add_trace(go.Scatter(
+        x=spx_s.index, y=spx_s, name='S&P500',
+        line=dict(color='rgba(255,255,255,0.82)', width=1.8),
+        hovertemplate='<b>%{x|%Y-%m-%d}</b><br>S&P500 %{y:,.1f}<extra></extra>',
+    ))
     _add_ema20_downturn_signals(fig, spx_s, show_downturn=True)
     fig.update_layout(
         **_ml('⓪ S&P500 지수 Risk-off 사이클', height=300),
@@ -3401,8 +3445,8 @@ def make_macro_combo_downturn_chart(years: int = 5, spx_s=None):
         spx_s = _yf_close('^GSPC', years)
     if spx_s is None or spx_s.empty:
         return None
-    hy = _fred('BAMLH0A0HYM2', years)
-    ig = _fred('BAMLC0A0CM', years)
+    hy = _credit_spread_series('BAMLH0A0HYM2', years)
+    ig = _credit_spread_series('BAMLC0A0CM', years)
     nfci = _fred('NFCI', years + 1)
     vix = _yf_close('^VIX', years + 1)
     stress_parts = []
@@ -3513,7 +3557,7 @@ def _make_inverted_spread_chart(
 
 def make_macro_hy_spread_chart(years: int = 5, spx_s=None, show_raw=True):
     """① HY 크레딧 스프레드: 반전 표시 + EMA20 하락 경고."""
-    hy = _fred('BAMLH0A0HYM2', years)
+    hy = _credit_spread_series('BAMLH0A0HYM2', years)
     return _make_inverted_spread_chart(
         hy, '① HY 크레딧 스프레드 (반전, OAS %)', 'HY 스프레드',
         spx_s=spx_s, color='#FF4B6E', show_raw=show_raw,
@@ -3522,7 +3566,7 @@ def make_macro_hy_spread_chart(years: int = 5, spx_s=None, show_raw=True):
 
 def make_macro_ig_spread_chart(years: int = 5, spx_s=None, show_raw=True):
     """② IG 크레딧 스프레드: 반전 표시 + EMA20 하락 경고."""
-    ig = _fred('BAMLC0A0CM', years)
+    ig = _credit_spread_series('BAMLC0A0CM', years)
     return _make_inverted_spread_chart(
         ig, '② IG 크레딧 스프레드 (반전, OAS %)', 'IG 스프레드',
         spx_s=spx_s, color='#4BFFB3', show_raw=show_raw,
@@ -3531,7 +3575,7 @@ def make_macro_ig_spread_chart(years: int = 5, spx_s=None, show_raw=True):
 
 def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True):
     """③ 신용 스트레스 지수: HY + NFCI + VIX z-score 합성, 반전 표시."""
-    hy   = _fred('BAMLH0A0HYM2', years + 1)
+    hy   = _credit_spread_series('BAMLH0A0HYM2', years + 1)
     nfci = _fred('NFCI',         years + 1)
     vix  = _yf_close('^VIX',     years + 1)
     parts = []
@@ -4818,7 +4862,7 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
     if page in ("all", "macro", "market_macro"):
         with tab3:
-            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 흰색 실선=EMA20. 개별 지표는 동적 slope + 10일 EMA 비교로 Risk-off 시작/종료를 잡고, ⑤는 0~4 중 3개 이상이면 Watch(노랑/초록), 4개 이상이면 Risk(빨강/파랑) 신호를 S&P500 위에 표시한다.")
+            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 흰색 실선=EMA20. 개별 지표는 동적 slope + 10일 EMA 비교로 Risk-off 시작/종료를 잡고, ⑤는 0~4 중 3개 이상이면 Watch(노랑/초록), 4개 이상이면 Risk(빨강/파랑) 신호를 S&P500 위에 표시한다. HY/IG는 최근 구간은 ICE OAS 원본, 더 긴 과거 구간은 Moody's-10Y Treasury 프록시로 이어 붙인다.")
 
             _c1, _c2, _c3 = st.columns([3, 1, 1])
             with _c1:
@@ -4883,8 +4927,8 @@ def main(page="signal"):
             with st.spinner("상관계수 계산 중..."):
                 # 각 지표 주요 시리즈 수집 (FRED 캐시 재사용)
                 _cy = _macro_years
-                _hy_s   = _fred('BAMLH0A0HYM2', _cy)
-                _ig_s   = _fred('BAMLC0A0CM', _cy)
+                _hy_s   = _credit_spread_series('BAMLH0A0HYM2', _cy)
+                _ig_s   = _credit_spread_series('BAMLC0A0CM', _cy)
                 _nfci_s = _fred('NFCI', _cy)
                 _vix_s  = _yf_close('^VIX', _cy)
                 _vix3m_s = _yf_close('^VIX3M', _cy)
