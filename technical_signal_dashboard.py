@@ -3211,7 +3211,7 @@ def _add_spx_cum_overlays(fig, main_s: pd.Series, spx_s,
             spx_pct = ((spx_t / spx_t.iloc[0]) - 1) * 100
             fig.add_trace(go.Scatter(
                 x=spx_pct.index, y=spx_pct, name='S&P500(%)',
-                line=dict(color='rgba(200,200,80,0.45)', width=1.0, dash='dash'),
+                line=dict(color='rgba(200,200,80,0.45)', width=1.0),
                 showlegend=True, hoverinfo='skip', yaxis=spx_yaxis,
             ))
 
@@ -3252,7 +3252,7 @@ def _add_spx_overlay(fig, main_s: pd.Series, spx_s, yaxis='y2'):
     spx_pct = ((spx_t / spx_t.iloc[0]) - 1) * 100
     fig.add_trace(go.Scatter(
         x=spx_pct.index, y=spx_pct, name='S&P500(%)',
-        line=dict(color='rgba(200,200,80,0.45)', width=1.0, dash='dash'),
+        line=dict(color='rgba(200,200,80,0.45)', width=1.0),
         showlegend=True, hoverinfo='skip', yaxis=yaxis,
     ))
 
@@ -3265,7 +3265,7 @@ def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True):
 
     fig.add_trace(go.Scatter(
         x=ema20.index, y=ema20, name='EMA20',
-        line=dict(color='rgba(255,255,255,0.78)', width=1.5, dash='dash'),
+        line=dict(color='rgba(255,255,255,0.78)', width=1.5),
         hoverinfo='skip',
     ))
     if not show_downturn:
@@ -4655,7 +4655,7 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
     if page in ("all", "macro", "market_macro"):
         with tab3:
-            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 주요 위험 지표는 반전 표시. 흰색 점선=EMA20, ▼=Risk-off 시작, ▲=Risk-off 종료.")
+            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 주요 위험 지표는 반전 표시. 흰색 실선=EMA20, ▼=Risk-off 시작, ▲=Risk-off 종료.")
 
             _c1, _c2, _c3 = st.columns([3, 1, 1])
             with _c1:
