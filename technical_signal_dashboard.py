@@ -3278,20 +3278,11 @@ def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True):
     slope_down_4of5 = slope.lt(0).rolling(5, min_periods=5).sum().ge(4)
     slope_up_4of5 = slope.gt(0).rolling(5, min_periods=5).sum().ge(4)
 
-    below_ema = aligned['value'].lt(aligned['ema20'])
-    above_ema = aligned['value'].gt(aligned['ema20'])
-    combo_start = slope_down_4of5 & below_ema
-    combo_end = slope_up_4of5 & above_ema
-
     slope_start_event = slope_down_4of5 & ~slope_down_4of5.shift(1, fill_value=False)
     slope_end_event = slope_up_4of5 & ~slope_up_4of5.shift(1, fill_value=False)
-    combo_start_event = combo_start & ~combo_start.shift(1, fill_value=False)
-    combo_end_event = combo_end & ~combo_end.shift(1, fill_value=False)
 
     sig1_start = aligned.loc[slope_start_event, 'ema20']
     sig1_end = aligned.loc[slope_end_event, 'ema20']
-    sig3_start = aligned.loc[combo_start_event, 'value']
-    sig3_end = aligned.loc[combo_end_event, 'value']
 
     if not sig1_start.empty:
         fig.add_trace(go.Scatter(
@@ -3306,22 +3297,6 @@ def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True):
             mode='markers',
             marker=dict(symbol='triangle-up', size=8, color='rgba(75,255,179,0.80)'),
             hovertemplate='<b>%{x|%Y-%m-%d}</b><br>EMA20 slope 4/5 양수<extra></extra>',
-        ))
-    if not sig3_start.empty:
-        fig.add_trace(go.Scatter(
-            x=sig3_start.index, y=sig3_start, name='3: Risk-off 시작 (하락+EMA20 하회)',
-            mode='markers',
-            marker=dict(symbol='diamond', size=8, color='rgba(255,75,110,0.88)',
-                        line=dict(width=0.8, color='rgba(255,255,255,0.50)')),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>4/5 음수 + 현재값 EMA20 하회<extra></extra>',
-        ))
-    if not sig3_end.empty:
-        fig.add_trace(go.Scatter(
-            x=sig3_end.index, y=sig3_end, name='3: Risk-off 종료 (상승+EMA20 상회)',
-            mode='markers',
-            marker=dict(symbol='diamond', size=8, color='rgba(75,255,179,0.88)',
-                        line=dict(width=0.8, color='rgba(255,255,255,0.50)')),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>4/5 양수 + 현재값 EMA20 상회<extra></extra>',
         ))
 
 
@@ -4670,7 +4645,7 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
     if page in ("all", "macro", "market_macro"):
         with tab3:
-            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 주요 위험 지표는 반전 표시. 흰색 점선=EMA20, ▼/◆=Risk-off 시작, ▲/◆=Risk-off 종료.")
+            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 주요 위험 지표는 반전 표시. 흰색 점선=EMA20, ▼=Risk-off 시작, ▲=Risk-off 종료.")
 
             _c1, _c2, _c3 = st.columns([3, 1, 1])
             with _c1:
