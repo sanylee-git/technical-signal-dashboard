@@ -3363,7 +3363,7 @@ def _compute_combo_downturn_frame(parts: dict[str, pd.Series]) -> pd.DataFrame:
     return combo
 
 
-def make_macro_combo_downturn_chart(years: int = 5):
+def make_macro_combo_downturn_chart(years: int = 5, spx_s=None):
     """⑤ 1~4 종합 Risk-off 사이클."""
     hy = _fred('BAMLH0A0HYM2', years)
     ig = _fred('BAMLC0A0CM', years)
@@ -3387,17 +3387,23 @@ def make_macro_combo_downturn_chart(years: int = 5):
     combo = _compute_combo_downturn_frame(parts)
     if combo.empty:
         return None
+    if spx_s is None or spx_s.empty:
+        spx_s = _yf_close('^GSPC', years)
+    if spx_s is None or spx_s.empty:
+        return None
+    spx_aligned = spx_s.reindex(combo.index).dropna()
+    if spx_aligned.empty:
+        return None
+    combo = combo.reindex(spx_aligned.index)
 
     fig = go.Figure()
-    fig.add_hline(y=3, line=dict(color='rgba(255,75,110,0.35)', dash='dot', width=1))
-    fig.add_hline(y=2, line=dict(color='rgba(255,255,255,0.14)', dash='dot', width=1))
     fig.add_trace(go.Scatter(
-        x=combo.index, y=combo['active_down_count'], name='active_down_count',
-        line=dict(color='rgba(255,255,255,0.82)', width=1.8, shape='hv'),
-        hovertemplate='<b>%{x|%Y-%m-%d}</b><br>활성 down_flag %{y:d}개<extra></extra>',
+        x=spx_aligned.index, y=spx_aligned, name='S&P500',
+        line=dict(color='rgba(255,255,255,0.82)', width=1.8),
+        hovertemplate='<b>%{x|%Y-%m-%d}</b><br>S&P500 %{y:,.1f}<extra></extra>',
     ))
-    start_y = combo.loc[combo['combo_down_start_signal'], 'active_down_count']
-    end_y = combo.loc[combo['combo_down_end_signal'], 'active_down_count']
+    start_y = spx_aligned.loc[combo['combo_down_start_signal']]
+    end_y = spx_aligned.loc[combo['combo_down_end_signal']]
     if not start_y.empty:
         fig.add_trace(go.Scatter(
             x=start_y.index, y=start_y, name='⑤ 종합 시작',
@@ -3413,9 +3419,8 @@ def make_macro_combo_downturn_chart(years: int = 5):
             hovertemplate='<b>%{x|%Y-%m-%d}</b><br>종합 Risk-off 종료<extra></extra>',
         ))
     fig.update_layout(
-        **_ml('⑤ 종합 하락 사이클 (1~4 중 3개 이상 활성 시 시작)', height=300),
+        **_ml('⑤ 종합 하락 사이클 (S&P500 위 종합 시작/종료 표시)', height=300),
     )
-    fig.update_yaxes(range=[-0.1, 4.1], dtick=1)
     return fig
 
 
@@ -4790,7 +4795,7 @@ def main(page="signal"):
                     make_macro_ig_spread_chart(_macro_years,     _spx_s, _show_raw_macro),  # ② IG 스프레드
                     make_macro_credit_stress_chart(_macro_years, _spx_s, _show_raw_macro),  # ③ 크레딧 스트레스
                     make_macro_options_chart(_macro_years,       _spx_s, _show_raw_macro),  # ④ VIX
-                    make_macro_combo_downturn_chart(_macro_years),          # ⑤ 종합 하락 사이클
+                    make_macro_combo_downturn_chart(_macro_years, _spx_s),  # ⑤ 종합 하락 사이클
                     make_macro_vix_spread_chart(_macro_years,    _spx_s, _show_raw_macro),  # ⑥ VIX 텀스프레드
                     make_macro_pmi_chart(_macro_years,           _spx_s),   # ⑦ 경기 모멘텀
                     make_macro_liquidity_chart(_macro_years,     _spx_s),   # ⑧ 유동성 (M2/Fed)
