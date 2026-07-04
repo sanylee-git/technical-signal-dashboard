@@ -3257,21 +3257,53 @@ def _add_spx_overlay(fig, main_s: pd.Series, spx_s, yaxis='y2'):
     ))
 
 
-def _add_smoothing_lines(fig, s: pd.Series):
-    """20일 EMA + Rolling Median Filter로 노이즈를 낮춘 추세선을 추가."""
+def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True):
+    """EMA20과 EMA20 기반 하락 시작 경고 3종을 추가."""
     ema20 = s.ewm(span=20, adjust=False, min_periods=5).mean().dropna()
-    med20 = s.rolling(20, min_periods=5).median().dropna()
-    if not ema20.empty:
+    if ema20.empty:
+        return
+
+    fig.add_trace(go.Scatter(
+        x=ema20.index, y=ema20, name='EMA20',
+        line=dict(color='rgba(255,255,255,0.78)', width=1.5, dash='dash'),
+        hoverinfo='skip',
+    ))
+    if not show_downturn:
+        return
+
+    aligned = pd.concat([s.rename('value'), ema20.rename('ema20')], axis=1).dropna()
+    if len(aligned) < 5:
+        return
+    slope = aligned['ema20'].diff()
+    slope_down_4of5 = slope.lt(0).rolling(5, min_periods=5).sum().ge(4)
+    below_ema = aligned['value'].lt(aligned['ema20'])
+    both = slope_down_4of5 & below_ema
+
+    sig1 = aligned.loc[slope_down_4of5 & ~both, 'ema20']
+    sig2 = aligned.loc[below_ema & ~both, 'value']
+    sig3 = aligned.loc[both, 'value']
+
+    if not sig1.empty:
         fig.add_trace(go.Scatter(
-            x=ema20.index, y=ema20, name='EMA20',
-            line=dict(color='rgba(255,255,255,0.68)', width=1.2, dash='dash'),
-            hoverinfo='skip',
+            x=sig1.index, y=sig1, name='경고1: EMA20 5일중 4일 하락',
+            mode='markers',
+            marker=dict(symbol='triangle-down', size=7, color='rgba(255,140,105,0.70)'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>EMA20 기울기 약화<extra></extra>',
         ))
-    if not med20.empty:
+    if not sig2.empty:
         fig.add_trace(go.Scatter(
-            x=med20.index, y=med20, name='Median20',
-            line=dict(color='rgba(120,126,231,0.78)', width=1.3, dash='dot'),
-            hoverinfo='skip',
+            x=sig2.index, y=sig2, name='경고2: 현재값 EMA20 하회',
+            mode='markers',
+            marker=dict(symbol='circle', size=6, color='rgba(255,210,80,0.68)'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>현재값 EMA20 하회<extra></extra>',
+        ))
+    if not sig3.empty:
+        fig.add_trace(go.Scatter(
+            x=sig3.index, y=sig3, name='경고3: 하락장 시작',
+            mode='markers',
+            marker=dict(symbol='diamond', size=8, color='rgba(255,75,110,0.88)',
+                        line=dict(width=0.8, color='rgba(255,255,255,0.50)')),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>EMA20 하락 지속 + 현재값 하회<extra></extra>',
         ))
 
 
@@ -3284,6 +3316,7 @@ def _make_inverted_spread_chart(
     height=300,
     suffix='%',
     show_raw=True,
+    show_downturn=True,
 ):
     """스프레드는 -1배로 표시해 위험 확대가 아래쪽으로 보이게 한다."""
     if s is None or s.empty:
@@ -3301,7 +3334,7 @@ def _make_inverted_spread_chart(
             opacity=0.45,
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  반전값 %{y:.2f}<extra></extra>',
         ))
-    _add_smoothing_lines(fig, plot_s)
+    _add_ema20_downturn_signals(fig, plot_s, show_downturn=show_downturn)
     _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2')
     fig.update_layout(
         **_ml(title, height=height),
@@ -3313,7 +3346,7 @@ def _make_inverted_spread_chart(
 
 
 def make_macro_hy_spread_chart(years: int = 5, spx_s=None, show_raw=True):
-    """① HY 크레딧 스프레드: 반전 표시 + EMA20/Median20."""
+    """① HY 크레딧 스프레드: 반전 표시 + EMA20 하락 경고."""
     hy = _fred('BAMLH0A0HYM2', years)
     return _make_inverted_spread_chart(
         hy, '① HY 크레딧 스프레드 (반전, OAS %)', 'HY 스프레드',
@@ -3322,7 +3355,7 @@ def make_macro_hy_spread_chart(years: int = 5, spx_s=None, show_raw=True):
 
 
 def make_macro_ig_spread_chart(years: int = 5, spx_s=None, show_raw=True):
-    """② IG 크레딧 스프레드: 반전 표시 + EMA20/Median20."""
+    """② IG 크레딧 스프레드: 반전 표시 + EMA20 하락 경고."""
     ig = _fred('BAMLC0A0CM', years)
     return _make_inverted_spread_chart(
         ig, '② IG 크레딧 스프레드 (반전, OAS %)', 'IG 스프레드',
@@ -3351,18 +3384,18 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True):
     fig.add_hline(y=0,  line=dict(color='rgba(255,255,255,0.2)', width=1))
     fig.add_hline(y=1,  line=dict(color='rgba(75,255,179,0.25)',  dash='dot', width=1))
     fig.add_hline(y=-1, line=dict(color='rgba(255,75,110,0.25)',  dash='dot', width=1))
-    fig.add_trace(go.Scatter(x=plot_s.index, y=plot_s.clip(lower=0),
-                             fill='tozeroy', fillcolor='rgba(75,255,179,0.10)',
-                             line=dict(width=0), showlegend=False, hoverinfo='skip'))
-    fig.add_trace(go.Scatter(x=plot_s.index, y=plot_s.clip(upper=0),
-                             fill='tozeroy', fillcolor='rgba(255,75,110,0.10)',
-                             line=dict(width=0), showlegend=False, hoverinfo='skip'))
     if show_raw:
+        fig.add_trace(go.Scatter(x=plot_s.index, y=plot_s.clip(lower=0),
+                                 fill='tozeroy', fillcolor='rgba(75,255,179,0.10)',
+                                 line=dict(width=0), showlegend=False, hoverinfo='skip'))
+        fig.add_trace(go.Scatter(x=plot_s.index, y=plot_s.clip(upper=0),
+                                 fill='tozeroy', fillcolor='rgba(255,75,110,0.10)',
+                                 line=dict(width=0), showlegend=False, hoverinfo='skip'))
         fig.add_trace(go.Scatter(x=plot_s.index, y=plot_s, name='신용 스트레스 (반전)',
                                  line=dict(color='#787EE7', width=1.2),
                                  opacity=0.45,
                                  hovertemplate='<b>%{x|%Y-%m-%d}</b>  %{y:.2f}<extra></extra>'))
-    _add_smoothing_lines(fig, plot_s)
+    _add_ema20_downturn_signals(fig, plot_s)
     _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2')
     fig.update_layout(
         **_ml('③ 신용 스트레스 지수 (반전, HY + NFCI + VIX z-score)'),
@@ -3374,7 +3407,7 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True):
 
 
 def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True):
-    """④ VIX 레벨: 반전 표시 + 20일 EMA/Median."""
+    """④ VIX 레벨: 반전 표시 + EMA20 하락 경고."""
     vix   = _yf_close('^VIX',   years)
     if vix.empty:
         return None
@@ -3389,7 +3422,7 @@ def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True):
             opacity=0.45,
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  반전 VIX %{y:.1f}<extra></extra>',
         ))
-    _add_smoothing_lines(fig, plot_s)
+    _add_ema20_downturn_signals(fig, plot_s)
     _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2')
     fig.update_layout(
         **_ml('④ VIX 레벨 (반전)', height=300),
@@ -3400,7 +3433,7 @@ def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True):
 
 
 def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True):
-    """⑤ VIX-VIX3M 스프레드: 반전 표시 + EMA20/Median20."""
+    """⑤ VIX-VIX3M 스프레드: 반전 표시 + EMA20 하락 경고."""
     vix   = _yf_close('^VIX',   years)
     vix3m = _yf_close('^VIX3M', years)
     if vix.empty or vix3m.empty:
@@ -3458,7 +3491,7 @@ def make_macro_pmi_chart(years: int = 5, spx_s=None):
         main_s = spread_s
     return _make_inverted_spread_chart(
         main_s, '⑥ 신규주문-재고 스프레드 (반전, YoY%)', '신규주문-재고 스프레드',
-        spx_s=spx_s, color='#C8C850',
+        spx_s=spx_s, color='#C8C850', show_downturn=False,
     )
 
 
@@ -3512,7 +3545,7 @@ def make_macro_yield_curve_chart(years: int = 5, spx_s=None):
             t3m = (dgs10 - dtb3.reindex(dgs10.index).interpolate()).dropna()
     return _make_inverted_spread_chart(
         t3m, '⑧ 10Y-3M 금리차 (반전, 0 이상 = 원래 역전)', '10Y-3M 스프레드',
-        spx_s=spx_s, color='#4BFFB3',
+        spx_s=spx_s, color='#4BFFB3', show_downturn=False,
     )
 
 
@@ -4619,7 +4652,7 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
     if page in ("all", "macro", "market_macro"):
         with tab3:
-            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 미국 데이터 위주이며 참고용. 주요 위험 지표는 반전 표시, 흰색 점선=EMA20, 보라 점선=Median20, 노란 파선=S&P500%.")
+            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 주요 위험 지표는 반전 표시. 흰색 점선=EMA20, 주황▼=EMA20 하락, 노랑●=EMA20 하회, 빨강◆=하락장 시작 경고.")
 
             _c1, _c2, _c3 = st.columns([3, 1, 1])
             with _c1:
