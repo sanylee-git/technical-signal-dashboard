@@ -3286,8 +3286,23 @@ def _add_corr_annotation(fig, main_s: pd.Series, spx_s, label='vs S&P500'):
         pass
 
 
+def _visible_price_yaxis(overlaying='y', side='right', ticksuffix='%') -> dict:
+    """가격 오버레이용 우측 y축."""
+    return dict(
+        overlaying=overlaying,
+        side=side,
+        showgrid=False,
+        showticklabels=True,
+        showline=True,
+        linecolor='rgba(214, 190, 108, 0.42)',
+        tickfont=dict(size=9, color='rgba(214, 190, 108, 0.92)'),
+        zeroline=False,
+        ticksuffix=ticksuffix,
+    )
+
+
 def _add_spx_overlay(fig, main_s: pd.Series, spx_s, yaxis='y2'):
-    """S&P500 % 변화만 숨김 축으로 오버레이."""
+    """S&P500 % 변화를 우측 축으로 오버레이."""
     if spx_s is None or spx_s.empty or main_s is None or main_s.empty:
         return
     t0 = main_s.index[0]
@@ -3297,7 +3312,7 @@ def _add_spx_overlay(fig, main_s: pd.Series, spx_s, yaxis='y2'):
     spx_pct = ((spx_t / spx_t.iloc[0]) - 1) * 100
     fig.add_trace(go.Scatter(
         x=spx_pct.index, y=spx_pct, name='S&P500(%)',
-        line=dict(color='rgba(255,255,255,0.88)', width=2.1),
+        line=dict(color='rgba(214,190,108,0.92)', width=2.2),
         showlegend=True, hoverinfo='skip', yaxis=yaxis,
     ))
 
@@ -3374,7 +3389,7 @@ def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True, overlay_p
 
     fig.add_trace(go.Scatter(
         x=signal_df.index, y=signal_df['ema20'], name='EMA20',
-        line=dict(color='rgba(255,255,255,0.78)', width=1.5),
+        line=dict(color='rgba(255,255,255,0.28)', width=1.0, dash='dot'),
         hoverinfo='skip',
     ))
     if not show_downturn:
@@ -3459,7 +3474,7 @@ def make_macro_index_cycle_chart(years: int = 5, spx_s=None, show_raw=True):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=spx_s.index, y=spx_s, name='S&P500',
-        line=dict(color='rgba(255,255,255,0.82)', width=1.8),
+        line=dict(color='rgba(214,190,108,0.92)', width=2.2),
         hovertemplate='<b>%{x|%Y-%m-%d}</b><br>S&P500 %{y:,.1f}<extra></extra>',
     ))
     _add_ema20_downturn_signals(fig, spx_s, show_downturn=True, overlay_price=spx_s, overlay_yaxis='y')
@@ -3506,7 +3521,7 @@ def make_macro_combo_downturn_chart(years: int = 5, spx_s=None, signal_modes=Non
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=spx_aligned.index, y=spx_aligned, name='S&P500',
-        line=dict(color='rgba(255,255,255,0.82)', width=1.8),
+        line=dict(color='rgba(214,190,108,0.92)', width=2.2),
         hovertemplate='<b>%{x|%Y-%m-%d}</b><br>S&P500 %{y:,.1f}<extra></extra>',
     ))
     watch_start_y = spx_aligned.loc[combo['combo_watch_start_signal']]
@@ -3580,7 +3595,7 @@ def _make_inverted_spread_chart(
     _add_ema20_downturn_signals(fig, plot_s, show_downturn=show_downturn, overlay_price=spx_s, overlay_yaxis='y2')
     fig.update_layout(
         **_ml(title, height=height),
-        yaxis2=_hidden_yaxis('y', 'right'),
+        yaxis2=_visible_price_yaxis('y', 'right'),
     )
     fig.update_yaxes(ticksuffix=suffix)
     _add_corr_annotation(fig, plot_s, spx_s)
@@ -3641,7 +3656,7 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True):
     _add_ema20_downturn_signals(fig, plot_s, overlay_price=spx_s, overlay_yaxis='y2')
     fig.update_layout(
         **_ml('③ 신용 스트레스 지수 (반전, HY + NFCI + VIX z-score)'),
-        yaxis2=_hidden_yaxis('y', 'right'),
+        yaxis2=_visible_price_yaxis('y', 'right'),
     )
     fig.update_yaxes(tickformat='+.1f')
     _add_corr_annotation(fig, plot_s, spx_s)
@@ -3668,7 +3683,7 @@ def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True):
     _add_ema20_downturn_signals(fig, plot_s, overlay_price=spx_s, overlay_yaxis='y2')
     fig.update_layout(
         **_ml('④ VIX 레벨 (반전)', height=300),
-        yaxis2=_hidden_yaxis('y', 'right'),
+        yaxis2=_visible_price_yaxis('y', 'right'),
     )
     _add_corr_annotation(fig, plot_s, spx_s, label='반전 VIX vs S&P500')
     return fig
@@ -3751,21 +3766,19 @@ def make_macro_liquidity_chart(years: int = 5, spx_s=None):
         m2_yoy = (m2.pct_change(12) * 100).dropna()
         m2_yoy = m2_yoy[m2_yoy.index >= cutoff]
         fig.add_trace(go.Scatter(x=m2_yoy.index, y=m2_yoy, name='M2 YoY%',
-                                 line=dict(color='#4BFFB3', width=1.5)))
+                                 line=dict(color='rgba(75,255,179,0.38)', width=1.2)))
         main_s = m2_yoy
     if not fed.empty:
         fed_yoy = (fed.pct_change(52) * 100).dropna()
         fed_yoy = fed_yoy[fed_yoy.index >= cutoff]
-        fig.add_trace(go.Scatter(x=fed_yoy.index, y=fed_yoy, name='Fed 자산 YoY% (우)',
-                                 line=dict(color='#787EE7', width=1.3, dash='dot'), yaxis='y2'))
+        fig.add_trace(go.Scatter(x=fed_yoy.index, y=fed_yoy, name='Fed 자산 YoY%',
+                                 line=dict(color='rgba(120,126,231,0.38)', width=1.1, dash='dot')))
         if main_s is None:
             main_s = fed_yoy
-    _add_spx_overlay(fig, main_s, spx_s, yaxis='y3')
+    _add_spx_overlay(fig, main_s, spx_s, yaxis='y2')
     fig.update_layout(
         **_ml('⑧ 유동성 지표 (M2 · Fed 자산 YoY%)'),
-        yaxis2=dict(overlaying='y', side='right', showgrid=False, tickfont=dict(size=9),
-                    zeroline=False, ticksuffix='%'),
-        yaxis3=_hidden_yaxis('y', 'right'),
+        yaxis2=_visible_price_yaxis('y', 'right'),
     )
     fig.update_yaxes(ticksuffix='%')
     _add_corr_annotation(fig, main_s, spx_s)
