@@ -3278,11 +3278,21 @@ def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True):
     slope_down_4of5 = slope.lt(0).rolling(5, min_periods=5).sum().ge(4)
     slope_up_4of5 = slope.gt(0).rolling(5, min_periods=5).sum().ge(4)
 
-    slope_start_event = slope_down_4of5 & ~slope_down_4of5.shift(1, fill_value=False)
-    slope_end_event = slope_up_4of5 & ~slope_up_4of5.shift(1, fill_value=False)
+    # 하나의 Risk-off 사이클에서는 시작 신호를 한 번만 찍고,
+    # 종료 신호가 나온 뒤에야 다음 시작 신호를 허용한다.
+    start_idx = []
+    end_idx = []
+    risk_off = False
+    for idx in aligned.index:
+        if not risk_off and bool(slope_down_4of5.loc[idx]):
+            start_idx.append(idx)
+            risk_off = True
+        elif risk_off and bool(slope_up_4of5.loc[idx]):
+            end_idx.append(idx)
+            risk_off = False
 
-    sig1_start = aligned.loc[slope_start_event, 'ema20']
-    sig1_end = aligned.loc[slope_end_event, 'ema20']
+    sig1_start = aligned.loc[start_idx, 'ema20']
+    sig1_end = aligned.loc[end_idx, 'ema20']
 
     if not sig1_start.empty:
         fig.add_trace(go.Scatter(
