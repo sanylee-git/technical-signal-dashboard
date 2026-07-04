@@ -3272,11 +3272,15 @@ def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True):
         return
 
     aligned = pd.concat([s.rename('value'), ema20.rename('ema20')], axis=1).dropna()
-    if len(aligned) < 15:
+    if len(aligned) < 50:
         return
     slope = aligned['ema20'].diff()
-    slope_down_4of5 = slope.lt(0).rolling(5, min_periods=5).sum().ge(4)
-    slope_up_4of5 = slope.gt(0).rolling(5, min_periods=5).sum().ge(4)
+    slope_std_40 = slope.rolling(40, min_periods=20).std()
+    threshold = 0.5 * slope_std_40
+    down_count = slope.lt(-threshold).rolling(5, min_periods=5).sum()
+    up_count = slope.gt(threshold).rolling(5, min_periods=5).sum()
+    slope_down_4of5 = down_count.ge(4)
+    slope_up_4of5 = up_count.ge(4)
     ema20_vs_10d = aligned['ema20'] - aligned['ema20'].shift(10)
     ema20_lower_than_10d = ema20_vs_10d.lt(0)
     ema20_higher_than_10d = ema20_vs_10d.gt(0)
@@ -3301,17 +3305,17 @@ def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True):
 
     if not sig1_start.empty:
         fig.add_trace(go.Scatter(
-            x=sig1_start.index, y=sig1_start, name='1: Risk-off 시작 (4/5 하락 + EMA20<10D전)',
+            x=sig1_start.index, y=sig1_start, name='1: Risk-off 시작 (동적 4/5 하락 + EMA20<10D전)',
             mode='markers',
             marker=dict(symbol='triangle-down', size=8, color='rgba(255,140,105,0.80)'),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>4/5 음수 + 현재 EMA20 < 10일 전 EMA20<extra></extra>',
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>최근 5일 중 slope < -0.5*40일 std 가 4일 이상<br>현재 EMA20 < 10일 전 EMA20<extra></extra>',
         ))
     if not sig1_end.empty:
         fig.add_trace(go.Scatter(
-            x=sig1_end.index, y=sig1_end, name='1: Risk-off 종료 (4/5 상승 + EMA20>10D전)',
+            x=sig1_end.index, y=sig1_end, name='1: Risk-off 종료 (동적 4/5 상승 + EMA20>10D전)',
             mode='markers',
             marker=dict(symbol='triangle-up', size=8, color='rgba(75,255,179,0.80)'),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>4/5 양수 + 현재 EMA20 > 10일 전 EMA20<extra></extra>',
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>최근 5일 중 slope > +0.5*40일 std 가 4일 이상<br>현재 EMA20 > 10일 전 EMA20<extra></extra>',
         ))
 
 
@@ -4660,7 +4664,7 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
     if page in ("all", "macro", "market_macro"):
         with tab3:
-            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 주요 위험 지표는 반전 표시. 흰색 실선=EMA20, ▼=4/5 하락 + EMA20이 10일 전보다 낮을 때 Risk-off 시작, ▲=4/5 상승 + EMA20이 10일 전보다 높을 때 Risk-off 종료.")
+            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 주요 위험 지표는 반전 표시. 흰색 실선=EMA20, ▼=최근 5일 중 slope < -0.5x40일 std 가 4일 이상이고 EMA20이 10일 전보다 낮을 때 시작, ▲=최근 5일 중 slope > +0.5x40일 std 가 4일 이상이고 EMA20이 10일 전보다 높을 때 종료.")
 
             _c1, _c2, _c3 = st.columns([3, 1, 1])
             with _c1:
