@@ -3297,9 +3297,35 @@ def _add_spx_overlay(fig, main_s: pd.Series, spx_s, yaxis='y2'):
     spx_pct = ((spx_t / spx_t.iloc[0]) - 1) * 100
     fig.add_trace(go.Scatter(
         x=spx_pct.index, y=spx_pct, name='S&P500(%)',
-        line=dict(color='rgba(200,200,80,0.45)', width=1.0),
+        line=dict(color='rgba(255,255,255,0.88)', width=2.1),
         showlegend=True, hoverinfo='skip', yaxis=yaxis,
     ))
+
+
+def _add_price_signal_markers(fig, signal_df: pd.DataFrame, price_s: pd.Series, yaxis='y2', prefix='Risk-off'):
+    """신호 마커를 가격 오버레이 축 위에 표시한다."""
+    if signal_df is None or signal_df.empty or price_s is None or price_s.empty:
+        return
+    price_aligned = price_s.reindex(signal_df.index).dropna()
+    if price_aligned.empty:
+        return
+    signal_df = signal_df.reindex(price_aligned.index)
+    start_y = price_aligned.loc[signal_df['down_start_signal'].fillna(False)]
+    end_y = price_aligned.loc[signal_df['down_end_signal'].fillna(False)]
+    if not start_y.empty:
+        fig.add_trace(go.Scatter(
+            x=start_y.index, y=start_y, name=f'{prefix} 시작',
+            mode='markers', yaxis=yaxis,
+            marker=dict(symbol='triangle-down', size=9, color='rgba(255,140,105,0.92)'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Risk-off 시작<extra></extra>',
+        ))
+    if not end_y.empty:
+        fig.add_trace(go.Scatter(
+            x=end_y.index, y=end_y, name=f'{prefix} 종료',
+            mode='markers', yaxis=yaxis,
+            marker=dict(symbol='triangle-up', size=9, color='rgba(75,255,179,0.92)'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Risk-off 종료<extra></extra>',
+        ))
 
 
 def _compute_downturn_signal_frame(s: pd.Series) -> pd.DataFrame:
@@ -3340,7 +3366,7 @@ def _compute_downturn_signal_frame(s: pd.Series) -> pd.DataFrame:
     return out
 
 
-def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True):
+def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True, overlay_price=None, overlay_yaxis='y2'):
     """EMA20과 EMA20 기반 Risk-off 시작/종료 이벤트를 추가."""
     signal_df = _compute_downturn_signal_frame(s)
     if signal_df.empty:
@@ -3352,6 +3378,10 @@ def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True):
         hoverinfo='skip',
     ))
     if not show_downturn:
+        return
+
+    if overlay_price is not None and not overlay_price.empty:
+        _add_price_signal_markers(fig, signal_df, overlay_price, yaxis=overlay_yaxis)
         return
 
     sig1_start = signal_df.loc[signal_df['down_start_signal'], 'ema20']
@@ -3432,14 +3462,14 @@ def make_macro_index_cycle_chart(years: int = 5, spx_s=None, show_raw=True):
         line=dict(color='rgba(255,255,255,0.82)', width=1.8),
         hovertemplate='<b>%{x|%Y-%m-%d}</b><br>S&P500 %{y:,.1f}<extra></extra>',
     ))
-    _add_ema20_downturn_signals(fig, spx_s, show_downturn=True)
+    _add_ema20_downturn_signals(fig, spx_s, show_downturn=True, overlay_price=spx_s, overlay_yaxis='y')
     fig.update_layout(
         **_ml('⓪ S&P500 지수 Risk-off 사이클', height=300),
     )
     return fig
 
 
-def make_macro_combo_downturn_chart(years: int = 5, spx_s=None):
+def make_macro_combo_downturn_chart(years: int = 5, spx_s=None, signal_modes=None):
     """⑤ 0~4 종합 Risk-off 사이클."""
     if spx_s is None or spx_s.empty:
         spx_s = _yf_close('^GSPC', years)
@@ -3483,28 +3513,30 @@ def make_macro_combo_downturn_chart(years: int = 5, spx_s=None):
     watch_end_y = spx_aligned.loc[combo['combo_watch_end_signal']]
     risk_start_y = spx_aligned.loc[combo['combo_risk_start_signal']]
     risk_end_y = spx_aligned.loc[combo['combo_risk_end_signal']]
-    if not watch_start_y.empty:
+    show_watch = signal_modes is None or 'Watch' in signal_modes
+    show_risk = signal_modes is not None and 'Risk' in signal_modes
+    if show_watch and not watch_start_y.empty:
         fig.add_trace(go.Scatter(
             x=watch_start_y.index, y=watch_start_y, name='⑤ Watch 시작 (3/5)',
             mode='markers',
             marker=dict(symbol='triangle-down', size=9, color='rgba(255,210,80,0.90)'),
             hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Watch 시작: active_down_count >= 3<extra></extra>',
         ))
-    if not watch_end_y.empty:
+    if show_watch and not watch_end_y.empty:
         fig.add_trace(go.Scatter(
             x=watch_end_y.index, y=watch_end_y, name='⑤ Watch 종료 (2/5)',
             mode='markers',
             marker=dict(symbol='triangle-up', size=9, color='rgba(75,255,179,0.90)'),
             hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Watch 종료: active_down_count <= 2<extra></extra>',
         ))
-    if not risk_start_y.empty:
+    if show_risk and not risk_start_y.empty:
         fig.add_trace(go.Scatter(
             x=risk_start_y.index, y=risk_start_y, name='⑤ Risk 시작 (4/5)',
             mode='markers',
             marker=dict(symbol='triangle-down', size=10, color='rgba(255,75,110,0.92)'),
             hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Risk 시작: active_down_count >= 4<extra></extra>',
         ))
-    if not risk_end_y.empty:
+    if show_risk and not risk_end_y.empty:
         fig.add_trace(go.Scatter(
             x=risk_end_y.index, y=risk_end_y, name='⑤ Risk 종료 (3/5)',
             mode='markers',
@@ -3541,11 +3573,11 @@ def _make_inverted_spread_chart(
             x=plot_s.index, y=plot_s,
             name=f'{trace_name} (반전)',
             line=dict(color=color, width=1.2),
-            opacity=0.45,
+            opacity=0.28,
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  반전값 %{y:.2f}<extra></extra>',
         ))
-    _add_ema20_downturn_signals(fig, plot_s, show_downturn=show_downturn)
     _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2')
+    _add_ema20_downturn_signals(fig, plot_s, show_downturn=show_downturn, overlay_price=spx_s, overlay_yaxis='y2')
     fig.update_layout(
         **_ml(title, height=height),
         yaxis2=_hidden_yaxis('y', 'right'),
@@ -3603,10 +3635,10 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True):
                                  line=dict(width=0), showlegend=False, hoverinfo='skip'))
         fig.add_trace(go.Scatter(x=plot_s.index, y=plot_s, name='신용 스트레스 (반전)',
                                  line=dict(color='#787EE7', width=1.2),
-                                 opacity=0.45,
+                                 opacity=0.28,
                                  hovertemplate='<b>%{x|%Y-%m-%d}</b>  %{y:.2f}<extra></extra>'))
-    _add_ema20_downturn_signals(fig, plot_s)
     _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2')
+    _add_ema20_downturn_signals(fig, plot_s, overlay_price=spx_s, overlay_yaxis='y2')
     fig.update_layout(
         **_ml('③ 신용 스트레스 지수 (반전, HY + NFCI + VIX z-score)'),
         yaxis2=_hidden_yaxis('y', 'right'),
@@ -3629,11 +3661,11 @@ def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True):
         fig.add_trace(go.Scatter(
             x=plot_s.index, y=plot_s, name='VIX 레벨 (반전)',
             line=dict(color='#FF4B6E', width=1.2),
-            opacity=0.45,
+            opacity=0.28,
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  반전 VIX %{y:.1f}<extra></extra>',
         ))
-    _add_ema20_downturn_signals(fig, plot_s)
     _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2')
+    _add_ema20_downturn_signals(fig, plot_s, overlay_price=spx_s, overlay_yaxis='y2')
     fig.update_layout(
         **_ml('④ VIX 레벨 (반전)', height=300),
         yaxis2=_hidden_yaxis('y', 'right'),
@@ -4864,13 +4896,13 @@ def main(page="signal"):
         with tab3:
             st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 흰색 실선=EMA20. 개별 지표는 동적 slope + 10일 EMA 비교로 Risk-off 시작/종료를 잡고, ⑤는 0~4 중 3개 이상이면 Watch(노랑/초록), 4개 이상이면 Risk(빨강/파랑) 신호를 S&P500 위에 표시한다. HY/IG는 최근 구간은 ICE OAS 원본, 더 긴 과거 구간은 Moody's-10Y Treasury 프록시로 이어 붙인다.")
 
-            _c1, _c2, _c3 = st.columns([3, 1, 1])
+            _c1, _c2, _c3, _c4 = st.columns([3, 1, 1, 1.4])
             with _c1:
                 _yr_opts = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
                 _macro_years = st.select_slider(
                     "기간",
                     options=list(_yr_opts.keys()),
-                    value=5,
+                    value=3,
                     format_func=lambda x: _yr_opts[x],
                     label_visibility='collapsed',
                 )
@@ -4878,6 +4910,13 @@ def main(page="signal"):
                 _show_spx = st.checkbox("S&P500 오버레이", value=True)
             with _c3:
                 _show_raw_macro = st.checkbox("원본선 표시", value=False)
+            with _c4:
+                _combo_modes = st.multiselect(
+                    "⑤ 신호",
+                    options=["Watch", "Risk"],
+                    default=["Watch"],
+                    label_visibility='collapsed',
+                )
 
             with st.spinner("📡 S&P500 데이터 로딩 중..."):
                 _spx_s = _yf_close('^GSPC', _macro_years) if _show_spx else None
@@ -4889,7 +4928,7 @@ def main(page="signal"):
                     make_macro_ig_spread_chart(_macro_years,     _spx_s, _show_raw_macro),  # ② IG 스프레드
                     make_macro_credit_stress_chart(_macro_years, _spx_s, _show_raw_macro),  # ③ 크레딧 스트레스
                     make_macro_options_chart(_macro_years,       _spx_s, _show_raw_macro),  # ④ VIX
-                    make_macro_combo_downturn_chart(_macro_years, _spx_s),  # ⑤ 종합 하락 사이클
+                    make_macro_combo_downturn_chart(_macro_years, _spx_s, _combo_modes),  # ⑤ 종합 하락 사이클
                     make_macro_vix_spread_chart(_macro_years,    _spx_s, _show_raw_macro),  # ⑥ VIX 텀스프레드
                     make_macro_pmi_chart(_macro_years,           _spx_s),   # ⑦ 경기 모멘텀
                     make_macro_liquidity_chart(_macro_years,     _spx_s),   # ⑧ 유동성 (M2/Fed)
