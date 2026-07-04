@@ -324,6 +324,10 @@ PERIOD_OPTIONS = {
     "1년":     252,
     "1년 6개월": 378,
     "2년":     504,
+    "4년":     1008,
+    "6년":     1512,
+    "8년":     2016,
+    "10년":    2520,
 }
 
 
@@ -665,10 +669,10 @@ def _is_rate_limit_error(e):
 
 
 @st.cache_data(ttl=180)
-def fetch_ohlcv(ticker, start_str, end_str):
+def fetch_ohlcv(ticker, start_str, end_str, interval="1d"):
     """단일 종목 OHLCV (BB·RSI 차트용)"""
     try:
-        raw = yf.download(ticker, start=start_str, end=end_str, progress=False)
+        raw = yf.download(ticker, start=start_str, end=end_str, interval=interval, progress=False)
         df = _normalize_yf_ohlcv(raw)
         if df.empty:
             return pd.DataFrame()
@@ -3950,9 +3954,11 @@ def main(page="signal"):
         # ── 차트 모드 (사이드바 최상단 — period 기본값에 영향)
         _intra_interval_map = {"5분": "5m", "15분": "15m", "30분": "30m", "60분": "60m"}
         _intra_bars_per_day = {"5m": 78, "15m": 26, "30m": 13, "60m": 7}
+        _higher_interval_map = {"일봉": "1d", "주봉": "1wk", "월봉": "1mo"}
+        _higher_bars_divisor = {"일봉": 1, "주봉": 5, "월봉": 21}
         st.markdown("**🕯 차트 모드**")
         chart_mode = st.radio(
-            "차트모드", ["일봉", "분봉"], horizontal=True,
+            "차트모드", ["일봉", "주봉", "월봉", "분봉"], horizontal=True,
             label_visibility="collapsed", key="chart_mode",
         )
         if chart_mode == "분봉":
@@ -3978,9 +3984,10 @@ def main(page="signal"):
         else:
             intra_interval_label = None
             yf_interval = None
+            higher_interval = _higher_interval_map[chart_mode]
             st.divider()
             st.markdown("**🔄 자동 새로고침**")
-            auto_refresh = st.toggle("일봉 자동 갱신", value=False, key="daily_auto_refresh_toggle")
+            auto_refresh = st.toggle(f"{chart_mode} 자동 갱신", value=False, key="daily_auto_refresh_toggle")
             if auto_refresh:
                 refresh_interval_label = st.radio(
                     "갱신 주기", ["1분", "3분", "5분"], index=1,
@@ -4577,19 +4584,25 @@ def main(page="signal"):
 
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-            # ── 일봉 차트 ──────────────────────────────────────
-            if chart_mode == "일봉":
+            # ── 일/주/월봉 차트 ─────────────────────────────────
+            if chart_mode != "분봉":
                 with st.spinner("차트 로딩..."):
-                    ohlcv = fetch_ohlcv(selected_code, data_start, data_end)
+                    ohlcv = fetch_ohlcv(selected_code, data_start, data_end, higher_interval)
 
                 if ohlcv.empty:
                     st.warning(f"⚠️ {selected_name} 데이터를 가져올 수 없습니다.")
                 else:
+                    _display_bars = None
+                    if chart_mode == "주봉":
+                        _display_bars = max(1, round(period_days / _higher_bars_divisor["주봉"]))
+                    elif chart_mode == "월봉":
+                        _display_bars = max(1, round(period_days / _higher_bars_divisor["월봉"]))
                     fig = make_detail_chart(
                         ohlcv, selected_name, period_days,
                         bb_window=bb_window, rsi_lookback=rsi_lookback,
                         rsi_buy_center=40, rsi_sell_center=80, rsi_band=5,
                         persist=persist, phase2_rsi=phase2_rsi,
+                        display_bars=_display_bars,
                     )
                     if fig:
                         st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
