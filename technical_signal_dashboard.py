@@ -3325,95 +3325,10 @@ def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True):
         ))
 
 
-def _make_ema_signal_diagnostic_chart(s: pd.Series, title_prefix: str, title_name: str):
-    """Risk-off 신호가 어떤 재료에서 나왔는지 확인하는 보조 차트."""
-    if s is None or s.empty:
-        return None
-    ema20 = s.ewm(span=20, adjust=False, min_periods=5).mean().dropna()
-    aligned = pd.concat([s.rename('value'), ema20.rename('ema20')], axis=1).dropna()
-    if len(aligned) < 5:
-        return None
-
-    slope = aligned['ema20'].diff()
-    neg_count = slope.lt(0).rolling(5, min_periods=5).sum()
-    pos_count = slope.gt(0).rolling(5, min_periods=5).sum()
-    above = aligned['value'].gt(aligned['ema20'])
-    below = aligned['value'].lt(aligned['ema20'])
-
-    fig = make_subplots(
-        rows=3, cols=1,
-        shared_xaxes=True,
-        row_heights=[0.44, 0.30, 0.26],
-        vertical_spacing=0.06,
-        subplot_titles=[
-            f'{title_prefix}-1 EMA20',
-            f'{title_prefix}-2 EMA20 slope 5일 카운트',
-            f'{title_prefix}-3 현재값 vs EMA20',
-        ],
-    )
-    fig.add_trace(go.Scatter(
-        x=aligned.index, y=aligned['ema20'], name='EMA20',
-        line=dict(color='rgba(255,255,255,0.82)', width=1.5, dash='dash'),
-        hovertemplate='<b>%{x|%Y-%m-%d}</b><br>EMA20 %{y:.2f}<extra></extra>',
-    ), row=1, col=1)
-
-    fig.add_hline(y=4, line=dict(color='rgba(255,255,255,0.18)', dash='dot', width=1), row=2, col=1)
-    fig.add_trace(go.Scatter(
-        x=neg_count.index, y=neg_count, name='음수 slope 개수',
-        mode='markers',
-        marker=dict(symbol='triangle-down', size=6, color='rgba(255,140,105,0.78)'),
-        hovertemplate='<b>%{x|%Y-%m-%d}</b><br>음수 %{y:.0f}/5<extra></extra>',
-    ), row=2, col=1)
-    fig.add_trace(go.Scatter(
-        x=pos_count.index, y=pos_count, name='양수 slope 개수',
-        mode='markers',
-        marker=dict(symbol='triangle-up', size=6, color='rgba(75,255,179,0.78)'),
-        hovertemplate='<b>%{x|%Y-%m-%d}</b><br>양수 %{y:.0f}/5<extra></extra>',
-    ), row=2, col=1)
-
-    above_y = pd.Series(1, index=aligned.index).where(above)
-    below_y = pd.Series(-1, index=aligned.index).where(below)
-    fig.add_hline(y=0, line=dict(color='rgba(255,255,255,0.16)', width=1), row=3, col=1)
-    fig.add_trace(go.Scatter(
-        x=above_y.index, y=above_y, name='EMA20 상회',
-        mode='markers',
-        marker=dict(symbol='circle', size=5, color='rgba(75,255,179,0.72)'),
-        hovertemplate='<b>%{x|%Y-%m-%d}</b><br>현재값 EMA20 상회<extra></extra>',
-    ), row=3, col=1)
-    fig.add_trace(go.Scatter(
-        x=below_y.index, y=below_y, name='EMA20 하회',
-        mode='markers',
-        marker=dict(symbol='circle', size=5, color='rgba(255,75,110,0.72)'),
-        hovertemplate='<b>%{x|%Y-%m-%d}</b><br>현재값 EMA20 하회<extra></extra>',
-    ), row=3, col=1)
-
-    fig.update_layout(
-        height=360,
-        title=dict(text=f'{title_prefix} 신호 기반 확인 — {title_name}',
-                   font=dict(size=12, color='#9B9B9B'), x=0, y=0.98),
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='#9B9B9B', size=10),
-        legend=dict(orientation='h', yanchor='bottom', y=1.01, xanchor='right', x=1,
-                    font=dict(size=9), bgcolor='rgba(0,0,0,0)'),
-        margin=dict(l=50, r=20, t=55, b=30),
-        hovermode='x unified',
-    )
-    fig.update_xaxes(gridcolor='rgba(255,255,255,0.04)', tickfont=dict(size=9))
-    fig.update_yaxes(gridcolor='rgba(255,255,255,0.04)', tickfont=dict(size=9), zeroline=False)
-    fig.update_yaxes(range=[-0.2, 5.2], dtick=1, row=2, col=1)
-    fig.update_yaxes(range=[-1.4, 1.4], tickmode='array',
-                     tickvals=[-1, 0, 1], ticktext=['하회', '', '상회'], row=3, col=1)
-    for ann in fig.layout.annotations:
-        ann.font.size = 9
-        ann.font.color = '#777'
-    return fig
-
-
 def _make_inverted_spread_chart(
     s: pd.Series,
     title: str,
     trace_name: str,
-    signal_prefix=None,
     spx_s=None,
     color='#FF8C69',
     height=300,
@@ -3445,9 +3360,6 @@ def _make_inverted_spread_chart(
     )
     fig.update_yaxes(ticksuffix=suffix)
     _add_corr_annotation(fig, plot_s, spx_s)
-    if signal_prefix:
-        diag = _make_ema_signal_diagnostic_chart(plot_s, signal_prefix, trace_name)
-        return fig, diag
     return fig
 
 
@@ -3456,7 +3368,7 @@ def make_macro_hy_spread_chart(years: int = 5, spx_s=None, show_raw=True):
     hy = _fred('BAMLH0A0HYM2', years)
     return _make_inverted_spread_chart(
         hy, '① HY 크레딧 스프레드 (반전, OAS %)', 'HY 스프레드',
-        signal_prefix='①', spx_s=spx_s, color='#FF4B6E', show_raw=show_raw,
+        spx_s=spx_s, color='#FF4B6E', show_raw=show_raw,
     )
 
 
@@ -3465,7 +3377,7 @@ def make_macro_ig_spread_chart(years: int = 5, spx_s=None, show_raw=True):
     ig = _fred('BAMLC0A0CM', years)
     return _make_inverted_spread_chart(
         ig, '② IG 크레딧 스프레드 (반전, OAS %)', 'IG 스프레드',
-        signal_prefix='②', spx_s=spx_s, color='#4BFFB3', show_raw=show_raw,
+        spx_s=spx_s, color='#4BFFB3', show_raw=show_raw,
     )
 
 
@@ -3509,7 +3421,7 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True):
     )
     fig.update_yaxes(tickformat='+.1f')
     _add_corr_annotation(fig, plot_s, spx_s)
-    return fig, _make_ema_signal_diagnostic_chart(plot_s, '③', '신용 스트레스')
+    return fig
 
 
 def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True):
@@ -3535,7 +3447,7 @@ def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True):
         yaxis2=_hidden_yaxis('y', 'right'),
     )
     _add_corr_annotation(fig, plot_s, spx_s, label='반전 VIX vs S&P500')
-    return fig, _make_ema_signal_diagnostic_chart(plot_s, '④', 'VIX 레벨')
+    return fig
 
 
 def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True):
@@ -3547,7 +3459,7 @@ def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True):
     spread = (vix - vix3m.reindex(vix.index)).dropna()
     return _make_inverted_spread_chart(
         spread, '⑤ VIX-VIX3M 스프레드 (반전)', 'VIX-VIX3M 스프레드',
-        signal_prefix='⑤', spx_s=spx_s, color='#FF8C69', suffix='', show_raw=show_raw,
+        spx_s=spx_s, color='#FF8C69', suffix='', show_raw=show_raw,
     )
 
 
@@ -4793,14 +4705,8 @@ def main(page="signal"):
             _mc = st.columns(2)
             for i, ch in enumerate(_macro_charts):
                 if ch is not None:
-                    main_ch = ch
-                    diag_ch = None
-                    if isinstance(ch, tuple):
-                        main_ch, diag_ch = ch
                     with _mc[i % 2]:
-                        st.plotly_chart(main_ch, width="stretch", config={"displayModeBar": False})
-                        if diag_ch is not None:
-                            st.plotly_chart(diag_ch, width="stretch", config={"displayModeBar": False})
+                        st.plotly_chart(ch, width="stretch", config={"displayModeBar": False})
                 else:
                     with _mc[i % 2]:
                         _labels = ['① HY 스프레드', '② IG 스프레드', '③ 크레딧 스트레스', '④ VIX',
