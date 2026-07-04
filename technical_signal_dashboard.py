@@ -3258,7 +3258,7 @@ def _add_spx_overlay(fig, main_s: pd.Series, spx_s, yaxis='y2'):
 
 
 def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True):
-    """EMA20과 EMA20 기반 하락 시작 경고 3종을 추가."""
+    """EMA20과 EMA20 기반 Risk-off 시작/종료 이벤트를 추가."""
     ema20 = s.ewm(span=20, adjust=False, min_periods=5).mean().dropna()
     if ema20.empty:
         return
@@ -3276,34 +3276,52 @@ def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True):
         return
     slope = aligned['ema20'].diff()
     slope_down_4of5 = slope.lt(0).rolling(5, min_periods=5).sum().ge(4)
+    slope_up_4of5 = slope.gt(0).rolling(5, min_periods=5).sum().ge(4)
+
     below_ema = aligned['value'].lt(aligned['ema20'])
-    both = slope_down_4of5 & below_ema
+    above_ema = aligned['value'].gt(aligned['ema20'])
+    combo_start = slope_down_4of5 & below_ema
+    combo_end = slope_up_4of5 & above_ema
 
-    sig1 = aligned.loc[slope_down_4of5 & ~both, 'ema20']
-    sig2 = aligned.loc[below_ema & ~both, 'value']
-    sig3 = aligned.loc[both, 'value']
+    slope_start_event = slope_down_4of5 & ~slope_down_4of5.shift(1, fill_value=False)
+    slope_end_event = slope_up_4of5 & ~slope_up_4of5.shift(1, fill_value=False)
+    combo_start_event = combo_start & ~combo_start.shift(1, fill_value=False)
+    combo_end_event = combo_end & ~combo_end.shift(1, fill_value=False)
 
-    if not sig1.empty:
+    sig1_start = aligned.loc[slope_start_event, 'ema20']
+    sig1_end = aligned.loc[slope_end_event, 'ema20']
+    sig3_start = aligned.loc[combo_start_event, 'value']
+    sig3_end = aligned.loc[combo_end_event, 'value']
+
+    if not sig1_start.empty:
         fig.add_trace(go.Scatter(
-            x=sig1.index, y=sig1, name='경고1: EMA20 5일중 4일 하락',
+            x=sig1_start.index, y=sig1_start, name='1: Risk-off 시작 (EMA20 4/5 하락)',
             mode='markers',
-            marker=dict(symbol='triangle-down', size=7, color='rgba(255,140,105,0.70)'),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>EMA20 기울기 약화<extra></extra>',
+            marker=dict(symbol='triangle-down', size=8, color='rgba(255,140,105,0.80)'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>EMA20 slope 4/5 음수<extra></extra>',
         ))
-    if not sig2.empty:
+    if not sig1_end.empty:
         fig.add_trace(go.Scatter(
-            x=sig2.index, y=sig2, name='경고2: 현재값 EMA20 하회',
+            x=sig1_end.index, y=sig1_end, name='1: Risk-off 종료 (EMA20 4/5 상승)',
             mode='markers',
-            marker=dict(symbol='circle', size=6, color='rgba(255,210,80,0.68)'),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>현재값 EMA20 하회<extra></extra>',
+            marker=dict(symbol='triangle-up', size=8, color='rgba(75,255,179,0.80)'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>EMA20 slope 4/5 양수<extra></extra>',
         ))
-    if not sig3.empty:
+    if not sig3_start.empty:
         fig.add_trace(go.Scatter(
-            x=sig3.index, y=sig3, name='경고3: 하락장 시작',
+            x=sig3_start.index, y=sig3_start, name='3: Risk-off 시작 (하락+EMA20 하회)',
             mode='markers',
             marker=dict(symbol='diamond', size=8, color='rgba(255,75,110,0.88)',
                         line=dict(width=0.8, color='rgba(255,255,255,0.50)')),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>EMA20 하락 지속 + 현재값 하회<extra></extra>',
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>4/5 음수 + 현재값 EMA20 하회<extra></extra>',
+        ))
+    if not sig3_end.empty:
+        fig.add_trace(go.Scatter(
+            x=sig3_end.index, y=sig3_end, name='3: Risk-off 종료 (상승+EMA20 상회)',
+            mode='markers',
+            marker=dict(symbol='diamond', size=8, color='rgba(75,255,179,0.88)',
+                        line=dict(width=0.8, color='rgba(255,255,255,0.50)')),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>4/5 양수 + 현재값 EMA20 상회<extra></extra>',
         ))
 
 
@@ -4652,7 +4670,7 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
     if page in ("all", "macro", "market_macro"):
         with tab3:
-            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 주요 위험 지표는 반전 표시. 흰색 점선=EMA20, 주황▼=EMA20 하락, 노랑●=EMA20 하회, 빨강◆=하락장 시작 경고.")
+            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 주요 위험 지표는 반전 표시. 흰색 점선=EMA20, ▼/◆=Risk-off 시작, ▲/◆=Risk-off 종료.")
 
             _c1, _c2, _c3 = st.columns([3, 1, 1])
             with _c1:
