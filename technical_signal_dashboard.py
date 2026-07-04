@@ -3286,7 +3286,7 @@ def _add_corr_annotation(fig, main_s: pd.Series, spx_s, label='vs S&P500'):
         pass
 
 
-def _visible_price_yaxis(overlaying='y', side='right', ticksuffix='%') -> dict:
+def _visible_price_yaxis(overlaying='y', side='right') -> dict:
     """가격 오버레이용 우측 y축."""
     return dict(
         overlaying=overlaying,
@@ -3294,25 +3294,24 @@ def _visible_price_yaxis(overlaying='y', side='right', ticksuffix='%') -> dict:
         showgrid=False,
         showticklabels=True,
         showline=True,
-        linecolor='rgba(214, 190, 108, 0.42)',
-        tickfont=dict(size=9, color='rgba(214, 190, 108, 0.92)'),
+        linecolor='rgba(180, 180, 180, 0.35)',
+        tickfont=dict(size=9, color='rgba(200, 200, 200, 0.82)'),
         zeroline=False,
-        ticksuffix=ticksuffix,
+        tickformat=',.0f',
     )
 
 
 def _add_spx_overlay(fig, main_s: pd.Series, spx_s, yaxis='y2'):
-    """S&P500 % 변화를 우측 축으로 오버레이."""
+    """S&P500 실제 지수값을 우측 축으로 오버레이."""
     if spx_s is None or spx_s.empty or main_s is None or main_s.empty:
         return
     t0 = main_s.index[0]
     spx_t = spx_s[spx_s.index >= t0]
     if len(spx_t) <= 2:
         return
-    spx_pct = ((spx_t / spx_t.iloc[0]) - 1) * 100
     fig.add_trace(go.Scatter(
-        x=spx_pct.index, y=spx_pct, name='S&P500(%)',
-        line=dict(color='rgba(214,190,108,0.92)', width=2.2),
+        x=spx_t.index, y=spx_t, name='S&P500',
+        line=dict(color='rgba(182,182,182,0.88)', width=1.55),
         showlegend=True, hoverinfo='skip', yaxis=yaxis,
     ))
 
@@ -3474,7 +3473,7 @@ def make_macro_index_cycle_chart(years: int = 5, spx_s=None, show_raw=True):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=spx_s.index, y=spx_s, name='S&P500',
-        line=dict(color='rgba(214,190,108,0.92)', width=2.2),
+        line=dict(color='rgba(182,182,182,0.88)', width=1.55),
         hovertemplate='<b>%{x|%Y-%m-%d}</b><br>S&P500 %{y:,.1f}<extra></extra>',
     ))
     _add_ema20_downturn_signals(fig, spx_s, show_downturn=True, overlay_price=spx_s, overlay_yaxis='y')
@@ -3521,7 +3520,7 @@ def make_macro_combo_downturn_chart(years: int = 5, spx_s=None, signal_modes=Non
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=spx_aligned.index, y=spx_aligned, name='S&P500',
-        line=dict(color='rgba(214,190,108,0.92)', width=2.2),
+        line=dict(color='rgba(182,182,182,0.88)', width=1.55),
         hovertemplate='<b>%{x|%Y-%m-%d}</b><br>S&P500 %{y:,.1f}<extra></extra>',
     ))
     watch_start_y = spx_aligned.loc[combo['combo_watch_start_signal']]
