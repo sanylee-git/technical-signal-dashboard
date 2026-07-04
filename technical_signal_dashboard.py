@@ -3824,18 +3824,48 @@ def make_macro_yield_curve_chart(years: int = 5, spx_s=None):
     1순위: FRED 사전계산 시리즈 (T10Y3M, T10Y2Y) — 더 안정적
     2순위: 구성 금리 직접 차감 (DGS10 - DTB3 / DGS2) — fallback
     """
-    # 1순위: FRED 사전계산
     t3m = _fred('T10Y3M', years)
-    # 2순위: 직접 계산 (어느 한 쪽이라도 비었으면 시도)
+    dgs10 = _fred('DGS10', years)
+    dtb3 = _fred('DTB3', years)
+
     if t3m.empty:
-        dgs10 = _fred('DGS10', years)
-        dtb3  = _fred('DTB3',  years)
         if not dgs10.empty and not dtb3.empty:
             t3m = (dgs10 - dtb3.reindex(dgs10.index).interpolate()).dropna()
-    return _make_inverted_spread_chart(
-        t3m, '⑨ 10Y-3M 금리차 (반전, 0 이상 = 원래 역전)', '10Y-3M 스프레드',
-        spx_s=spx_s, color='#4BFFB3', show_downturn=False,
+    if t3m.empty and dgs10.empty and dtb3.empty:
+        return None
+
+    fig = go.Figure()
+    fig.add_hline(y=0, line=dict(color='rgba(255,255,255,0.20)', width=1))
+
+    if not t3m.empty:
+        fig.add_trace(go.Scatter(
+            x=t3m.index, y=t3m, name='10Y-3M 스프레드',
+            line=dict(color='#4BFFB3', width=1.5),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b>  스프레드 %{y:.2f}%<extra></extra>',
+        ))
+    if not dgs10.empty:
+        fig.add_trace(go.Scatter(
+            x=dgs10.index, y=dgs10, name='10Y',
+            line=dict(color='rgba(200,200,200,0.55)', width=1.0, dash='dot'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b>  10Y %{y:.2f}%<extra></extra>',
+        ))
+    if not dtb3.empty:
+        fig.add_trace(go.Scatter(
+            x=dtb3.index, y=dtb3, name='3M',
+            line=dict(color='rgba(120,126,231,0.55)', width=1.0, dash='dot'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b>  3M %{y:.2f}%<extra></extra>',
+        ))
+
+    main_s = t3m if not t3m.empty else dgs10 if not dgs10.empty else dtb3
+    _add_spx_overlay(fig, main_s, spx_s, yaxis='y2')
+    fig.update_layout(
+        **_ml('⑨ 10Y-3M 금리차 + 10Y · 3M', height=300),
+        yaxis2=_visible_price_yaxis('y', 'right'),
     )
+    fig.layout.yaxis.ticksuffix = '%'
+    if not t3m.empty:
+        _add_corr_annotation(fig, t3m, spx_s)
+    return fig
 
 
 def make_macro_foreign_flow_chart(market_code: str, years: int = 5, spx_s=None):
