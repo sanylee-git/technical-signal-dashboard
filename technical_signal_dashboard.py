@@ -3329,7 +3329,7 @@ def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True):
 
 
 def _compute_combo_downturn_frame(parts: dict[str, pd.Series]) -> pd.DataFrame:
-    """1~4 개별 Risk-off 상태를 합성한 종합 하락 사이클 상태를 계산한다."""
+    """0~4 개별 Risk-off 상태를 합성한 종합 하락 사이클 상태를 계산한다."""
     frames = {}
     for name, series in parts.items():
         sig = _compute_downturn_signal_frame(series)
@@ -3346,25 +3346,61 @@ def _compute_combo_downturn_frame(parts: dict[str, pd.Series]) -> pd.DataFrame:
     combo = pd.concat(frames.values(), axis=1).sort_index().fillna(False)
     flag_cols = [f'{name}_down_flag' for name in frames]
     combo['active_down_count'] = combo[flag_cols].sum(axis=1).astype(int)
-    combo['combo_down_state'] = False
-    combo['combo_down_start_signal'] = False
-    combo['combo_down_end_signal'] = False
+    combo['combo_watch_state'] = False
+    combo['combo_watch_start_signal'] = False
+    combo['combo_watch_end_signal'] = False
+    combo['combo_risk_state'] = False
+    combo['combo_risk_start_signal'] = False
+    combo['combo_risk_end_signal'] = False
 
-    combo_state = False
+    watch_state = False
+    risk_state = False
     for idx in combo.index:
         active_count = int(combo.at[idx, 'active_down_count'])
-        if not combo_state and active_count >= 3:
-            combo_state = True
-            combo.at[idx, 'combo_down_start_signal'] = True
-        elif combo_state and active_count <= 2:
-            combo_state = False
-            combo.at[idx, 'combo_down_end_signal'] = True
-        combo.at[idx, 'combo_down_state'] = combo_state
+        if not watch_state and active_count >= 3:
+            watch_state = True
+            combo.at[idx, 'combo_watch_start_signal'] = True
+        elif watch_state and active_count <= 2:
+            watch_state = False
+            combo.at[idx, 'combo_watch_end_signal'] = True
+        if not risk_state and active_count >= 4:
+            risk_state = True
+            combo.at[idx, 'combo_risk_start_signal'] = True
+        elif risk_state and active_count <= 3:
+            risk_state = False
+            combo.at[idx, 'combo_risk_end_signal'] = True
+        combo.at[idx, 'combo_watch_state'] = watch_state
+        combo.at[idx, 'combo_risk_state'] = risk_state
     return combo
 
 
+def make_macro_index_cycle_chart(years: int = 5, spx_s=None, show_raw=True):
+    """⓪ S&P500 지수 자체의 EMA20 기반 Risk-off 사이클."""
+    if spx_s is None or spx_s.empty:
+        spx_s = _yf_close('^GSPC', years)
+    if spx_s is None or spx_s.empty:
+        return None
+
+    fig = go.Figure()
+    if show_raw:
+        fig.add_trace(go.Scatter(
+            x=spx_s.index, y=spx_s, name='S&P500',
+            line=dict(color='rgba(255,255,255,0.82)', width=1.8),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>S&P500 %{y:,.1f}<extra></extra>',
+        ))
+    _add_ema20_downturn_signals(fig, spx_s, show_downturn=True)
+    fig.update_layout(
+        **_ml('⓪ S&P500 지수 Risk-off 사이클', height=300),
+    )
+    return fig
+
+
 def make_macro_combo_downturn_chart(years: int = 5, spx_s=None):
-    """⑤ 1~4 종합 Risk-off 사이클."""
+    """⑤ 0~4 종합 Risk-off 사이클."""
+    if spx_s is None or spx_s.empty:
+        spx_s = _yf_close('^GSPC', years)
+    if spx_s is None or spx_s.empty:
+        return None
     hy = _fred('BAMLH0A0HYM2', years)
     ig = _fred('BAMLC0A0CM', years)
     nfci = _fred('NFCI', years + 1)
@@ -3379,6 +3415,7 @@ def make_macro_combo_downturn_chart(years: int = 5, spx_s=None):
     stress = pd.concat(stress_parts, axis=1).mean(axis=1).dropna() if stress_parts else pd.Series(dtype=float)
 
     parts = {
+        'spx': spx_s.dropna(),
         'hy': (-hy).dropna(),
         'ig': (-ig).dropna(),
         'stress': (-stress).dropna(),
@@ -3386,10 +3423,6 @@ def make_macro_combo_downturn_chart(years: int = 5, spx_s=None):
     }
     combo = _compute_combo_downturn_frame(parts)
     if combo.empty:
-        return None
-    if spx_s is None or spx_s.empty:
-        spx_s = _yf_close('^GSPC', years)
-    if spx_s is None or spx_s.empty:
         return None
     spx_aligned = spx_s.reindex(combo.index).dropna()
     if spx_aligned.empty:
@@ -3402,24 +3435,40 @@ def make_macro_combo_downturn_chart(years: int = 5, spx_s=None):
         line=dict(color='rgba(255,255,255,0.82)', width=1.8),
         hovertemplate='<b>%{x|%Y-%m-%d}</b><br>S&P500 %{y:,.1f}<extra></extra>',
     ))
-    start_y = spx_aligned.loc[combo['combo_down_start_signal']]
-    end_y = spx_aligned.loc[combo['combo_down_end_signal']]
-    if not start_y.empty:
+    watch_start_y = spx_aligned.loc[combo['combo_watch_start_signal']]
+    watch_end_y = spx_aligned.loc[combo['combo_watch_end_signal']]
+    risk_start_y = spx_aligned.loc[combo['combo_risk_start_signal']]
+    risk_end_y = spx_aligned.loc[combo['combo_risk_end_signal']]
+    if not watch_start_y.empty:
         fig.add_trace(go.Scatter(
-            x=start_y.index, y=start_y, name='⑤ 종합 시작',
+            x=watch_start_y.index, y=watch_start_y, name='⑤ Watch 시작 (3/5)',
             mode='markers',
-            marker=dict(symbol='triangle-down', size=9, color='rgba(255,140,105,0.85)'),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>종합 Risk-off 시작<extra></extra>',
+            marker=dict(symbol='triangle-down', size=9, color='rgba(255,210,80,0.90)'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Watch 시작: active_down_count >= 3<extra></extra>',
         ))
-    if not end_y.empty:
+    if not watch_end_y.empty:
         fig.add_trace(go.Scatter(
-            x=end_y.index, y=end_y, name='⑤ 종합 종료',
+            x=watch_end_y.index, y=watch_end_y, name='⑤ Watch 종료 (2/5)',
             mode='markers',
-            marker=dict(symbol='triangle-up', size=9, color='rgba(75,255,179,0.85)'),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>종합 Risk-off 종료<extra></extra>',
+            marker=dict(symbol='triangle-up', size=9, color='rgba(75,255,179,0.90)'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Watch 종료: active_down_count <= 2<extra></extra>',
+        ))
+    if not risk_start_y.empty:
+        fig.add_trace(go.Scatter(
+            x=risk_start_y.index, y=risk_start_y, name='⑤ Risk 시작 (4/5)',
+            mode='markers',
+            marker=dict(symbol='triangle-down', size=10, color='rgba(255,75,110,0.92)'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Risk 시작: active_down_count >= 4<extra></extra>',
+        ))
+    if not risk_end_y.empty:
+        fig.add_trace(go.Scatter(
+            x=risk_end_y.index, y=risk_end_y, name='⑤ Risk 종료 (3/5)',
+            mode='markers',
+            marker=dict(symbol='triangle-up', size=10, color='rgba(80,160,255,0.92)'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Risk 종료: active_down_count <= 3<extra></extra>',
         ))
     fig.update_layout(
-        **_ml('⑤ 종합 하락 사이클 (S&P500 위 종합 시작/종료 표시)', height=300),
+        **_ml('⑤ 종합 하락 사이클 (0~4 조합, S&P500 위 시작/종료 표시)', height=300),
     )
     return fig
 
@@ -4769,7 +4818,7 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
     if page in ("all", "macro", "market_macro"):
         with tab3:
-            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 주요 위험 지표는 반전 표시. 흰색 실선=EMA20, ▼=최근 5일 중 slope < -0.5x40일 std 가 4일 이상이고 EMA20이 10일 전보다 낮을 때 시작, ▲=최근 5일 중 slope > +0.5x40일 std 가 4일 이상이고 EMA20이 10일 전보다 높을 때 종료.")
+            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 흰색 실선=EMA20. 개별 지표는 동적 slope + 10일 EMA 비교로 Risk-off 시작/종료를 잡고, ⑤는 0~4 중 3개 이상이면 Watch(노랑/초록), 4개 이상이면 Risk(빨강/파랑) 신호를 S&P500 위에 표시한다.")
 
             _c1, _c2, _c3 = st.columns([3, 1, 1])
             with _c1:
@@ -4791,6 +4840,7 @@ def main(page="signal"):
 
             with st.spinner("📡 매크로 데이터 로딩 중..."):
                 _macro_charts = [
+                    make_macro_index_cycle_chart(_macro_years,    _spx_s, _show_raw_macro),  # ⓪ S&P500
                     make_macro_hy_spread_chart(_macro_years,     _spx_s, _show_raw_macro),  # ① HY 스프레드
                     make_macro_ig_spread_chart(_macro_years,     _spx_s, _show_raw_macro),  # ② IG 스프레드
                     make_macro_credit_stress_chart(_macro_years, _spx_s, _show_raw_macro),  # ③ 크레딧 스트레스
@@ -4809,7 +4859,7 @@ def main(page="signal"):
                         st.plotly_chart(ch, width="stretch", config={"displayModeBar": False})
                 else:
                     with _mc[i % 2]:
-                        _labels = ['① HY 스프레드', '② IG 스프레드', '③ 크레딧 스트레스', '④ VIX',
+                        _labels = ['⓪ S&P500', '① HY 스프레드', '② IG 스프레드', '③ 크레딧 스트레스', '④ VIX',
                                    '⑤ 종합 하락 사이클', '⑥ VIX 스프레드', '⑦ 경기 모멘텀', '⑧ 유동성', '⑨ 금리차']
                         st.warning(f"{_labels[i]} 데이터 로딩 실패 — FRED 일시 불가. 잠시 후 재시도해 주세요.")
 
