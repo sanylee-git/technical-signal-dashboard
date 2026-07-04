@@ -719,7 +719,7 @@ def fetch_close_batch(tickers_tuple, start_str, end_str):
 
 
 @st.cache_data(ttl=180, max_entries=10)
-def fetch_ohlcv_batch(tickers_tuple, start_str, end_str):
+def fetch_ohlcv_batch(tickers_tuple, start_str, end_str, interval="1d"):
     """다중 종목 OHLCV 일괄 다운로드 → (closes, highs, lows) 반환. fetch_close_batch와 동일한 단일 요청."""
     tickers = list(tickers_tuple)
     if not tickers:
@@ -755,7 +755,7 @@ def fetch_ohlcv_batch(tickers_tuple, start_str, end_str):
 
     try:
         raw = yf.download(tickers, start=start_str, end=end_str,
-                          progress=False, group_by='ticker', threads=False)
+                          interval=interval, progress=False, group_by='ticker', threads=False)
         closes = _pick(raw, 'Close')
         highs  = _pick(raw, 'High')
         lows   = _pick(raw, 'Low')
@@ -766,7 +766,7 @@ def fetch_ohlcv_batch(tickers_tuple, start_str, end_str):
     for t in tickers:
         if t not in closes.columns or closes[t].isna().all():
             try:
-                raw = yf.download(t, start=start_str, end=end_str, progress=False)
+                raw = yf.download(t, start=start_str, end=end_str, interval=interval, progress=False)
                 df = _normalize_yf_ohlcv(raw)
                 if not df.empty:
                     if 'Close' in df.columns: closes[t] = df['Close']
@@ -4269,10 +4269,12 @@ def main(page="signal"):
             with st.spinner("📡 데이터 로딩..."):
                 if chart_mode == "분봉":
                     closes = fetch_intraday_batch(tickers_tuple, yf_interval)
+                    us_closes = fetch_intraday_batch(us_tickers_tuple, yf_interval)
                     highs = lows = pd.DataFrame()
+                    us_highs = us_lows = pd.DataFrame()
                 else:
-                    closes, highs, lows = fetch_ohlcv_batch(tickers_tuple, data_start, data_end)
-                us_closes, us_highs, us_lows = fetch_ohlcv_batch(us_tickers_tuple, data_start, data_end)
+                    closes, highs, lows = fetch_ohlcv_batch(tickers_tuple, data_start, data_end, higher_interval)
+                    us_closes, us_highs, us_lows = fetch_ohlcv_batch(us_tickers_tuple, data_start, data_end, higher_interval)
 
             # 데이터 로딩 실패 종목 안내 (해당 종목만 빈 값으로 표시, 앱은 계속 동작)
             _missing_kr = [f['name'] for f in favorites
