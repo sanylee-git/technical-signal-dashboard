@@ -3761,6 +3761,90 @@ def _add_threshold_ema_signals(fig, s: pd.Series, threshold: float, ema_span: in
             ))
 
 
+def _compute_dual_threshold_ema_signal_frame(
+    s: pd.Series,
+    ema_span: int = 20,
+    start_threshold: float = 0.5,
+    end_threshold: float = -0.5,
+) -> pd.DataFrame:
+    """EMA가 시작 threshold 아래로 하향 돌파하면 시작, 종료 threshold 위로 상향 돌파하면 종료."""
+    if s is None or s.empty:
+        return pd.DataFrame()
+
+    ema_col = f'ema{int(ema_span)}'
+    ema_s = s.ewm(span=int(ema_span), adjust=False, min_periods=max(3, int(ema_span) // 2)).mean().dropna()
+    out = pd.concat([s.rename('value'), ema_s.rename(ema_col)], axis=1).dropna()
+    if len(out) < max(10, ema_span):
+        return pd.DataFrame()
+
+    out['down_flag'] = False
+    out['down_start_signal'] = False
+    out['down_end_signal'] = False
+
+    in_cycle = False
+    for idx in out.index:
+        loc = out.index.get_loc(idx)
+        ema_value = float(out.at[idx, ema_col])
+        prev_ema = float(out.iloc[loc - 1][ema_col]) if loc > 0 else np.nan
+        start_cross = loc > 0 and prev_ema >= float(start_threshold) and ema_value < float(start_threshold)
+        end_cross = loc > 0 and prev_ema <= float(end_threshold) and ema_value > float(end_threshold)
+
+        if not in_cycle and start_cross:
+            in_cycle = True
+            out.at[idx, 'down_start_signal'] = True
+        elif in_cycle and end_cross:
+            in_cycle = False
+            out.at[idx, 'down_end_signal'] = True
+        out.at[idx, 'down_flag'] = in_cycle
+    return out
+
+
+def _add_dual_threshold_ema_signals(
+    fig,
+    s: pd.Series,
+    start_threshold: float,
+    end_threshold: float,
+    ema_span: int = 20,
+    overlay_price=None,
+    overlay_yaxis='y2',
+    prefix='Risk-off',
+):
+    signal_df = _compute_dual_threshold_ema_signal_frame(
+        s,
+        ema_span=ema_span,
+        start_threshold=start_threshold,
+        end_threshold=end_threshold,
+    )
+    if signal_df.empty:
+        return
+
+    ema_col = f'ema{int(ema_span)}'
+    fig.add_hline(y=float(start_threshold), line=dict(color='rgba(255,140,105,0.30)', width=1, dash='dot'))
+    fig.add_hline(y=float(end_threshold), line=dict(color='rgba(75,255,179,0.30)', width=1, dash='dot'))
+    fig.add_trace(go.Scatter(
+        x=signal_df.index, y=signal_df[ema_col], name=f'EMA{ema_span}',
+        line=dict(color='rgba(255,255,255,0.28)', width=1.0, dash='dot'),
+        hoverinfo='skip',
+    ))
+    if overlay_price is not None and not overlay_price.empty:
+        _add_price_signal_markers(fig, signal_df, overlay_price, yaxis=overlay_yaxis, prefix=prefix)
+    else:
+        sig_start = signal_df.loc[signal_df['down_start_signal'], ema_col]
+        sig_end = signal_df.loc[signal_df['down_end_signal'], ema_col]
+        if not sig_start.empty:
+            fig.add_trace(go.Scatter(
+                x=sig_start.index, y=sig_start, name=f'{prefix} 시작',
+                mode='markers',
+                marker=dict(symbol='triangle-down', size=8, color='rgba(255,140,105,0.85)'),
+            ))
+        if not sig_end.empty:
+            fig.add_trace(go.Scatter(
+                x=sig_end.index, y=sig_end, name=f'{prefix} 종료',
+                mode='markers',
+                marker=dict(symbol='triangle-up', size=8, color='rgba(75,255,179,0.85)'),
+            ))
+
+
 def _compute_dynamic_quantile_signal_frame(
     s: pd.Series,
     window: int = 126,
@@ -4155,7 +4239,8 @@ def make_macro_ig_spread_chart(years: int = 5, spx_s=None, show_raw=True, downtu
 def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500',
                                    threshold_mode=False, threshold_value: float = 0.0, ema_span: int | None = None,
                                    dynamic_mode: bool = False, dynamic_window: int = 126,
-                                   dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2):
+                                   dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2,
+                                   threshold_end_value: float | None = None):
     """③ 신용 스트레스 지수: HY + NFCI + VIX z-score 합성, 반전 표시."""
     benchmark = _get_macro_benchmark(benchmark_name)
     parts = []
@@ -4215,8 +4300,19 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True, do
         )
     elif threshold_mode:
         _ema_span = int(ema_span or _resolve_downturn_params(downturn_params)['ema_span'])
-        _add_threshold_ema_signals(fig, plot_s, threshold=threshold_value, ema_span=_ema_span,
-                                   overlay_price=spx_s, overlay_yaxis='y2')
+        if threshold_end_value is not None:
+            _add_dual_threshold_ema_signals(
+                fig,
+                plot_s,
+                start_threshold=float(threshold_value),
+                end_threshold=float(threshold_end_value),
+                ema_span=_ema_span,
+                overlay_price=spx_s,
+                overlay_yaxis='y2',
+            )
+        else:
+            _add_threshold_ema_signals(fig, plot_s, threshold=threshold_value, ema_span=_ema_span,
+                                       overlay_price=spx_s, overlay_yaxis='y2')
     else:
         _add_ema20_downturn_signals(fig, plot_s, overlay_price=spx_s, overlay_yaxis='y2', params=downturn_params)
     fig.update_layout(
@@ -6022,14 +6118,16 @@ def main(page="signal"):
                 _show_raw_macro3 = st.checkbox("원본선 표시", value=False, key='macro3_show_raw')
 
             with st.expander("실험 설정", expanded=True):
-                _s1, _s2, _s3, _s4 = st.columns(4)
+                _s1, _s2, _s3, _s4, _s5 = st.columns(5)
                 with _s1:
                     _ema_span3 = st.selectbox("EMA", [10, 20, 30], index=1, key='macro3_ema_span')
                 with _s2:
-                    _thr3_3 = st.number_input("③ threshold", value=0.0, step=0.1, format="%.2f", key='macro3_thr3')
+                    _thr3_3 = st.number_input("③ 시작", value=0.5, step=0.1, format="%.2f", key='macro3_thr3')
                 with _s3:
-                    _thr4_3 = st.number_input("④ threshold", value=-20.0, step=0.5, format="%.2f", key='macro3_thr4')
+                    _thr3_end_3 = st.number_input("③ 종료", value=-0.5, step=0.1, format="%.2f", key='macro3_thr3_end')
                 with _s4:
+                    _thr4_3 = st.number_input("④ threshold", value=-20.0, step=0.5, format="%.2f", key='macro3_thr4')
+                with _s5:
                     _thr6_3 = st.number_input("⑥ threshold", value=2.0, step=0.1, format="%.2f", key='macro3_thr6')
 
             _downturn_params3 = _DEFAULT_DOWNTURN_PARAMS.copy()
@@ -6043,7 +6141,10 @@ def main(page="signal"):
                 _macro3_charts = [
                     make_macro_credit_stress_chart(
                         _macro3_years, _spx_s3, _show_raw_macro3, _downturn_params3, _benchmark_name3,
-                        threshold_mode=True, threshold_value=float(_thr3_3), ema_span=int(_ema_span3)
+                        threshold_mode=True,
+                        threshold_value=float(_thr3_3),
+                        threshold_end_value=float(_thr3_end_3),
+                        ema_span=int(_ema_span3)
                     ),
                     make_macro_options_chart(
                         _macro3_years, _spx_s3, _show_raw_macro3, _downturn_params3, _benchmark_name3,
