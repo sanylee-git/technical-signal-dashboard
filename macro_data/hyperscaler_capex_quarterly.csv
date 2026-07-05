@@ -1,1 +1,147 @@
 quarter,company,capex_bil_usd,source
+2008Q2,Amazon,0.069,SEC companyfacts
+2008Q3,Amazon,0.102,SEC companyfacts
+2008Q3,Microsoft,0.778,SEC companyfacts
+2008Q4,Microsoft,0.842,SEC companyfacts
+2009Q1,Amazon,0.055,SEC companyfacts
+2009Q1,Microsoft,0.632,SEC companyfacts
+2009Q2,Amazon,0.078,SEC companyfacts
+2009Q3,Amazon,0.103,SEC companyfacts
+2009Q3,Microsoft,0.435,SEC companyfacts
+2009Q4,Microsoft,0.376,SEC companyfacts
+2010Q1,Amazon,0.14,SEC companyfacts
+2010Q1,Microsoft,0.408,SEC companyfacts
+2010Q2,Amazon,0.196,SEC companyfacts
+2010Q3,Amazon,0.315,SEC companyfacts
+2010Q3,Microsoft,0.564,SEC companyfacts
+2010Q4,Microsoft,0.491,SEC companyfacts
+2011Q1,Amazon,0.298,SEC companyfacts
+2011Q1,Microsoft,0.658,SEC companyfacts
+2011Q2,Amazon,0.433,SEC companyfacts
+2011Q3,Amazon,0.529,SEC companyfacts
+2011Q3,Microsoft,0.436,SEC companyfacts
+2011Q4,Microsoft,0.498,SEC companyfacts
+2012Q1,Amazon,0.386,SEC companyfacts
+2012Q1,Meta,0.453,SEC companyfacts
+2012Q1,Microsoft,0.749,SEC companyfacts
+2012Q2,Amazon,0.657,SEC companyfacts
+2012Q3,Amazon,0.716,SEC companyfacts
+2012Q3,Microsoft,0.603,SEC companyfacts
+2012Q4,Microsoft,0.93,SEC companyfacts
+2013Q1,Amazon,0.67,SEC companyfacts
+2013Q1,Meta,0.327,SEC companyfacts
+2013Q1,Microsoft,0.93,SEC companyfacts
+2013Q2,Amazon,0.855,SEC companyfacts
+2013Q3,Amazon,1.038,SEC companyfacts
+2013Q3,Microsoft,1.231,SEC companyfacts
+2013Q4,Microsoft,1.732,SEC companyfacts
+2014Q1,Amazon,1.08,SEC companyfacts
+2014Q1,Meta,0.363,SEC companyfacts
+2014Q1,Microsoft,1.192,SEC companyfacts
+2014Q2,Amazon,1.29,SEC companyfacts
+2014Q3,Amazon,1.378,SEC companyfacts
+2014Q3,Microsoft,1.282,SEC companyfacts
+2014Q4,Microsoft,1.49,SEC companyfacts
+2015Q1,Amazon,0.871,SEC companyfacts
+2015Q1,Google / Alphabet,2.927,SEC companyfacts
+2015Q1,Meta,0.502,SEC companyfacts
+2015Q1,Microsoft,1.391,SEC companyfacts
+2015Q2,Amazon,1.213,SEC companyfacts
+2015Q2,Google / Alphabet,2.515,SEC companyfacts
+2015Q3,Amazon,1.195,SEC companyfacts
+2015Q3,Google / Alphabet,2.383,SEC companyfacts
+2015Q3,Microsoft,1.356,SEC companyfacts
+2015Q4,Microsoft,2.024,SEC companyfacts
+2016Q1,Amazon,1.179,SEC companyfacts
+2016Q1,Google / Alphabet,2.444,SEC companyfacts
+2016Q1,Meta,1.132,SEC companyfacts
+2016Q1,Microsoft,2.308,SEC companyfacts
+2016Q2,Amazon,1.711,SEC companyfacts
+2016Q2,Google / Alphabet,2.136,SEC companyfacts
+2016Q3,Amazon,1.841,SEC companyfacts
+2016Q3,Google / Alphabet,2.554,SEC companyfacts
+2016Q3,Microsoft,2.163,SEC companyfacts
+2016Q4,Microsoft,1.988,SEC companyfacts
+2017Q1,Amazon,1.861,SEC companyfacts
+2017Q1,Google / Alphabet,2.508,SEC companyfacts
+2017Q1,Meta,1.271,SEC companyfacts
+2017Q1,Microsoft,1.695,SEC companyfacts
+2017Q2,Google / Alphabet,2.831,SEC companyfacts
+2017Q3,Amazon,3.074,SEC companyfacts
+2017Q3,Google / Alphabet,3.538,SEC companyfacts
+2017Q3,Microsoft,2.132,SEC companyfacts
+2017Q4,Microsoft,2.586,SEC companyfacts
+2018Q1,Amazon,3.098,SEC companyfacts
+2018Q1,Google / Alphabet,7.299,SEC companyfacts
+2018Q1,Meta,2.812,SEC companyfacts
+2018Q1,Microsoft,2.934,SEC companyfacts
+2018Q2,Amazon,3.243,SEC companyfacts
+2018Q2,Google / Alphabet,5.477,SEC companyfacts
+2018Q3,Amazon,3.352,SEC companyfacts
+2018Q3,Google / Alphabet,5.282,SEC companyfacts
+2018Q3,Microsoft,3.602,SEC companyfacts
+2018Q4,Microsoft,3.707,SEC companyfacts
+2019Q1,Amazon,3.29,SEC companyfacts
+2019Q1,Google / Alphabet,4.638,SEC companyfacts
+2019Q1,Meta,3.837,SEC companyfacts
+2019Q1,Microsoft,2.565,SEC companyfacts
+2019Q2,Amazon,3.562,SEC companyfacts
+2019Q2,Google / Alphabet,6.126,SEC companyfacts
+2019Q3,Amazon,4.697,SEC companyfacts
+2019Q3,Google / Alphabet,6.732,SEC companyfacts
+2019Q3,Microsoft,3.385,SEC companyfacts
+2019Q4,Microsoft,3.545,SEC companyfacts
+2020Q1,Amazon,6.795,SEC companyfacts
+2020Q1,Google / Alphabet,6.005,SEC companyfacts
+2020Q1,Meta,3.558,SEC companyfacts
+2020Q1,Microsoft,3.767,SEC companyfacts
+2020Q2,Amazon,7.459,SEC companyfacts
+2020Q2,Google / Alphabet,5.391,SEC companyfacts
+2020Q3,Amazon,11.063,SEC companyfacts
+2020Q3,Google / Alphabet,5.406,SEC companyfacts
+2020Q3,Microsoft,4.907,SEC companyfacts
+2020Q4,Microsoft,4.174,SEC companyfacts
+2021Q1,Amazon,12.082,SEC companyfacts
+2021Q1,Google / Alphabet,5.942,SEC companyfacts
+2021Q1,Meta,4.303,SEC companyfacts
+2021Q1,Microsoft,5.089,SEC companyfacts
+2021Q2,Amazon,14.288,SEC companyfacts
+2021Q3,Amazon,15.748,SEC companyfacts
+2021Q3,Microsoft,5.81,SEC companyfacts
+2021Q4,Microsoft,5.865,SEC companyfacts
+2022Q1,Amazon,14.951,SEC companyfacts
+2022Q1,Google / Alphabet,9.786,SEC companyfacts
+2022Q1,Meta,5.441,SEC companyfacts
+2022Q1,Microsoft,5.34,SEC companyfacts
+2022Q2,Amazon,15.724,SEC companyfacts
+2022Q3,Amazon,16.378,SEC companyfacts
+2022Q3,Microsoft,6.283,SEC companyfacts
+2022Q4,Microsoft,6.274,SEC companyfacts
+2023Q1,Amazon,14.207,SEC companyfacts
+2023Q1,Google / Alphabet,6.289,SEC companyfacts
+2023Q1,Meta,6.823,SEC companyfacts
+2023Q1,Microsoft,6.607,SEC companyfacts
+2023Q2,Amazon,11.455,SEC companyfacts
+2023Q3,Amazon,12.479,SEC companyfacts
+2023Q3,Microsoft,9.917,SEC companyfacts
+2023Q4,Microsoft,9.735,SEC companyfacts
+2024Q1,Amazon,14.925,SEC companyfacts
+2024Q1,Google / Alphabet,12.012,SEC companyfacts
+2024Q1,Meta,6.4,SEC companyfacts
+2024Q1,Microsoft,10.952,SEC companyfacts
+2024Q2,Amazon,17.62,SEC companyfacts
+2024Q3,Amazon,22.62,SEC companyfacts
+2024Q3,Microsoft,14.923,SEC companyfacts
+2024Q4,Microsoft,15.804,SEC companyfacts
+2025Q1,Amazon,25.019,SEC companyfacts
+2025Q1,Google / Alphabet,17.197,SEC companyfacts
+2025Q1,Meta,12.941,SEC companyfacts
+2025Q1,Microsoft,16.745,SEC companyfacts
+2025Q2,Amazon,32.183,SEC companyfacts
+2025Q3,Amazon,35.095,SEC companyfacts
+2025Q3,Microsoft,19.394,SEC companyfacts
+2025Q4,Microsoft,29.876,SEC companyfacts
+2026Q1,Amazon,44.203,SEC companyfacts
+2026Q1,Google / Alphabet,35.674,SEC companyfacts
+2026Q1,Meta,18.997,SEC companyfacts
+2026Q1,Microsoft,30.876,SEC companyfacts

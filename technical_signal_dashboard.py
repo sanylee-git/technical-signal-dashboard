@@ -4214,7 +4214,7 @@ def make_macro_ai_memory_compare_chart(years: int = 5, spx_s=None):
         hovertemplate='<b>%{customdata}</b><br>CAPEX %{y:.1f} bn USD<extra></extra>',
     ), row=1, col=1)
     fig.add_trace(go.Scatter(
-        x=merged.index, y=merged['memory_profit_total'], name='삼성DS + SK하이닉스 영업이익', customdata=_quarter_labels,
+        x=merged.index, y=merged['memory_profit_total'], name='삼성전자 + SK하이닉스 영업이익', customdata=_quarter_labels,
         line=dict(color='#4BFFB3', width=1.8),
         hovertemplate='<b>%{customdata}</b><br>Memory Profit %{y:.1f}<extra></extra>',
     ), row=1, col=1)
