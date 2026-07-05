@@ -89,6 +89,11 @@ MACRO_DATA_DIR = os.path.join(_DIR, "macro_data")
 CAPEX_FALLBACK_CSV = os.path.join(MACRO_DATA_DIR, "hyperscaler_capex_quarterly.csv")
 MEMORY_PRICE_CSV = os.path.join(MACRO_DATA_DIR, "memory_price_qoq.csv")
 MEMORY_PROFIT_CSV = os.path.join(MACRO_DATA_DIR, "memory_profit_quarterly.csv")
+MACRO_BENCHMARKS = {
+    "S&P500": {"code": "^GSPC", "label": "S&P500", "kind": "us"},
+    "Nasdaq": {"code": "^IXIC", "label": "Nasdaq", "kind": "us"},
+    "KOSPI": {"code": "^KS11", "label": "KOSPI", "kind": "kr"},
+}
 
 DEFAULT_FAVORITES = [
     {"code": "^KQ11",      "name": "코스닥 지수 (^KQ11)"},
@@ -3480,8 +3485,66 @@ def _visible_price_yaxis(overlaying='y', side='right') -> dict:
     )
 
 
-def _add_spx_overlay(fig, main_s: pd.Series, spx_s, yaxis='y2'):
-    """S&P500 실제 지수값을 우측 축으로 오버레이."""
+def _get_macro_benchmark(benchmark_name: str | None):
+    return MACRO_BENCHMARKS.get(benchmark_name or "S&P500", MACRO_BENCHMARKS["S&P500"])
+
+
+def _realized_volatility(price_s: pd.Series, window: int = 20) -> pd.Series:
+    if price_s is None or price_s.empty:
+        return pd.Series(dtype=float)
+    ret = price_s.pct_change()
+    return (ret.rolling(window, min_periods=max(5, window // 2)).std() * (252 ** 0.5) * 100).dropna()
+
+
+def _relative_strength_spread(leader_s: pd.Series, lagger_s: pd.Series) -> pd.Series:
+    if leader_s is None or leader_s.empty or lagger_s is None or lagger_s.empty:
+        return pd.Series(dtype=float)
+    aligned = pd.concat([leader_s.rename('leader'), lagger_s.rename('lagger')], axis=1).dropna()
+    if aligned.empty:
+        return pd.Series(dtype=float)
+    leader_norm = aligned['leader'] / aligned['leader'].iloc[0] * 100
+    lagger_norm = aligned['lagger'] / aligned['lagger'].iloc[0] * 100
+    return (leader_norm - lagger_norm).dropna()
+
+
+def _korean_credit_proxy_series(years: int, quality: str = 'AA') -> pd.Series:
+    treasury_3y = _yf_close('114260.KS', years + 1)   # KODEX 국고채3년
+    corp_map = {
+        'AA': ('273130.KS', '종합채권(AA-이상)'),
+        'A': ('385540.KS', '종합채권(A-이상)'),
+    }
+    corp_ticker, _ = corp_map.get(quality, corp_map['AA'])
+    corp = _yf_close(corp_ticker, years + 1)
+    return _relative_strength_spread(treasury_3y, corp)
+
+
+def _korean_fx_stress_series(years: int) -> pd.Series:
+    return _yf_close('KRW=X', years + 1)
+
+
+def _korean_volatility_series(years: int, benchmark_s: pd.Series | None = None, window: int = 20) -> pd.Series:
+    if benchmark_s is None or benchmark_s.empty:
+        benchmark_s = _yf_close('^KS11', years + 1)
+    return _realized_volatility(benchmark_s, window=window)
+
+
+def _korean_vol_term_spread_series(years: int, benchmark_s: pd.Series | None = None) -> pd.Series:
+    if benchmark_s is None or benchmark_s.empty:
+        benchmark_s = _yf_close('^KS11', years + 1)
+    hv20 = _realized_volatility(benchmark_s, window=20)
+    hv60 = _realized_volatility(benchmark_s, window=60)
+    return (hv20 - hv60.reindex(hv20.index)).dropna()
+
+
+def _korean_yield_curve_proxy_bundle(years: int):
+    bond_3y = _yf_close('114260.KS', years + 1)   # KODEX 국고채3년
+    bond_10y = _yf_close('148070.KS', years + 1)  # KIWOOM 국고채10년
+    spread = _relative_strength_spread(bond_3y, bond_10y)
+    return spread, bond_3y, bond_10y
+
+
+def _add_spx_overlay(fig, main_s: pd.Series, spx_s, yaxis='y2', label='S&P500'):
+    """기준 지수 실제 값 우측 축 오버레이."""
     if spx_s is None or spx_s.empty or main_s is None or main_s.empty:
         return
     t0 = main_s.index[0]
@@ -3489,7 +3552,7 @@ def _add_spx_overlay(fig, main_s: pd.Series, spx_s, yaxis='y2'):
     if len(spx_t) <= 2:
         return
     fig.add_trace(go.Scatter(
-        x=spx_t.index, y=spx_t, name='S&P500',
+        x=spx_t.index, y=spx_t, name=label,
         line=dict(color='rgba(182,182,182,0.88)', width=1.55),
         showlegend=True, hoverinfo='skip', yaxis=yaxis,
     ))
@@ -3676,52 +3739,81 @@ def _compute_combo_downturn_frame(parts: dict[str, pd.Series], params=None) -> p
     return combo
 
 
-def make_macro_index_cycle_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None):
-    """⓪ S&P500 지수 자체의 EMA 기반 Risk-off 사이클."""
+def make_macro_index_cycle_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500'):
+    """⓪ 선택 지수 자체의 EMA 기반 Risk-off 사이클."""
+    benchmark = _get_macro_benchmark(benchmark_name)
     if spx_s is None or spx_s.empty:
-        spx_s = _yf_close('^GSPC', years)
+        spx_s = _yf_close(benchmark['code'], years)
     if spx_s is None or spx_s.empty:
         return None
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=spx_s.index, y=spx_s, name='S&P500',
+        x=spx_s.index, y=spx_s, name=benchmark['label'],
         line=dict(color='rgba(182,182,182,0.88)', width=1.55),
-        hovertemplate='<b>%{x|%Y-%m-%d}</b><br>S&P500 %{y:,.1f}<extra></extra>',
+        hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>{benchmark["label"]} %{{y:,.1f}}<extra></extra>',
     ))
     _add_ema20_downturn_signals(fig, spx_s, show_downturn=True, overlay_price=spx_s, overlay_yaxis='y', params=downturn_params)
     fig.update_layout(
-        **_ml('⓪ S&P500 지수 Risk-off 사이클', height=300),
+        **_ml(f'⓪ {benchmark["label"]} 지수 Risk-off 사이클', height=300),
     )
     return fig
 
 
-def make_macro_combo_downturn_chart(years: int = 5, spx_s=None, signal_modes=None, downturn_params=None):
+def make_macro_combo_downturn_chart(years: int = 5, spx_s=None, signal_modes=None, downturn_params=None, benchmark_name='S&P500'):
     """⑤ 0~4 종합 Risk-off 사이클."""
+    benchmark = _get_macro_benchmark(benchmark_name)
     if spx_s is None or spx_s.empty:
-        spx_s = _yf_close('^GSPC', years)
+        spx_s = _yf_close(benchmark['code'], years)
     if spx_s is None or spx_s.empty:
         return None
-    hy = _credit_spread_series('BAMLH0A0HYM2', years)
-    ig = _credit_spread_series('BAMLC0A0CM', years)
-    nfci = _fred('NFCI', years + 1)
-    vix = _yf_close('^VIX', years + 1)
-    stress_parts = []
-    if not hy.empty:
-        stress_parts.append(_zscore(hy).rename('HY'))
-    if not nfci.empty:
-        stress_parts.append(_zscore(nfci).rename('NFCI'))
-    if not vix.empty:
-        stress_parts.append(_zscore(vix).rename('VIX'))
-    stress = pd.concat(stress_parts, axis=1).mean(axis=1).dropna() if stress_parts else pd.Series(dtype=float)
 
-    parts = {
-        'spx': spx_s.dropna(),
-        'hy': (-hy).dropna(),
-        'ig': (-ig).dropna(),
-        'stress': (-stress).dropna(),
-        'vix': (-vix).dropna(),
-    }
+    if benchmark['kind'] == 'kr':
+        hy = _korean_credit_proxy_series(years, 'A')
+        ig = _korean_credit_proxy_series(years, 'AA')
+        fx = _korean_fx_stress_series(years + 1)
+        hv20 = _korean_volatility_series(years + 1, benchmark_s=spx_s, window=20)
+        stress_parts = []
+        if not hy.empty:
+            stress_parts.append(_zscore(hy).rename('CorpA'))
+        if not ig.empty:
+            stress_parts.append(_zscore(ig).rename('CorpAA'))
+        if not fx.empty:
+            stress_parts.append(_zscore(fx).rename('USDKRW'))
+        if not hv20.empty:
+            stress_parts.append(_zscore(hv20).rename('HV20'))
+        stress = pd.concat(stress_parts, axis=1).mean(axis=1).dropna() if stress_parts else pd.Series(dtype=float)
+        vix = hv20
+        parts = {
+            'spx': spx_s.dropna(),
+            'hy': hy.dropna(),
+            'ig': ig.dropna(),
+            'stress': stress.dropna(),
+            'vix': vix.dropna(),
+        }
+        title = f'⑤ 종합 하락 사이클 (KOSPI 한국형 5지표 조합, {benchmark["label"]} 위 표시)'
+    else:
+        hy = _credit_spread_series('BAMLH0A0HYM2', years)
+        ig = _credit_spread_series('BAMLC0A0CM', years)
+        nfci = _fred('NFCI', years + 1)
+        vix = _yf_close('^VIX', years + 1)
+        stress_parts = []
+        if not hy.empty:
+            stress_parts.append(_zscore(hy).rename('HY'))
+        if not nfci.empty:
+            stress_parts.append(_zscore(nfci).rename('NFCI'))
+        if not vix.empty:
+            stress_parts.append(_zscore(vix).rename('VIX'))
+        stress = pd.concat(stress_parts, axis=1).mean(axis=1).dropna() if stress_parts else pd.Series(dtype=float)
+        parts = {
+            'spx': spx_s.dropna(),
+            'hy': (-hy).dropna(),
+            'ig': (-ig).dropna(),
+            'stress': (-stress).dropna(),
+            'vix': (-vix).dropna(),
+        }
+        title = f'⑤ 종합 하락 사이클 (0~4 조합, {benchmark["label"]} 위 시작/종료 표시)'
+
     combo = _compute_combo_downturn_frame(parts, params=downturn_params)
     if combo.empty:
         return None
@@ -3732,9 +3824,9 @@ def make_macro_combo_downturn_chart(years: int = 5, spx_s=None, signal_modes=Non
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=spx_aligned.index, y=spx_aligned, name='S&P500',
+        x=spx_aligned.index, y=spx_aligned, name=benchmark['label'],
         line=dict(color='rgba(182,182,182,0.88)', width=1.55),
-        hovertemplate='<b>%{x|%Y-%m-%d}</b><br>S&P500 %{y:,.1f}<extra></extra>',
+        hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>{benchmark["label"]} %{{y:,.1f}}<extra></extra>',
     ))
     watch_start_y = spx_aligned.loc[combo['combo_watch_start_signal']]
     watch_end_y = spx_aligned.loc[combo['combo_watch_end_signal']]
@@ -3771,7 +3863,7 @@ def make_macro_combo_downturn_chart(years: int = 5, spx_s=None, signal_modes=Non
             hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Risk 종료: active_down_count <= 3<extra></extra>',
         ))
     fig.update_layout(
-        **_ml('⑤ 종합 하락 사이클 (0~4 조합, S&P500 위 시작/종료 표시)', height=300),
+        **_ml(title, height=300),
     )
     return fig
 
@@ -3781,6 +3873,7 @@ def _make_inverted_spread_chart(
     title: str,
     trace_name: str,
     spx_s=None,
+    benchmark_label='S&P500',
     color='#FF8C69',
     height=300,
     suffix='%',
@@ -3804,44 +3897,77 @@ def _make_inverted_spread_chart(
             opacity=0.28,
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  반전값 %{y:.2f}<extra></extra>',
         ))
-    _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2')
+    _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2', label=benchmark_label)
     _add_ema20_downturn_signals(fig, plot_s, show_downturn=show_downturn, overlay_price=spx_s, overlay_yaxis='y2', params=downturn_params)
     fig.update_layout(
         **_ml(title, height=height),
         yaxis2=_visible_price_yaxis('y', 'right'),
     )
     fig.layout.yaxis.ticksuffix = suffix
-    _add_corr_annotation(fig, plot_s, spx_s)
+    _add_corr_annotation(fig, plot_s, spx_s, label=f'vs {benchmark_label}')
     return fig
 
 
-def make_macro_hy_spread_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None):
+def make_macro_hy_spread_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500'):
     """① HY 크레딧 스프레드: 반전 표시 + EMA 하락 경고."""
-    hy = _credit_spread_series('BAMLH0A0HYM2', years)
+    benchmark = _get_macro_benchmark(benchmark_name)
+    if benchmark['kind'] == 'kr':
+        hy = _korean_credit_proxy_series(years, 'A')
+        title = '① 회사채(A-이상)-국고채 상대강도 (반전, 한국 proxy)'
+        trace_name = 'A-이상 회사채 프록시'
+        suffix = ''
+    else:
+        hy = _credit_spread_series('BAMLH0A0HYM2', years)
+        title = '① HY 크레딧 스프레드 (반전, OAS %)'
+        trace_name = 'HY 스프레드'
+        suffix = '%'
     return _make_inverted_spread_chart(
-        hy, '① HY 크레딧 스프레드 (반전, OAS %)', 'HY 스프레드',
-        spx_s=spx_s, color='#FF4B6E', show_raw=show_raw, downturn_params=downturn_params,
+        hy, title, trace_name,
+        spx_s=spx_s, benchmark_label=benchmark['label'], color='#FF4B6E', suffix=suffix, show_raw=show_raw, downturn_params=downturn_params,
     )
 
 
-def make_macro_ig_spread_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None):
+def make_macro_ig_spread_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500'):
     """② IG 크레딧 스프레드: 반전 표시 + EMA 하락 경고."""
-    ig = _credit_spread_series('BAMLC0A0CM', years)
+    benchmark = _get_macro_benchmark(benchmark_name)
+    if benchmark['kind'] == 'kr':
+        ig = _korean_credit_proxy_series(years, 'AA')
+        title = '② 회사채(AA-이상)-국고채 상대강도 (반전, 한국 proxy)'
+        trace_name = 'AA-이상 회사채 프록시'
+        suffix = ''
+    else:
+        ig = _credit_spread_series('BAMLC0A0CM', years)
+        title = '② IG 크레딧 스프레드 (반전, OAS %)'
+        trace_name = 'IG 스프레드'
+        suffix = '%'
     return _make_inverted_spread_chart(
-        ig, '② IG 크레딧 스프레드 (반전, OAS %)', 'IG 스프레드',
-        spx_s=spx_s, color='#4BFFB3', show_raw=show_raw, downturn_params=downturn_params,
+        ig, title, trace_name,
+        spx_s=spx_s, benchmark_label=benchmark['label'], color='#4BFFB3', suffix=suffix, show_raw=show_raw, downturn_params=downturn_params,
     )
 
 
-def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None):
+def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500'):
     """③ 신용 스트레스 지수: HY + NFCI + VIX z-score 합성, 반전 표시."""
-    hy   = _credit_spread_series('BAMLH0A0HYM2', years + 1)
-    nfci = _fred('NFCI',         years + 1)
-    vix  = _yf_close('^VIX',     years + 1)
+    benchmark = _get_macro_benchmark(benchmark_name)
     parts = []
-    if not hy.empty:   parts.append(_zscore(hy).rename('HY'))
-    if not nfci.empty: parts.append(_zscore(nfci).rename('NFCI'))
-    if not vix.empty:  parts.append(_zscore(vix).rename('VIX'))
+    if benchmark['kind'] == 'kr':
+        hy = _korean_credit_proxy_series(years + 1, 'A')
+        ig = _korean_credit_proxy_series(years + 1, 'AA')
+        fx = _korean_fx_stress_series(years + 1)
+        hv20 = _korean_volatility_series(years + 1, benchmark_s=spx_s, window=20)
+        if not hy.empty: parts.append(_zscore(hy).rename('CorpA'))
+        if not ig.empty: parts.append(_zscore(ig).rename('CorpAA'))
+        if not fx.empty: parts.append(_zscore(fx).rename('USDKRW'))
+        if not hv20.empty: parts.append(_zscore(hv20).rename('HV20'))
+        title = '③ 한국 스트레스 지수 (반전, 회사채·환율·변동성)'
+    else:
+        hy   = _credit_spread_series('BAMLH0A0HYM2', years + 1)
+        nfci = _fred('NFCI',         years + 1)
+        vix  = _yf_close('^VIX',     years + 1)
+        if not hy.empty:   parts.append(_zscore(hy).rename('HY'))
+        if not nfci.empty: parts.append(_zscore(nfci).rename('NFCI'))
+        if not vix.empty:  parts.append(_zscore(vix).rename('VIX'))
+        title = '③ 신용 스트레스 지수 (반전, HY + NFCI + VIX z-score)'
     if not parts:
         return None
     cutoff = pd.Timestamp.now() - pd.DateOffset(years=years)
@@ -3865,57 +3991,81 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True, do
                                  line=dict(color='#787EE7', width=1.2),
                                  opacity=0.28,
                                  hovertemplate='<b>%{x|%Y-%m-%d}</b>  %{y:.2f}<extra></extra>'))
-    _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2')
+    _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2', label=benchmark['label'])
     _add_ema20_downturn_signals(fig, plot_s, overlay_price=spx_s, overlay_yaxis='y2', params=downturn_params)
     fig.update_layout(
-        **_ml('③ 신용 스트레스 지수 (반전, HY + NFCI + VIX z-score)'),
+        **_ml(title),
         yaxis2=_visible_price_yaxis('y', 'right'),
     )
     fig.update_yaxes(tickformat='+.1f')
-    _add_corr_annotation(fig, plot_s, spx_s)
+    _add_corr_annotation(fig, plot_s, spx_s, label=f'vs {benchmark["label"]}')
     return fig
 
 
-def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None):
+def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500'):
     """④ VIX 레벨: 반전 표시 + EMA 하락 경고."""
-    vix   = _yf_close('^VIX',   years)
+    benchmark = _get_macro_benchmark(benchmark_name)
+    if benchmark['kind'] == 'kr':
+        vix = _korean_volatility_series(years, benchmark_s=spx_s, window=20)
+        title = '④ 역사적 변동성 HV20 (반전, KOSPI)'
+        trace_name = 'HV20 (반전)'
+        line_label = '반전 HV20'
+        threshold_1 = -20
+        threshold_2 = -30
+        corr_label = f'반전 HV20 vs {benchmark["label"]}'
+    else:
+        vix = _yf_close('^VIX', years)
+        title = '④ VIX 레벨 (반전)'
+        trace_name = 'VIX 레벨 (반전)'
+        line_label = '반전 VIX'
+        threshold_1 = -20
+        threshold_2 = -30
+        corr_label = f'반전 VIX vs {benchmark["label"]}'
     if vix.empty:
         return None
     plot_s = (-vix).dropna()
     fig = go.Figure()
-    fig.add_hline(y=-20, line=dict(color='rgba(255,255,255,0.12)', dash='dot', width=1))
-    fig.add_hline(y=-30, line=dict(color='rgba(255,75,110,0.30)', dash='dot', width=1))
+    fig.add_hline(y=threshold_1, line=dict(color='rgba(255,255,255,0.12)', dash='dot', width=1))
+    fig.add_hline(y=threshold_2, line=dict(color='rgba(255,75,110,0.30)', dash='dot', width=1))
     if show_raw:
         fig.add_trace(go.Scatter(
-            x=plot_s.index, y=plot_s, name='VIX 레벨 (반전)',
+            x=plot_s.index, y=plot_s, name=trace_name,
             line=dict(color='#FF4B6E', width=1.2),
             opacity=0.28,
-            hovertemplate='<b>%{x|%Y-%m-%d}</b>  반전 VIX %{y:.1f}<extra></extra>',
+            hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b>  {line_label} %{{y:.1f}}<extra></extra>',
         ))
-    _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2')
+    _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2', label=benchmark['label'])
     _add_ema20_downturn_signals(fig, plot_s, overlay_price=spx_s, overlay_yaxis='y2', params=downturn_params)
     fig.update_layout(
-        **_ml('④ VIX 레벨 (반전)', height=300),
+        **_ml(title, height=300),
         yaxis2=_visible_price_yaxis('y', 'right'),
     )
-    _add_corr_annotation(fig, plot_s, spx_s, label='반전 VIX vs S&P500')
+    _add_corr_annotation(fig, plot_s, spx_s, label=corr_label)
     return fig
 
 
-def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None):
+def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500'):
     """⑥ VIX-VIX3M 스프레드: 반전 표시 + EMA 하락 경고."""
-    vix   = _yf_close('^VIX',   years)
-    vix3m = _yf_close('^VIX3M', years)
-    if vix.empty or vix3m.empty:
-        return None
-    spread = (vix - vix3m.reindex(vix.index)).dropna()
+    benchmark = _get_macro_benchmark(benchmark_name)
+    if benchmark['kind'] == 'kr':
+        spread = _korean_vol_term_spread_series(years, benchmark_s=spx_s)
+        title = '⑥ HV20-HV60 스프레드 (반전, KOSPI)'
+        trace_name = 'HV20-HV60 스프레드'
+    else:
+        vix   = _yf_close('^VIX',   years)
+        vix3m = _yf_close('^VIX3M', years)
+        if vix.empty or vix3m.empty:
+            return None
+        spread = (vix - vix3m.reindex(vix.index)).dropna()
+        title = '⑥ VIX-VIX3M 스프레드 (반전)'
+        trace_name = 'VIX-VIX3M 스프레드'
     return _make_inverted_spread_chart(
-        spread, '⑥ VIX-VIX3M 스프레드 (반전)', 'VIX-VIX3M 스프레드',
-        spx_s=spx_s, color='#FF8C69', suffix='', show_raw=show_raw, downturn_params=downturn_params,
+        spread, title, trace_name,
+        spx_s=spx_s, benchmark_label=benchmark['label'], color='#FF8C69', suffix='', show_raw=show_raw, downturn_params=downturn_params,
     )
 
 
-def make_macro_pmi_chart(years: int = 5, spx_s=None):
+def make_macro_pmi_chart(years: int = 5, spx_s=None, benchmark_name='S&P500'):
     """⑦ ISM 신규주문-재고 스프레드 (대리지표: 제조업 신규주문 vs 재고-판매비율)
     ISM 원데이터는 FRED에 없으므로:
       - 신규주문 proxy: AMTMNO (전체 제조업 신규주문, SA) → NEWORDER → DGORDER 순 fallback
@@ -3923,6 +4073,7 @@ def make_macro_pmi_chart(years: int = 5, spx_s=None):
     스프레드 = 신규주문 YoY% - 재고비율 YoY%
     양→음 전환 시 경기 둔화 확정적 (ISM 스프레드 개념 동일)
     """
+    benchmark = _get_macro_benchmark(benchmark_name)
     cutoff = pd.Timestamp.now() - pd.DateOffset(years=years)
 
     # 신규주문 proxy (3단계 fallback)
@@ -3969,18 +4120,19 @@ def make_macro_pmi_chart(years: int = 5, spx_s=None):
         line=dict(color='#C8C850', width=1.3),
         hovertemplate='<b>%{x|%Y-%m-%d}</b>  %{y:.2f}%<extra></extra>',
     ))
-    _add_spx_overlay(fig, main_s, spx_s, yaxis='y2')
+    _add_spx_overlay(fig, main_s, spx_s, yaxis='y2', label=benchmark['label'])
     fig.update_layout(
-        **_ml('⑧ 신규주문-재고 스프레드 (YoY%)', height=300),
+        **_ml('⑧ 신규주문-재고 스프레드 (YoY%)' if benchmark['kind'] != 'kr' else '⑧ 글로벌 신규주문-재고 스프레드 (KOSPI 외수 proxy)', height=300),
         yaxis2=_visible_price_yaxis('y', 'right'),
     )
     fig.layout.yaxis.ticksuffix = '%'
-    _add_corr_annotation(fig, main_s, spx_s)
+    _add_corr_annotation(fig, main_s, spx_s, label=f'vs {benchmark["label"]}')
     return fig
 
 
-def make_macro_liquidity_chart(years: int = 5, spx_s=None):
+def make_macro_liquidity_chart(years: int = 5, spx_s=None, benchmark_name='S&P500'):
     """⑧ 유동성: M2 YoY% + Fed 자산 YoY%"""
+    benchmark = _get_macro_benchmark(benchmark_name)
     m2  = _fred('M2SL',  years + 2)
     fed = _fred('WALCL', years + 2)
     if m2.empty and fed.empty:
@@ -4002,21 +4154,59 @@ def make_macro_liquidity_chart(years: int = 5, spx_s=None):
                                  line=dict(color='rgba(120,126,231,0.38)', width=1.1, dash='dot')))
         if main_s is None:
             main_s = fed_yoy
-    _add_spx_overlay(fig, main_s, spx_s, yaxis='y2')
+    _add_spx_overlay(fig, main_s, spx_s, yaxis='y2', label=benchmark['label'])
     fig.update_layout(
-        **_ml('⑨ 유동성 지표 (M2 · Fed 자산 YoY%)'),
+        **_ml('⑨ 유동성 지표 (M2 · Fed 자산 YoY%)' if benchmark['kind'] != 'kr' else '⑨ 글로벌 유동성 지표 (KOSPI 외국인 자금 proxy)'),
         yaxis2=_visible_price_yaxis('y', 'right'),
     )
     fig.update_yaxes(ticksuffix='%')
-    _add_corr_annotation(fig, main_s, spx_s)
+    _add_corr_annotation(fig, main_s, spx_s, label=f'vs {benchmark["label"]}')
     return fig
 
 
-def make_macro_yield_curve_chart(years: int = 5, spx_s=None):
+def make_macro_yield_curve_chart(years: int = 5, spx_s=None, benchmark_name='S&P500'):
     """⑨ 장단기 금리차: T10Y3M(10Y-3M)
     1순위: FRED 사전계산 시리즈 (T10Y3M, T10Y2Y) — 더 안정적
     2순위: 구성 금리 직접 차감 (DGS10 - DTB3 / DGS2) — fallback
     """
+    benchmark = _get_macro_benchmark(benchmark_name)
+    if benchmark['kind'] == 'kr':
+        spread, bond_3y, bond_10y = _korean_yield_curve_proxy_bundle(years)
+        if spread.empty and bond_3y.empty and bond_10y.empty:
+            return None
+        fig = go.Figure()
+        fig.add_hline(y=0, line=dict(color='rgba(255,255,255,0.20)', width=1))
+        if not spread.empty:
+            fig.add_trace(go.Scatter(
+                x=spread.index, y=spread, name='3Y-10Y 상대강도',
+                line=dict(color='#4BFFB3', width=1.5),
+                hovertemplate='<b>%{x|%Y-%m-%d}</b>  상대강도 %{y:.2f}<extra></extra>',
+            ))
+        if not bond_10y.empty:
+            fig.add_trace(go.Scatter(
+                x=bond_10y.index, y=bond_10y, name='국고채10년 ETF',
+                line=dict(color='rgba(200,200,200,0.55)', width=1.0, dash='dot'),
+                hovertemplate='<b>%{x|%Y-%m-%d}</b>  10년 ETF %{y:.2f}<extra></extra>',
+                yaxis='y3',
+            ))
+        if not bond_3y.empty:
+            fig.add_trace(go.Scatter(
+                x=bond_3y.index, y=bond_3y, name='국고채3년 ETF',
+                line=dict(color='rgba(120,220,255,0.60)', width=1.0, dash='dot'),
+                hovertemplate='<b>%{x|%Y-%m-%d}</b>  3년 ETF %{y:.2f}<extra></extra>',
+                yaxis='y3',
+            ))
+        main_s = spread if not spread.empty else bond_3y if not bond_3y.empty else bond_10y
+        _add_spx_overlay(fig, main_s, spx_s, yaxis='y2', label=benchmark['label'])
+        fig.update_layout(
+            **_ml('⑦ 국고채 3Y-10Y 상대강도 (ETF proxy)', height=300),
+            yaxis2=_visible_price_yaxis('y', 'right'),
+            yaxis3=_hidden_yaxis('y', 'left'),
+        )
+        if not spread.empty:
+            _add_corr_annotation(fig, spread, spx_s, label=f'vs {benchmark["label"]}')
+        return fig
+
     t3m = _fred('T10Y3M', years)
     dgs10 = _fred('DGS10', years)
     dfii10 = _fred('DFII10', years)
@@ -4064,14 +4254,14 @@ def make_macro_yield_curve_chart(years: int = 5, spx_s=None):
         ))
 
     main_s = t3m if not t3m.empty else dgs10 if not dgs10.empty else dfii10 if not dfii10.empty else dgs2 if not dgs2.empty else dtb3
-    _add_spx_overlay(fig, main_s, spx_s, yaxis='y2')
+    _add_spx_overlay(fig, main_s, spx_s, yaxis='y2', label=benchmark['label'])
     fig.update_layout(
         **_ml('⑦ 10Y-3M 금리차 + 10Y 명목·실질 · 2Y · 3M', height=300),
         yaxis2=_visible_price_yaxis('y', 'right'),
     )
     fig.layout.yaxis.ticksuffix = '%'
     if not t3m.empty:
-        _add_corr_annotation(fig, t3m, spx_s)
+        _add_corr_annotation(fig, t3m, spx_s, label=f'vs {benchmark["label"]}')
     return fig
 
 
@@ -5457,9 +5647,16 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
     if page in ("all", "macro", "market_macro"):
         with tab3:
-            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 옅은 점선은 선택한 EMA를 뜻하고, 개별 지표는 선택한 동적 slope/EMA 비교 조건으로 Risk-off 시작·종료를 계산합니다. ⑤는 0~4 중 3개 이상이면 Watch(노랑/초록), 4개 이상이면 Risk(빨강/파랑) 신호를 S&P500 위에 표시합니다. HY/IG는 최근 구간은 ICE OAS 원본, 더 긴 과거 구간은 Moody's-10Y Treasury 프록시로 이어 붙입니다.")
+            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 나스닥은 미국 매크로 세트를 그대로 쓰고, 코스피는 변동성·텀스프레드·신용계열을 한국형 프록시로 대체합니다.")
 
-            _c1, _c2, _c3, _c4 = st.columns([3, 1, 1, 1.4])
+            _c0, _c1, _c2, _c3, _c4 = st.columns([1.3, 2.7, 1, 1, 1.4])
+            with _c0:
+                _benchmark_name = st.selectbox(
+                    "기준지수",
+                    options=["S&P500", "Nasdaq", "KOSPI"],
+                    index=0,
+                    label_visibility='collapsed',
+                )
             with _c1:
                 _yr_opts = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
                 _macro_years = st.select_slider(
@@ -5502,21 +5699,22 @@ def main(page="signal"):
                 'end_count': _end_count,
             }
 
-            with st.spinner("📡 S&P500 데이터 로딩 중..."):
-                _spx_s = _yf_close('^GSPC', _macro_years) if _show_spx else None
+            with st.spinner("📡 기준 지수 데이터 로딩 중..."):
+                _benchmark_cfg = _get_macro_benchmark(_benchmark_name)
+                _spx_s = _yf_close(_benchmark_cfg['code'], _macro_years) if _show_spx else None
 
             with st.spinner("📡 매크로 데이터 로딩 중..."):
                 _macro_charts = [
-                    make_macro_index_cycle_chart(_macro_years,    _spx_s, _show_raw_macro, _downturn_params),  # ⓪ S&P500
-                    make_macro_hy_spread_chart(_macro_years,     _spx_s, _show_raw_macro, _downturn_params),  # ① HY 스프레드
-                    make_macro_ig_spread_chart(_macro_years,     _spx_s, _show_raw_macro, _downturn_params),  # ② IG 스프레드
-                    make_macro_credit_stress_chart(_macro_years, _spx_s, _show_raw_macro, _downturn_params),  # ③ 크레딧 스트레스
-                    make_macro_options_chart(_macro_years,       _spx_s, _show_raw_macro, _downturn_params),  # ④ VIX
-                    make_macro_combo_downturn_chart(_macro_years, _spx_s, _combo_modes, _downturn_params),  # ⑤ 종합 하락 사이클
-                    make_macro_vix_spread_chart(_macro_years,    _spx_s, _show_raw_macro, _downturn_params),  # ⑥ VIX 텀스프레드
-                    make_macro_yield_curve_chart(_macro_years,   _spx_s),   # ⑦ 장단기 금리차
-                    make_macro_pmi_chart(_macro_years,           _spx_s),   # ⑧ 경기 모멘텀
-                    make_macro_liquidity_chart(_macro_years,     _spx_s),   # ⑨ 유동성 (M2/Fed)
+                    make_macro_index_cycle_chart(_macro_years,    _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),  # ⓪ 지수
+                    make_macro_hy_spread_chart(_macro_years,     _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),  # ① HY/한국형 proxy
+                    make_macro_ig_spread_chart(_macro_years,     _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),  # ② IG/한국형 proxy
+                    make_macro_credit_stress_chart(_macro_years, _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),  # ③ 크레딧 스트레스
+                    make_macro_options_chart(_macro_years,       _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),  # ④ VIX/HV20
+                    make_macro_combo_downturn_chart(_macro_years, _spx_s, _combo_modes, _downturn_params, _benchmark_name),  # ⑤ 종합 하락 사이클
+                    make_macro_vix_spread_chart(_macro_years,    _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),  # ⑥ VIX/HV term
+                    make_macro_yield_curve_chart(_macro_years,   _spx_s, _benchmark_name),   # ⑦ 장단기 금리차
+                    make_macro_pmi_chart(_macro_years,           _spx_s, _benchmark_name),   # ⑧ 경기 모멘텀
+                    make_macro_liquidity_chart(_macro_years,     _spx_s, _benchmark_name),   # ⑨ 유동성
                     make_macro_ai_capex_chart(_macro_years,      _spx_s),   # ⑩ AI CAPEX
                 ]
 
@@ -5535,3 +5733,4 @@ def main(page="signal"):
 
 if __name__ == "__main__":
     main()
+    benchmark = _get_macro_benchmark(benchmark_name)
