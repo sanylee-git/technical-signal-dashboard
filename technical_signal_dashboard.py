@@ -3566,12 +3566,22 @@ def _add_price_signal_markers(fig, signal_df: pd.DataFrame, price_s: pd.Series, 
     """신호 마커를 가격 오버레이 축 위에 표시한다."""
     if signal_df is None or signal_df.empty or price_s is None or price_s.empty:
         return
-    price_aligned = price_s.reindex(signal_df.index).dropna()
-    if price_aligned.empty:
-        return
-    signal_df = signal_df.reindex(price_aligned.index)
-    start_y = price_aligned.loc[signal_df['down_start_signal'].fillna(False)]
-    end_y = price_aligned.loc[signal_df['down_end_signal'].fillna(False)]
+
+    def _signal_price_points(mask_col: str) -> pd.Series:
+        sig_idx = signal_df.index[signal_df[mask_col].fillna(False)]
+        if len(sig_idx) == 0:
+            return pd.Series(dtype=float)
+        exact = price_s.reindex(sig_idx)
+        if exact.notna().any():
+            return exact.dropna()
+        try:
+            nearest = price_s.reindex(sig_idx, method='nearest', tolerance=pd.Timedelta('7D'))
+            return nearest.dropna()
+        except Exception:
+            return pd.Series(dtype=float)
+
+    start_y = _signal_price_points('down_start_signal')
+    end_y = _signal_price_points('down_end_signal')
     if not start_y.empty:
         fig.add_trace(go.Scatter(
             x=start_y.index, y=start_y, name=f'{prefix} 시작',
