@@ -3786,8 +3786,8 @@ def _compute_dual_threshold_ema_signal_frame(
         loc = out.index.get_loc(idx)
         ema_value = float(out.at[idx, ema_col])
         prev_ema = float(out.iloc[loc - 1][ema_col]) if loc > 0 else np.nan
-        start_cross = loc > 0 and prev_ema >= float(start_threshold) and ema_value < float(start_threshold)
-        end_cross = loc > 0 and prev_ema <= float(end_threshold) and ema_value > float(end_threshold)
+        start_cross = loc > 0 and prev_ema >= float(start_threshold) and ema_value <= float(start_threshold)
+        end_cross = loc > 0 and prev_ema <= float(end_threshold) and ema_value >= float(end_threshold)
 
         if not in_cycle and start_cross:
             in_cycle = True
@@ -4272,8 +4272,9 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True, do
     plot_s = (-stress).dropna()
     fig = go.Figure()
     fig.add_hline(y=0,  line=dict(color='rgba(255,255,255,0.2)', width=1))
-    fig.add_hline(y=1,  line=dict(color='rgba(75,255,179,0.25)',  dash='dot', width=1))
-    fig.add_hline(y=-1, line=dict(color='rgba(255,75,110,0.25)',  dash='dot', width=1))
+    if threshold_end_value is None:
+        fig.add_hline(y=1,  line=dict(color='rgba(75,255,179,0.25)',  dash='dot', width=1))
+        fig.add_hline(y=-1, line=dict(color='rgba(255,75,110,0.25)',  dash='dot', width=1))
     if show_raw:
         fig.add_trace(go.Scatter(x=plot_s.index, y=plot_s.clip(lower=0),
                                  fill='tozeroy', fillcolor='rgba(75,255,179,0.10)',
