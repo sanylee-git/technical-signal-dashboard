@@ -3804,14 +3804,33 @@ def _compute_dynamic_quantile_signal_frame(
 
     in_cycle = False
     for idx in out.index:
+        loc = out.index.get_loc(idx)
         ema_value = float(out.at[idx, ema_col])
         start_line = float(out.at[idx, 'risk_start_line'])
         end_line = float(out.at[idx, 'risk_end_line'])
+        prev_ema = float(out.iloc[loc - 1][ema_col]) if loc > 0 else np.nan
+        prev_start_line = float(out.iloc[loc - 1]['risk_start_line']) if loc > 0 else np.nan
+        prev_end_line = float(out.iloc[loc - 1]['risk_end_line']) if loc > 0 else np.nan
 
-        if not in_cycle and ema_value < start_line:
+        start_cross = (
+            loc > 0
+            and pd.notna(prev_ema)
+            and pd.notna(prev_start_line)
+            and prev_ema >= prev_start_line
+            and ema_value < start_line
+        )
+        end_cross = (
+            loc > 0
+            and pd.notna(prev_ema)
+            and pd.notna(prev_end_line)
+            and prev_ema <= prev_end_line
+            and ema_value > end_line
+        )
+
+        if not in_cycle and start_cross:
             in_cycle = True
             out.at[idx, 'down_start_signal'] = True
-        elif in_cycle and ema_value > end_line:
+        elif in_cycle and end_cross:
             in_cycle = False
             out.at[idx, 'down_end_signal'] = True
         out.at[idx, 'down_flag'] = in_cycle
