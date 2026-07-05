@@ -3760,6 +3760,108 @@ def _add_threshold_ema_signals(fig, s: pd.Series, threshold: float, ema_span: in
             ))
 
 
+def _compute_dynamic_quantile_signal_frame(
+    s: pd.Series,
+    window: int = 126,
+    start_quantile: float = 0.2,
+    end_quantile: float = 0.4,
+) -> pd.DataFrame:
+    """동적 분위수 라인 기반 Risk-off 사이클 상태를 계산한다."""
+    if s is None or s.empty:
+        return pd.DataFrame()
+
+    out = pd.DataFrame({'value': s}).dropna()
+    if len(out) < max(30, int(window) // 2):
+        return pd.DataFrame()
+
+    out['risk_start_line'] = (
+        out['value']
+        .rolling(int(window), min_periods=max(20, int(window) // 2))
+        .quantile(float(start_quantile))
+        .shift(1)
+    )
+    out['risk_end_line'] = (
+        out['value']
+        .rolling(int(window), min_periods=max(20, int(window) // 2))
+        .quantile(float(end_quantile))
+        .shift(1)
+    )
+    out = out.dropna().copy()
+    if out.empty:
+        return pd.DataFrame()
+
+    out['down_flag'] = False
+    out['down_start_signal'] = False
+    out['down_end_signal'] = False
+
+    in_cycle = False
+    for idx in out.index:
+        value = float(out.at[idx, 'value'])
+        start_line = float(out.at[idx, 'risk_start_line'])
+        end_line = float(out.at[idx, 'risk_end_line'])
+
+        if not in_cycle and value < start_line:
+            in_cycle = True
+            out.at[idx, 'down_start_signal'] = True
+        elif in_cycle and value > end_line:
+            in_cycle = False
+            out.at[idx, 'down_end_signal'] = True
+        out.at[idx, 'down_flag'] = in_cycle
+    return out
+
+
+def _add_dynamic_quantile_signals(
+    fig,
+    s: pd.Series,
+    window: int = 126,
+    start_quantile: float = 0.2,
+    end_quantile: float = 0.4,
+    overlay_price=None,
+    overlay_yaxis='y2',
+    prefix='Risk-off',
+):
+    signal_df = _compute_dynamic_quantile_signal_frame(
+        s,
+        window=window,
+        start_quantile=start_quantile,
+        end_quantile=end_quantile,
+    )
+    if signal_df.empty:
+        return
+
+    start_pct = int(round(float(start_quantile) * 100))
+    end_pct = int(round(float(end_quantile) * 100))
+    fig.add_trace(go.Scatter(
+        x=signal_df.index, y=signal_df['risk_start_line'],
+        name=f'시작선 Q{start_pct}',
+        line=dict(color='rgba(255,140,105,0.55)', width=1.2, dash='dot'),
+        hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>Risk 시작선 (Q{start_pct})  %{{y:.2f}}<extra></extra>',
+    ))
+    fig.add_trace(go.Scatter(
+        x=signal_df.index, y=signal_df['risk_end_line'],
+        name=f'종료선 Q{end_pct}',
+        line=dict(color='rgba(75,255,179,0.55)', width=1.2, dash='dot'),
+        hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>Risk 종료선 (Q{end_pct})  %{{y:.2f}}<extra></extra>',
+    ))
+    if overlay_price is not None and not overlay_price.empty:
+        _add_price_signal_markers(fig, signal_df, overlay_price, yaxis=overlay_yaxis, prefix=prefix)
+    else:
+        sig_start = signal_df.loc[signal_df['down_start_signal'], 'value']
+        sig_end = signal_df.loc[signal_df['down_end_signal'], 'value']
+        if not sig_start.empty:
+            fig.add_trace(go.Scatter(
+                x=sig_start.index, y=sig_start, name=f'{prefix} 시작',
+                mode='markers',
+                marker=dict(symbol='triangle-down', size=8, color='rgba(255,140,105,0.85)'),
+            ))
+        if not sig_end.empty:
+            fig.add_trace(go.Scatter(
+                x=sig_end.index, y=sig_end, name=f'{prefix} 종료',
+                mode='markers',
+                marker=dict(symbol='triangle-up', size=8, color='rgba(75,255,179,0.85)'),
+            ))
+
+
 def _compute_combo_downturn_frame(parts: dict[str, pd.Series], params=None) -> pd.DataFrame:
     """0~4 개별 Risk-off 상태를 합성한 종합 하락 사이클 상태를 계산한다."""
     frames = {}
@@ -4014,7 +4116,9 @@ def make_macro_ig_spread_chart(years: int = 5, spx_s=None, show_raw=True, downtu
 
 
 def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500',
-                                   threshold_mode=False, threshold_value: float = 0.0, ema_span: int | None = None):
+                                   threshold_mode=False, threshold_value: float = 0.0, ema_span: int | None = None,
+                                   dynamic_mode: bool = False, dynamic_window: int = 126,
+                                   dynamic_start_quantile: float = 0.2, dynamic_end_quantile: float = 0.4):
     """③ 신용 스트레스 지수: HY + NFCI + VIX z-score 합성, 반전 표시."""
     benchmark = _get_macro_benchmark(benchmark_name)
     parts = []
@@ -4060,7 +4164,17 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True, do
                                  opacity=0.28,
                                  hovertemplate='<b>%{x|%Y-%m-%d}</b>  %{y:.2f}<extra></extra>'))
     _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2', label=benchmark['label'])
-    if threshold_mode:
+    if dynamic_mode:
+        _add_dynamic_quantile_signals(
+            fig,
+            plot_s,
+            window=int(dynamic_window),
+            start_quantile=float(dynamic_start_quantile),
+            end_quantile=float(dynamic_end_quantile),
+            overlay_price=spx_s,
+            overlay_yaxis='y2',
+        )
+    elif threshold_mode:
         _ema_span = int(ema_span or _resolve_downturn_params(downturn_params)['ema_span'])
         _add_threshold_ema_signals(fig, plot_s, threshold=threshold_value, ema_span=_ema_span,
                                    overlay_price=spx_s, overlay_yaxis='y2')
@@ -5762,7 +5876,7 @@ def main(page="signal"):
     if page in ("market_macro", "macro2"):
         _macro2_container = tab4 if page == "market_macro" else tab3
         with _macro2_container:
-            st.caption("실험용 축소판입니다. ③/④/⑥ 차트만 유지하고, 각 차트의 EMA가 지정 임계값 아래로 내려가면 시작, 위로 올라오면 종료로 단순화했습니다.")
+            st.caption("실험용 축소판입니다. ③ 신용스트레스 반전 지표 하나만으로 동적 Risk 시작선/종료선을 계산합니다.")
 
             _c0, _c1, _c2 = st.columns([1.2, 2.8, 1.2])
             with _c0:
@@ -5787,42 +5901,47 @@ def main(page="signal"):
                 _show_raw_macro2 = st.checkbox("원본선 표시", value=False, key='macro2_show_raw')
 
             with st.expander("실험 설정", expanded=True):
-                _s1, _s2, _s3, _s4 = st.columns(4)
+                _s1, _s2, _s3 = st.columns(3)
                 with _s1:
-                    _ema_span2 = st.selectbox("EMA", [10, 20, 30], index=1, key='macro2_ema_span')
+                    _dyn_window2 = st.selectbox("Rolling Window", [63, 126, 252, 504], index=1, key='macro2_dyn_window')
                 with _s2:
-                    _thr3 = st.number_input("③ threshold", value=0.0, step=0.1, format="%.2f", key='macro2_thr3')
+                    _dyn_start_q2 = st.select_slider(
+                        "Risk 시작 분위수",
+                        options=[0.10, 0.15, 0.20, 0.25, 0.30],
+                        value=0.20,
+                        format_func=lambda x: f"{int(x * 100)}%",
+                        key='macro2_dyn_start_q',
+                    )
                 with _s3:
-                    _thr4 = st.number_input("④ threshold", value=-20.0, step=0.5, format="%.2f", key='macro2_thr4')
-                with _s4:
-                    _thr6 = st.number_input("⑥ threshold", value=2.0, step=0.1, format="%.2f", key='macro2_thr6')
-
-            _downturn_params2 = _DEFAULT_DOWNTURN_PARAMS.copy()
-            _downturn_params2['ema_span'] = int(_ema_span2)
+                    _dyn_end_q2 = st.select_slider(
+                        "Risk 종료 분위수",
+                        options=[0.20, 0.25, 0.30, 0.40, 0.50, 0.60],
+                        value=0.40,
+                        format_func=lambda x: f"{int(x * 100)}%",
+                        key='macro2_dyn_end_q',
+                    )
 
             with st.spinner("📡 기준 지수 데이터 로딩 중..."):
                 _benchmark_cfg2 = _get_macro_benchmark(_benchmark_name)
                 _spx_s2 = _yf_close(_benchmark_cfg2['code'], _macro2_years)
 
-            with st.spinner("📡 실험용 매크로 데이터 로딩 중..."):
-                _macro2_charts = [
-                    make_macro_credit_stress_chart(
-                        _macro2_years, _spx_s2, _show_raw_macro2, _downturn_params2, _benchmark_name,
-                        threshold_mode=True, threshold_value=float(_thr3), ema_span=int(_ema_span2)
-                    ),
-                    make_macro_options_chart(
-                        _macro2_years, _spx_s2, _show_raw_macro2, _downturn_params2, _benchmark_name,
-                        threshold_mode=True, threshold_value=float(_thr4), ema_span=int(_ema_span2)
-                    ),
-                    make_macro_vix_spread_chart(
-                        _macro2_years, _spx_s2, _show_raw_macro2, _downturn_params2, _benchmark_name,
-                        threshold_mode=True, threshold_value=float(_thr6), ema_span=int(_ema_span2)
-                    ),
-                ]
+            if float(_dyn_start_q2) >= float(_dyn_end_q2):
+                st.warning("Risk 시작 분위수는 종료 분위수보다 낮아야 합니다.")
+            else:
+                with st.spinner("📡 실험용 매크로 데이터 로딩 중..."):
+                    _macro2_fig = make_macro_credit_stress_chart(
+                        _macro2_years,
+                        _spx_s2,
+                        _show_raw_macro2,
+                        benchmark_name=_benchmark_name,
+                        dynamic_mode=True,
+                        dynamic_window=int(_dyn_window2),
+                        dynamic_start_quantile=float(_dyn_start_q2),
+                        dynamic_end_quantile=float(_dyn_end_q2),
+                    )
 
-            for _fig in _macro2_charts:
-                if _fig is not None:
-                    st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False})
+                if _macro2_fig is not None:
+                    st.plotly_chart(_macro2_fig, width="stretch", config={"displayModeBar": False})
                 else:
                     st.warning("실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
 
