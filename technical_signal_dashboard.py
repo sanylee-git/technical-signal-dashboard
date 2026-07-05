@@ -85,6 +85,10 @@ st.markdown("""
 # ============================================================
 _DIR = os.path.dirname(os.path.abspath(__file__))
 FAVORITES_FILE = os.path.join(_DIR, "signal_favorites.json")
+MACRO_DATA_DIR = os.path.join(_DIR, "macro_data")
+CAPEX_FALLBACK_CSV = os.path.join(MACRO_DATA_DIR, "hyperscaler_capex_quarterly.csv")
+MEMORY_PRICE_CSV = os.path.join(MACRO_DATA_DIR, "memory_price_qoq.csv")
+MEMORY_PROFIT_CSV = os.path.join(MACRO_DATA_DIR, "memory_profit_quarterly.csv")
 
 DEFAULT_FAVORITES = [
     {"code": "^KQ11",      "name": "코스닥 지수 (^KQ11)"},
@@ -3207,6 +3211,177 @@ def _foreign_cumnet(market_code: str, years: int = 5):
         return pd.Series(dtype=float), str(e)
 
 
+def _ensure_macro_data_templates():
+    """자동 수집이 어려운 매크로 보조 데이터용 CSV 템플릿을 만든다."""
+    os.makedirs(MACRO_DATA_DIR, exist_ok=True)
+    templates = {
+        CAPEX_FALLBACK_CSV: "quarter,company,capex_bil_usd,source\n",
+        MEMORY_PRICE_CSV: "quarter,dram_contract_qoq,nand_contract_qoq,dram_spot_qoq,nand_spot_qoq,source\n",
+        MEMORY_PROFIT_CSV: "quarter,samsung_ds_op,sk_hynix_op,source\n",
+    }
+    for path, header in templates.items():
+        if not os.path.exists(path):
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(header)
+
+
+def _quarter_to_timestamp(value):
+    try:
+        txt = str(value).strip().upper().replace(" ", "").replace("/", "")
+        txt = txt.replace("-Q", "Q").replace("_Q", "Q")
+        return pd.Period(txt, freq="Q").to_timestamp(how="end").normalize()
+    except Exception:
+        return pd.NaT
+
+
+def _quarter_timestamp_to_label(idx) -> str:
+    try:
+        p = pd.Timestamp(idx).to_period("Q")
+        return f"{p.year}Q{p.quarter}"
+    except Exception:
+        return str(idx)
+
+
+def _load_quarterly_csv(path: str, required_cols: list[str]) -> pd.DataFrame:
+    _ensure_macro_data_templates()
+    if not os.path.exists(path):
+        return pd.DataFrame(columns=required_cols)
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        return pd.DataFrame(columns=required_cols)
+    if df.empty or any(col not in df.columns for col in required_cols):
+        return pd.DataFrame(columns=required_cols)
+    df = df.dropna(how="all")
+    if df.empty:
+        return pd.DataFrame(columns=required_cols)
+    df["quarter_ts"] = df["quarter"].map(_quarter_to_timestamp)
+    df = df.dropna(subset=["quarter_ts"]).sort_values("quarter_ts")
+    return df
+
+
+@st.cache_data(ttl=86400)
+def _fetch_quarterly_capex_yf(ticker: str) -> pd.Series:
+    """yfinance quarterly cashflow에서 CAPEX 계열 항목을 찾아 billion USD로 반환."""
+    try:
+        tk = yf.Ticker(ticker)
+        raw = getattr(tk, "quarterly_cashflow", pd.DataFrame())
+        if raw is None or raw.empty:
+            raw = getattr(tk, "quarterly_cash_flow", pd.DataFrame())
+        if raw is None or raw.empty:
+            return pd.Series(dtype=float)
+
+        idx_map = {str(idx).strip().lower(): idx for idx in raw.index}
+        candidates = [
+            "capital expenditure",
+            "capital expenditures",
+            "purchase of ppe",
+            "property plant equipment",
+            "payments to acquire property plant and equipment",
+            "payments to acquire productive assets",
+            "property plant and equipment additions",
+        ]
+        row_key = None
+        for cand in candidates:
+            for idx_lower, original_idx in idx_map.items():
+                if cand in idx_lower:
+                    row_key = original_idx
+                    break
+            if row_key is not None:
+                break
+        if row_key is None:
+            return pd.Series(dtype=float)
+
+        s = raw.loc[row_key].astype(float).dropna()
+        if s.empty:
+            return pd.Series(dtype=float)
+        s.index = pd.to_datetime(s.index)
+        s = s.sort_index()
+        s = s.abs() / 1e9
+        s.name = ticker
+        return s
+    except Exception:
+        return pd.Series(dtype=float)
+
+
+@st.cache_data(ttl=86400)
+def _get_hyperscaler_capex_frame() -> pd.DataFrame:
+    """Google/Microsoft/Meta/Amazon 분기 CAPEX를 wide frame으로 반환."""
+    _ensure_macro_data_templates()
+    companies = {
+        "GOOGL": "Google / Alphabet",
+        "MSFT": "Microsoft",
+        "META": "Meta",
+        "AMZN": "Amazon",
+    }
+    auto = {}
+    for ticker, label in companies.items():
+        s = _fetch_quarterly_capex_yf(ticker)
+        if not s.empty:
+            s.index = pd.to_datetime(s.index)
+            s.name = label
+            auto[label] = s
+    auto_df = pd.DataFrame(auto).sort_index() if auto else pd.DataFrame()
+
+    fallback = _load_quarterly_csv(CAPEX_FALLBACK_CSV, ["quarter", "company", "capex_bil_usd", "source"])
+    if not fallback.empty:
+        fallback["capex_bil_usd"] = pd.to_numeric(fallback["capex_bil_usd"], errors="coerce")
+        pivot = (
+            fallback.dropna(subset=["capex_bil_usd"])
+            .pivot_table(index="quarter_ts", columns="company", values="capex_bil_usd", aggfunc="last")
+            .sort_index()
+        )
+        if auto_df.empty:
+            auto_df = pivot
+        else:
+            auto_df = auto_df.combine_first(pivot)
+            auto_df.update(pivot)
+
+    if auto_df.empty:
+        return pd.DataFrame()
+
+    auto_df.index.name = "quarter_ts"
+    auto_df["Total CAPEX"] = auto_df.sum(axis=1, min_count=1)
+    return auto_df.sort_index()
+
+
+def _macro_placeholder_chart(title: str, message: str, height: int = 300):
+    fig = go.Figure()
+    fig.update_layout(**_ml(title, height=height))
+    fig.add_annotation(
+        text=message,
+        x=0.5, y=0.5, xref="paper", yref="paper",
+        showarrow=False,
+        font=dict(size=12, color="#666"),
+    )
+    return fig
+
+
+def _load_memory_price_frame() -> pd.DataFrame:
+    df = _load_quarterly_csv(
+        MEMORY_PRICE_CSV,
+        ["quarter", "dram_contract_qoq", "nand_contract_qoq", "dram_spot_qoq", "nand_spot_qoq", "source"],
+    )
+    if df.empty:
+        return df
+    numeric_cols = ["dram_contract_qoq", "nand_contract_qoq", "dram_spot_qoq", "nand_spot_qoq"]
+    for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df.sort_values("quarter_ts")
+
+
+def _load_memory_profit_frame() -> pd.DataFrame:
+    df = _load_quarterly_csv(
+        MEMORY_PROFIT_CSV,
+        ["quarter", "samsung_ds_op", "sk_hynix_op", "source"],
+    )
+    if df.empty:
+        return df
+    for col in ["samsung_ds_op", "sk_hynix_op"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df.sort_values("quarter_ts")
+
+
 def _zscore(s: pd.Series, window: int = 252) -> pd.Series:
     mu    = s.rolling(window, min_periods=max(30, window // 4)).mean()
     sigma = s.rolling(window, min_periods=max(30, window // 4)).std()
@@ -3830,12 +4005,14 @@ def make_macro_yield_curve_chart(years: int = 5, spx_s=None):
     """
     t3m = _fred('T10Y3M', years)
     dgs10 = _fred('DGS10', years)
+    dfii10 = _fred('DFII10', years)
+    dgs2 = _fred('DGS2', years)
     dtb3 = _fred('DTB3', years)
 
     if t3m.empty:
         if not dgs10.empty and not dtb3.empty:
             t3m = (dgs10 - dtb3.reindex(dgs10.index).interpolate()).dropna()
-    if t3m.empty and dgs10.empty and dtb3.empty:
+    if t3m.empty and dgs10.empty and dfii10.empty and dgs2.empty and dtb3.empty:
         return None
 
     fig = go.Figure()
@@ -3849,9 +4026,21 @@ def make_macro_yield_curve_chart(years: int = 5, spx_s=None):
         ))
     if not dgs10.empty:
         fig.add_trace(go.Scatter(
-            x=dgs10.index, y=dgs10, name='10Y',
+            x=dgs10.index, y=dgs10, name='10Y 명목',
             line=dict(color='rgba(200,200,200,0.55)', width=1.0, dash='dot'),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b>  10Y %{y:.2f}%<extra></extra>',
+            hovertemplate='<b>%{x|%Y-%m-%d}</b>  10Y 명목 %{y:.2f}%<extra></extra>',
+        ))
+    if not dfii10.empty:
+        fig.add_trace(go.Scatter(
+            x=dfii10.index, y=dfii10, name='10Y 실질',
+            line=dict(color='rgba(255,180,120,0.65)', width=1.0, dash='dot'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b>  10Y 실질 %{y:.2f}%<extra></extra>',
+        ))
+    if not dgs2.empty:
+        fig.add_trace(go.Scatter(
+            x=dgs2.index, y=dgs2, name='2Y',
+            line=dict(color='rgba(120,220,255,0.60)', width=1.0, dash='dot'),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b>  2Y %{y:.2f}%<extra></extra>',
         ))
     if not dtb3.empty:
         fig.add_trace(go.Scatter(
@@ -3860,16 +4049,275 @@ def make_macro_yield_curve_chart(years: int = 5, spx_s=None):
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  3M %{y:.2f}%<extra></extra>',
         ))
 
-    main_s = t3m if not t3m.empty else dgs10 if not dgs10.empty else dtb3
+    main_s = t3m if not t3m.empty else dgs10 if not dgs10.empty else dfii10 if not dfii10.empty else dgs2 if not dgs2.empty else dtb3
     _add_spx_overlay(fig, main_s, spx_s, yaxis='y2')
     fig.update_layout(
-        **_ml('⑨ 10Y-3M 금리차 + 10Y · 3M', height=300),
+        **_ml('⑨ 10Y-3M 금리차 + 10Y 명목·실질 · 2Y · 3M', height=300),
         yaxis2=_visible_price_yaxis('y', 'right'),
     )
     fig.layout.yaxis.ticksuffix = '%'
     if not t3m.empty:
         _add_corr_annotation(fig, t3m, spx_s)
     return fig
+
+
+def make_macro_ai_capex_chart(years: int = 5, spx_s=None):
+    """⑩ 하이퍼스케일러 AI CAPEX 차트."""
+    capex_df = _get_hyperscaler_capex_frame()
+    if capex_df.empty:
+        return _macro_placeholder_chart(
+            '⑩ AI CAPEX 합산 차트',
+            'CAPEX 데이터를 불러오지 못했습니다. macro_data/hyperscaler_capex_quarterly.csv 로 보완할 수 있습니다.',
+            height=360,
+        )
+
+    cutoff = pd.Timestamp.now().normalize() - pd.DateOffset(years=years)
+    capex_df = capex_df[capex_df.index >= cutoff].copy()
+    if capex_df.empty:
+        return _macro_placeholder_chart('⑩ AI CAPEX 합산 차트', '선택 기간에 표시할 CAPEX 데이터가 없습니다.', height=360)
+
+    total = capex_df['Total CAPEX']
+    qoq = total.pct_change() * 100
+    yoy = total.pct_change(4) * 100
+    _quarter_labels = capex_df.index.map(_quarter_timestamp_to_label)
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        row_heights=[0.65, 0.35],
+        vertical_spacing=0.06,
+        subplot_titles=['회사별 / 합산 CAPEX (billion USD)', '합산 CAPEX 변화율 (QoQ / YoY, %)'],
+    )
+
+    line_map = {
+        'Google / Alphabet': '#4BFFB3',
+        'Microsoft': '#7AAFD4',
+        'Meta': '#FF8C69',
+        'Amazon': '#C8C850',
+        'Total CAPEX': '#EDEDED',
+    }
+    for col in [c for c in capex_df.columns if c != 'Total CAPEX']:
+        if capex_df[col].dropna().empty:
+            continue
+        fig.add_trace(go.Scatter(
+            x=capex_df.index, y=capex_df[col], name=col, customdata=_quarter_labels,
+            line=dict(color=line_map.get(col, '#888'), width=1.4),
+            hovertemplate='<b>%{customdata}</b><br>%{y:.1f} bn USD<extra></extra>',
+        ), row=1, col=1)
+
+    fig.add_trace(go.Scatter(
+        x=total.index, y=total, name='4개사 합산 CAPEX', customdata=_quarter_labels,
+        line=dict(color=line_map['Total CAPEX'], width=2.0),
+        hovertemplate='<b>%{customdata}</b><br>합산 %{y:.1f} bn USD<extra></extra>',
+    ), row=1, col=1)
+
+    fig.add_trace(go.Scatter(
+        x=qoq.index, y=qoq, name='합산 QoQ%', customdata=_quarter_labels,
+        line=dict(color='rgba(75,255,179,0.70)', width=1.4, dash='dot'),
+        hovertemplate='<b>%{customdata}</b><br>QoQ %{y:.1f}%<extra></extra>',
+    ), row=2, col=1)
+    fig.add_trace(go.Scatter(
+        x=yoy.index, y=yoy, name='합산 YoY%', customdata=_quarter_labels,
+        line=dict(color='rgba(255,140,105,0.75)', width=1.4, dash='dash'),
+        hovertemplate='<b>%{customdata}</b><br>YoY %{y:.1f}%<extra></extra>',
+    ), row=2, col=1)
+
+    fig.update_layout(
+        height=430,
+        title=dict(text='⑩ AI CAPEX 합산 차트 (Google · Microsoft · Meta · Amazon)', font=dict(size=12, color='#9B9B9B'), x=0),
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#9B9B9B', size=10),
+        legend=dict(orientation='h', yanchor='bottom', y=1.01, xanchor='right', x=1, font=dict(size=9), bgcolor='rgba(0,0,0,0)'),
+        margin=dict(l=50, r=20, t=48, b=30),
+        hovermode='x unified',
+    )
+    fig.update_xaxes(gridcolor='rgba(255,255,255,0.04)', tickfont=dict(size=9))
+    fig.update_yaxes(gridcolor='rgba(255,255,255,0.04)', tickfont=dict(size=9), zeroline=False)
+    for ann in fig.layout.annotations:
+        ann.font.size = 9
+        ann.font.color = '#666'
+    return fig
+
+
+def make_macro_memory_price_chart(years: int = 5, spx_s=None):
+    """⑪ 메모리 가격 방향 차트 (CSV fallback 중심)."""
+    df = _load_memory_price_frame()
+    if df.empty:
+        return _macro_placeholder_chart(
+            '⑪ 메모리 가격 방향 차트',
+            'macro_data/memory_price_qoq.csv 에 분기별 DRAM/NAND QoQ 데이터를 넣으면 차트가 표시됩니다.',
+            height=320,
+        )
+
+    cutoff = pd.Timestamp.now().normalize() - pd.DateOffset(years=years)
+    df = df[df['quarter_ts'] >= cutoff].copy()
+    if df.empty:
+        return _macro_placeholder_chart('⑪ 메모리 가격 방향 차트', '선택 기간에 표시할 메모리 가격 데이터가 없습니다.', height=320)
+
+    fig = go.Figure()
+    _quarter_labels = df['quarter_ts'].map(_quarter_timestamp_to_label)
+    color_map = {
+        'dram_contract_qoq': ('DRAM Contract QoQ', '#4BFFB3'),
+        'nand_contract_qoq': ('NAND Contract QoQ', '#FF8C69'),
+        'dram_spot_qoq': ('DRAM Spot QoQ', '#7AAFD4'),
+        'nand_spot_qoq': ('NAND Spot QoQ', '#C8C850'),
+    }
+    fig.add_hline(y=0, line=dict(color='rgba(255,255,255,0.20)', width=1))
+    for col, (label, color) in color_map.items():
+        if col in df.columns and df[col].dropna().any():
+            fig.add_trace(go.Scatter(
+                x=df['quarter_ts'], y=df[col], name=label, customdata=_quarter_labels,
+                line=dict(color=color, width=1.5),
+                hovertemplate='<b>%{customdata}</b><br>%{y:.1f}%<extra></extra>',
+            ))
+    fig.update_layout(
+        **_ml('⑪ 메모리 가격 방향 차트 (QoQ %)', height=320),
+    )
+    fig.layout.yaxis.ticksuffix = '%'
+    return fig
+
+
+def make_macro_ai_memory_compare_chart(years: int = 5, spx_s=None):
+    """⑫ AI CAPEX vs 메모리 실적 비교 차트."""
+    capex_df = _get_hyperscaler_capex_frame()
+    profit_df = _load_memory_profit_frame()
+    if capex_df.empty or profit_df.empty:
+        return _macro_placeholder_chart(
+            '⑫ AI CAPEX vs 메모리 실적 비교',
+            'CAPEX 또는 macro_data/memory_profit_quarterly.csv 데이터가 부족합니다.',
+            height=380,
+        )
+
+    capex = capex_df[['Total CAPEX']].rename(columns={'Total CAPEX': 'capex_total'})
+    profit_df = profit_df.set_index('quarter_ts').sort_index()
+    profit_df['memory_profit_total'] = profit_df[['samsung_ds_op', 'sk_hynix_op']].sum(axis=1, min_count=1)
+    merged = capex.join(profit_df[['memory_profit_total']], how='inner').dropna()
+    cutoff = pd.Timestamp.now().normalize() - pd.DateOffset(years=years)
+    merged = merged[merged.index >= cutoff]
+    if merged.empty:
+        return _macro_placeholder_chart('⑫ AI CAPEX vs 메모리 실적 비교', '선택 기간에 두 데이터를 함께 비교할 구간이 없습니다.', height=380)
+
+    capex_norm = (merged['capex_total'] / merged['capex_total'].iloc[0]) * 100
+    profit_norm = (merged['memory_profit_total'] / merged['memory_profit_total'].iloc[0]) * 100 if merged['memory_profit_total'].iloc[0] != 0 else pd.Series(dtype=float)
+    _quarter_labels = merged.index.map(_quarter_timestamp_to_label)
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        row_heights=[0.55, 0.45],
+        vertical_spacing=0.06,
+        subplot_titles=['절대값 비교 (CAPEX vs Memory Profit)', '정규화 지수 비교 (첫 분기 = 100)'],
+    )
+    fig.add_trace(go.Scatter(
+        x=merged.index, y=merged['capex_total'], name='4개사 합산 CAPEX', customdata=_quarter_labels,
+        line=dict(color='#EDEDED', width=2.0),
+        hovertemplate='<b>%{customdata}</b><br>CAPEX %{y:.1f} bn USD<extra></extra>',
+    ), row=1, col=1)
+    fig.add_trace(go.Scatter(
+        x=merged.index, y=merged['memory_profit_total'], name='삼성DS + SK하이닉스 영업이익', customdata=_quarter_labels,
+        line=dict(color='#4BFFB3', width=1.8),
+        hovertemplate='<b>%{customdata}</b><br>Memory Profit %{y:.1f}<extra></extra>',
+    ), row=1, col=1)
+    fig.add_trace(go.Scatter(
+        x=capex_norm.index, y=capex_norm, name='CAPEX Index100', customdata=_quarter_labels,
+        line=dict(color='rgba(237,237,237,0.90)', width=1.8),
+        hovertemplate='<b>%{customdata}</b><br>CAPEX %{y:.1f}<extra></extra>',
+    ), row=2, col=1)
+    if not profit_norm.empty:
+        fig.add_trace(go.Scatter(
+            x=profit_norm.index, y=profit_norm, name='Memory Profit Index100', customdata=_quarter_labels,
+            line=dict(color='rgba(75,255,179,0.85)', width=1.8),
+            hovertemplate='<b>%{customdata}</b><br>Profit %{y:.1f}<extra></extra>',
+        ), row=2, col=1)
+    fig.update_layout(
+        height=430,
+        title=dict(text='⑫ AI CAPEX vs 메모리 실적 비교', font=dict(size=12, color='#9B9B9B'), x=0),
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#9B9B9B', size=10),
+        legend=dict(orientation='h', yanchor='bottom', y=1.01, xanchor='right', x=1, font=dict(size=9), bgcolor='rgba(0,0,0,0)'),
+        margin=dict(l=50, r=20, t=48, b=30),
+        hovermode='x unified',
+    )
+    fig.update_xaxes(gridcolor='rgba(255,255,255,0.04)', tickfont=dict(size=9))
+    fig.update_yaxes(gridcolor='rgba(255,255,255,0.04)', tickfont=dict(size=9), zeroline=False)
+    for ann in fig.layout.annotations:
+        ann.font.size = 9
+        ann.font.color = '#666'
+    return fig
+
+
+def make_macro_ai_memory_signal_summary():
+    """CAPEX/메모리 가격/실적 기반 요약 신호."""
+    capex_df = _get_hyperscaler_capex_frame()
+    mem_price_df = _load_memory_price_frame()
+    mem_profit_df = _load_memory_profit_frame()
+
+    if capex_df.empty or mem_price_df.empty or mem_profit_df.empty:
+        return None
+
+    capex_total = capex_df['Total CAPEX'].dropna()
+    if len(capex_total) < 2:
+        return None
+    latest_capex_qoq = capex_total.pct_change().dropna().iloc[-1] if len(capex_total.dropna()) >= 2 else np.nan
+    prev_capex_qoq = capex_total.pct_change().dropna().iloc[-2] if len(capex_total.dropna()) >= 3 else np.nan
+
+    latest_price = mem_price_df[['dram_contract_qoq', 'nand_contract_qoq']].dropna(how='all')
+    if latest_price.empty:
+        return None
+    latest_price_avg = latest_price.iloc[-1].mean(skipna=True)
+    prev_price_avg = latest_price.iloc[-2].mean(skipna=True) if len(latest_price) >= 2 else np.nan
+
+    mem_profit_df = mem_profit_df.copy()
+    mem_profit_df['memory_profit_total'] = mem_profit_df[['samsung_ds_op', 'sk_hynix_op']].sum(axis=1, min_count=1)
+    profit_total = mem_profit_df['memory_profit_total'].dropna()
+    if len(profit_total) < 2:
+        return None
+    latest_profit_qoq = profit_total.pct_change().dropna().iloc[-1] if len(profit_total.dropna()) >= 2 else np.nan
+
+    def _status_capex():
+        if pd.isna(latest_capex_qoq):
+            return 'Neutral'
+        if latest_capex_qoq < 0:
+            return 'Risk'
+        if not pd.isna(prev_capex_qoq) and latest_capex_qoq < prev_capex_qoq:
+            return 'Warning'
+        return 'Positive'
+
+    def _status_price():
+        if pd.isna(latest_price_avg):
+            return 'Neutral'
+        if latest_price_avg < 0:
+            return 'Risk'
+        if not pd.isna(prev_price_avg) and latest_price_avg < prev_price_avg:
+            return 'Warning'
+        return 'Positive'
+
+    def _status_profit():
+        if pd.isna(latest_profit_qoq):
+            return 'Neutral'
+        if profit_total.iloc[-1] < 0:
+            return 'Risk'
+        if latest_profit_qoq < 0:
+            return 'Warning'
+        return 'Positive'
+
+    capex_status = _status_capex()
+    price_status = _status_price()
+    profit_status = _status_profit()
+
+    if 'Risk' in (capex_status, price_status):
+        final_signal = 'Reduce'
+    elif 'Warning' in (capex_status, price_status, profit_status):
+        final_signal = 'Watch'
+    else:
+        final_signal = 'Maintain'
+
+    return {
+        'AI CAPEX': capex_status,
+        'Memory Price': price_status,
+        'Memory Profit': profit_status,
+        'Final Signal': final_signal,
+    }
 
 
 def make_macro_foreign_flow_chart(market_code: str, years: int = 5, spx_s=None):
@@ -5046,7 +5494,35 @@ def main(page="signal"):
                     make_macro_pmi_chart(_macro_years,           _spx_s),   # ⑦ 경기 모멘텀
                     make_macro_liquidity_chart(_macro_years,     _spx_s),   # ⑧ 유동성 (M2/Fed)
                     make_macro_yield_curve_chart(_macro_years,   _spx_s),   # ⑨ 장단기 금리차
+                    make_macro_ai_capex_chart(_macro_years,      _spx_s),   # ⑩ AI CAPEX
+                    make_macro_memory_price_chart(_macro_years,  _spx_s),   # ⑪ 메모리 가격
+                    make_macro_ai_memory_compare_chart(_macro_years, _spx_s),  # ⑫ CAPEX vs 메모리 실적
                 ]
+
+            _macro_signal_summary = make_macro_ai_memory_signal_summary()
+            if _macro_signal_summary:
+                st.markdown("##### 🧭 AI / Memory Signal Summary")
+                _sum_cols = st.columns(4)
+                _sum_colors = {
+                    "Positive": "#4BFFB3",
+                    "Neutral": "#AAAAAA",
+                    "Warning": "#FFB347",
+                    "Risk": "#FF4B6E",
+                    "Maintain": "#4BFFB3",
+                    "Watch": "#FFB347",
+                    "Reduce": "#FF4B6E",
+                }
+                for _col, (_label, _value) in zip(_sum_cols, _macro_signal_summary.items()):
+                    with _col:
+                        st.markdown(
+                            f"<div style='background:#141416;border:1px solid rgba(255,255,255,0.06);"
+                            f"border-radius:8px;padding:10px 12px;'>"
+                            f"<div style='font-size:11px;color:#666;margin-bottom:4px;'>{_label}</div>"
+                            f"<div style='font-size:18px;font-weight:600;color:{_sum_colors.get(_value, '#EDEDED')};'>{_value}</div>"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
             _mc = st.columns(2)
             for i, ch in enumerate(_macro_charts):
@@ -5056,7 +5532,8 @@ def main(page="signal"):
                 else:
                     with _mc[i % 2]:
                         _labels = ['⓪ S&P500', '① HY 스프레드', '② IG 스프레드', '③ 크레딧 스트레스', '④ VIX',
-                                   '⑤ 종합 하락 사이클', '⑥ VIX 스프레드', '⑦ 경기 모멘텀', '⑧ 유동성', '⑨ 금리차']
+                                   '⑤ 종합 하락 사이클', '⑥ VIX 스프레드', '⑦ 경기 모멘텀', '⑧ 유동성', '⑨ 금리차',
+                                   '⑩ AI CAPEX', '⑪ 메모리 가격', '⑫ CAPEX vs 메모리 실적']
                         st.warning(f"{_labels[i]} 데이터 로딩 실패 — FRED 일시 불가. 잠시 후 재시도해 주세요.")
 
             # ⑦ 외국인 순매수 누적 — KOSPI / KOSDAQ 선택
