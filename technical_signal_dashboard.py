@@ -3763,8 +3763,8 @@ def _add_threshold_ema_signals(fig, s: pd.Series, threshold: float, ema_span: in
 def _compute_dynamic_quantile_signal_frame(
     s: pd.Series,
     window: int = 126,
-    start_quantile: float = 0.2,
-    end_quantile: float = 0.4,
+    start_quantile: float = 0.4,
+    end_quantile: float = 0.2,
     ema_span: int = 20,
 ) -> pd.DataFrame:
     """동적 분위수 라인 기반 Risk-off 사이클 상태를 계산한다."""
@@ -3783,13 +3783,13 @@ def _compute_dynamic_quantile_signal_frame(
         return pd.DataFrame()
 
     out['risk_start_line'] = (
-        out['value']
+        out[ema_col]
         .rolling(int(window), min_periods=max(20, int(window) // 2))
         .quantile(float(start_quantile))
         .shift(1)
     )
     out['risk_end_line'] = (
-        out['value']
+        out[ema_col]
         .rolling(int(window), min_periods=max(20, int(window) // 2))
         .quantile(float(end_quantile))
         .shift(1)
@@ -3804,14 +3804,14 @@ def _compute_dynamic_quantile_signal_frame(
 
     in_cycle = False
     for idx in out.index:
-        value = float(out.at[idx, 'value'])
+        ema_value = float(out.at[idx, ema_col])
         start_line = float(out.at[idx, 'risk_start_line'])
         end_line = float(out.at[idx, 'risk_end_line'])
 
-        if not in_cycle and value < start_line:
+        if not in_cycle and ema_value < start_line:
             in_cycle = True
             out.at[idx, 'down_start_signal'] = True
-        elif in_cycle and value > end_line:
+        elif in_cycle and ema_value > end_line:
             in_cycle = False
             out.at[idx, 'down_end_signal'] = True
         out.at[idx, 'down_flag'] = in_cycle
@@ -3822,8 +3822,8 @@ def _add_dynamic_quantile_signals(
     fig,
     s: pd.Series,
     window: int = 126,
-    start_quantile: float = 0.2,
-    end_quantile: float = 0.4,
+    start_quantile: float = 0.4,
+    end_quantile: float = 0.2,
     ema_span: int = 20,
     overlay_price=None,
     overlay_yaxis='y2',
@@ -4135,7 +4135,7 @@ def make_macro_ig_spread_chart(years: int = 5, spx_s=None, show_raw=True, downtu
 def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500',
                                    threshold_mode=False, threshold_value: float = 0.0, ema_span: int | None = None,
                                    dynamic_mode: bool = False, dynamic_window: int = 126,
-                                   dynamic_start_quantile: float = 0.2, dynamic_end_quantile: float = 0.4):
+                                   dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2):
     """③ 신용 스트레스 지수: HY + NFCI + VIX z-score 합성, 반전 표시."""
     benchmark = _get_macro_benchmark(benchmark_name)
     parts = []
@@ -5928,16 +5928,16 @@ def main(page="signal"):
                 with _s2:
                     _dyn_start_q2 = st.select_slider(
                         "Risk 시작 분위수",
-                        options=[0.10, 0.15, 0.20, 0.25, 0.30],
-                        value=0.20,
+                        options=[x / 100 for x in range(0, 101, 5)],
+                        value=0.40,
                         format_func=lambda x: f"{int(x * 100)}%",
                         key='macro2_dyn_start_q',
                     )
                 with _s3:
                     _dyn_end_q2 = st.select_slider(
                         "Risk 종료 분위수",
-                        options=[0.20, 0.25, 0.30, 0.40, 0.50, 0.60],
-                        value=0.40,
+                        options=[x / 100 for x in range(0, 101, 5)],
+                        value=0.20,
                         format_func=lambda x: f"{int(x * 100)}%",
                         key='macro2_dyn_end_q',
                     )
@@ -5946,8 +5946,8 @@ def main(page="signal"):
                 _benchmark_cfg2 = _get_macro_benchmark(_benchmark_name)
                 _spx_s2 = _yf_close(_benchmark_cfg2['code'], _macro2_years)
 
-            if float(_dyn_start_q2) >= float(_dyn_end_q2):
-                st.warning("Risk 시작 분위수는 종료 분위수보다 낮아야 합니다.")
+            if float(_dyn_start_q2) <= float(_dyn_end_q2):
+                st.warning("Risk 시작 분위수는 종료 분위수보다 높아야 합니다.")
             else:
                 with st.spinner("📡 실험용 매크로 데이터 로딩 중..."):
                     _macro2_fig = make_macro_credit_stress_chart(
