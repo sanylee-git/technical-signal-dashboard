@@ -48,7 +48,7 @@ st.set_page_config(
     page_title="시장/매크로 지표" if _IS_MARKET_MACRO_APP else "기술적 신호 스캐너",
     page_icon="🏔️" if _IS_MARKET_MACRO_APP else "🎯",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed" if _IS_MARKET_MACRO_APP else "expanded"
 )
 
 st.markdown("""
@@ -3453,8 +3453,8 @@ def _add_corr_annotation(fig, main_s: pd.Series, spx_s, label='vs S&P500'):
             return
         color = '#4BFFB3' if r > 0.3 else '#FF4B6E' if r < -0.3 else '#AAAAAA'
         fig.add_annotation(
-            x=1, y=1, xref='paper', yref='paper',
-            xanchor='right', yanchor='top',
+            x=0, y=1, xref='paper', yref='paper',
+            xanchor='left', yanchor='top',
             text=f'r = {r:+.2f} ({label})',
             showarrow=False,
             font=dict(size=9, color=color),
@@ -3959,10 +3959,24 @@ def make_macro_pmi_chart(years: int = 5, spx_s=None):
 
     if not spread_s.empty:
         main_s = spread_s
-    return _make_inverted_spread_chart(
-        main_s, '⑦ 신규주문-재고 스프레드 (반전, YoY%)', '신규주문-재고 스프레드',
-        spx_s=spx_s, color='#C8C850', show_downturn=False,
+    if main_s.empty:
+        return None
+
+    fig = go.Figure()
+    fig.add_hline(y=0, line=dict(color='rgba(255,255,255,0.20)', width=1))
+    fig.add_trace(go.Scatter(
+        x=main_s.index, y=main_s, name='신규주문-재고 스프레드',
+        line=dict(color='#C8C850', width=1.3),
+        hovertemplate='<b>%{x|%Y-%m-%d}</b>  %{y:.2f}%<extra></extra>',
+    ))
+    _add_spx_overlay(fig, main_s, spx_s, yaxis='y2')
+    fig.update_layout(
+        **_ml('⑧ 신규주문-재고 스프레드 (YoY%)', height=300),
+        yaxis2=_visible_price_yaxis('y', 'right'),
     )
+    fig.layout.yaxis.ticksuffix = '%'
+    _add_corr_annotation(fig, main_s, spx_s)
+    return fig
 
 
 def make_macro_liquidity_chart(years: int = 5, spx_s=None):
@@ -3990,7 +4004,7 @@ def make_macro_liquidity_chart(years: int = 5, spx_s=None):
             main_s = fed_yoy
     _add_spx_overlay(fig, main_s, spx_s, yaxis='y2')
     fig.update_layout(
-        **_ml('⑧ 유동성 지표 (M2 · Fed 자산 YoY%)'),
+        **_ml('⑨ 유동성 지표 (M2 · Fed 자산 YoY%)'),
         yaxis2=_visible_price_yaxis('y', 'right'),
     )
     fig.update_yaxes(ticksuffix='%')
@@ -4052,7 +4066,7 @@ def make_macro_yield_curve_chart(years: int = 5, spx_s=None):
     main_s = t3m if not t3m.empty else dgs10 if not dgs10.empty else dfii10 if not dfii10.empty else dgs2 if not dgs2.empty else dtb3
     _add_spx_overlay(fig, main_s, spx_s, yaxis='y2')
     fig.update_layout(
-        **_ml('⑨ 10Y-3M 금리차 + 10Y 명목·실질 · 2Y · 3M', height=300),
+        **_ml('⑦ 10Y-3M 금리차 + 10Y 명목·실질 · 2Y · 3M', height=300),
         yaxis2=_visible_price_yaxis('y', 'right'),
     )
     fig.layout.yaxis.ticksuffix = '%'
@@ -4342,11 +4356,11 @@ def make_macro_foreign_flow_chart(market_code: str, years: int = 5, spx_s=None):
             mkt_pct = ((mkt_t / mkt_t.iloc[0]) - 1) * 100
             fig.add_trace(go.Scatter(
                 x=mkt_pct.index, y=mkt_pct, name=f'{market_code} 지수(%)',
-                line=dict(color='rgba(200,200,80,0.55)', width=1.2, dash='dash'),
-                showlegend=True, hoverinfo='skip', yaxis='y2',
+        line=dict(color='rgba(200,200,80,0.55)', width=1.2, dash='dash'),
+        showlegend=True, hoverinfo='skip', yaxis='y2',
             ))
     fig.update_layout(
-        **_ml(f'⑦ 외국인 누적 순매수 — {market_code} (억원)', height=280),
+        **_ml(f'외국인 누적 순매수 — {market_code} (억원)', height=280),
         yaxis2=_hidden_yaxis('y', 'right'),
     )
     fig.update_yaxes(tickformat=',.0f')
@@ -4387,8 +4401,17 @@ def main(page="signal"):
     st.session_state.favorites = load_favorites()
     favorites = st.session_state.favorites
 
+    if page == "market_macro":
+        st.markdown("""
+            <style>
+            [data-testid="stSidebar"] { display: none !important; }
+            section[data-testid="stSidebar"] { display: none !important; }
+            </style>
+        """, unsafe_allow_html=True)
+
     # ─── 사이드바 ─────────────────────────────────────────────
-    with st.sidebar:
+    if page != "market_macro":
+      with st.sidebar:
         # 즐겨찾기 파일 오류가 있을 때만 경고 표시
         if st.session_state.get('_fav_load_err'):
             st.error(f"즐겨찾기 읽기 오류: {st.session_state['_fav_load_err']}")
@@ -4636,7 +4659,7 @@ def main(page="signal"):
     elif page == "macro":
         tab1, tab2, tab3 = None, None, st.container()
     elif page == "market_macro":
-        tab2, tab3 = st.tabs(["🌐 시장 내부지표", "🌍 매크로 지표"])
+        tab3, tab2 = st.tabs(["🌍 매크로 지표", "🌐 시장 내부지표"])
         tab1 = None
     else:
         st.error(f"알 수 없는 페이지입니다: {page}")
@@ -5491,38 +5514,11 @@ def main(page="signal"):
                     make_macro_options_chart(_macro_years,       _spx_s, _show_raw_macro, _downturn_params),  # ④ VIX
                     make_macro_combo_downturn_chart(_macro_years, _spx_s, _combo_modes, _downturn_params),  # ⑤ 종합 하락 사이클
                     make_macro_vix_spread_chart(_macro_years,    _spx_s, _show_raw_macro, _downturn_params),  # ⑥ VIX 텀스프레드
-                    make_macro_pmi_chart(_macro_years,           _spx_s),   # ⑦ 경기 모멘텀
-                    make_macro_liquidity_chart(_macro_years,     _spx_s),   # ⑧ 유동성 (M2/Fed)
-                    make_macro_yield_curve_chart(_macro_years,   _spx_s),   # ⑨ 장단기 금리차
+                    make_macro_yield_curve_chart(_macro_years,   _spx_s),   # ⑦ 장단기 금리차
+                    make_macro_pmi_chart(_macro_years,           _spx_s),   # ⑧ 경기 모멘텀
+                    make_macro_liquidity_chart(_macro_years,     _spx_s),   # ⑨ 유동성 (M2/Fed)
                     make_macro_ai_capex_chart(_macro_years,      _spx_s),   # ⑩ AI CAPEX
-                    make_macro_memory_price_chart(_macro_years,  _spx_s),   # ⑪ 메모리 가격
-                    make_macro_ai_memory_compare_chart(_macro_years, _spx_s),  # ⑫ CAPEX vs 메모리 실적
                 ]
-
-            _macro_signal_summary = make_macro_ai_memory_signal_summary()
-            if _macro_signal_summary:
-                st.markdown("##### 🧭 AI / Memory Signal Summary")
-                _sum_cols = st.columns(4)
-                _sum_colors = {
-                    "Positive": "#4BFFB3",
-                    "Neutral": "#AAAAAA",
-                    "Warning": "#FFB347",
-                    "Risk": "#FF4B6E",
-                    "Maintain": "#4BFFB3",
-                    "Watch": "#FFB347",
-                    "Reduce": "#FF4B6E",
-                }
-                for _col, (_label, _value) in zip(_sum_cols, _macro_signal_summary.items()):
-                    with _col:
-                        st.markdown(
-                            f"<div style='background:#141416;border:1px solid rgba(255,255,255,0.06);"
-                            f"border-radius:8px;padding:10px 12px;'>"
-                            f"<div style='font-size:11px;color:#666;margin-bottom:4px;'>{_label}</div>"
-                            f"<div style='font-size:18px;font-weight:600;color:{_sum_colors.get(_value, '#EDEDED')};'>{_value}</div>"
-                            f"</div>",
-                            unsafe_allow_html=True,
-                        )
-                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
             _mc = st.columns(2)
             for i, ch in enumerate(_macro_charts):
@@ -5532,119 +5528,9 @@ def main(page="signal"):
                 else:
                     with _mc[i % 2]:
                         _labels = ['⓪ S&P500', '① HY 스프레드', '② IG 스프레드', '③ 크레딧 스트레스', '④ VIX',
-                                   '⑤ 종합 하락 사이클', '⑥ VIX 스프레드', '⑦ 경기 모멘텀', '⑧ 유동성', '⑨ 금리차',
-                                   '⑩ AI CAPEX', '⑪ 메모리 가격', '⑫ CAPEX vs 메모리 실적']
+                                   '⑤ 종합 하락 사이클', '⑥ VIX 스프레드', '⑦ 금리차', '⑧ 경기 모멘텀', '⑨ 유동성',
+                                   '⑩ AI CAPEX']
                         st.warning(f"{_labels[i]} 데이터 로딩 실패 — FRED 일시 불가. 잠시 후 재시도해 주세요.")
-
-            # ⑦ 외국인 순매수 누적 — KOSPI / KOSDAQ 선택
-            st.divider()
-            _ff_code = st.radio("외국인 순매수 시장", ['KOSPI', 'KOSDAQ'], horizontal=True,
-                                label_visibility='visible')
-            with st.spinner("📡 외국인 순매수 데이터 로딩 중..."):
-                _ff, _ff_err = make_macro_foreign_flow_chart(_ff_code, _macro_years, _spx_s)
-            if _ff is not None:
-                st.plotly_chart(_ff, width="stretch", config={"displayModeBar": False})
-            else:
-                _err_detail = f" — {_ff_err}" if _ff_err else ""
-                st.warning(f"⑦ 외국인 순매수 데이터 로딩 실패{_err_detail}")
-
-            # ── 매크로 지표 상관계수 테이블 ───────────────────────────────────
-            st.divider()
-            st.markdown("##### 📊 매크로 지표 × S&P500 상관계수")
-            st.caption("r > +0.3 🟢 양의 상관  /  r < -0.3 🔴 음의 상관  /  선행(1M·3M): 지표가 시장을 N개월 앞설 때")
-
-            with st.spinner("상관계수 계산 중..."):
-                # 각 지표 주요 시리즈 수집 (FRED 캐시 재사용)
-                _cy = _macro_years
-                _hy_s   = _credit_spread_series('BAMLH0A0HYM2', _cy)
-                _ig_s   = _credit_spread_series('BAMLC0A0CM', _cy)
-                _nfci_s = _fred('NFCI', _cy)
-                _vix_s  = _yf_close('^VIX', _cy)
-                _vix3m_s = _yf_close('^VIX3M', _cy)
-                _vix_spread = (_vix_s - _vix3m_s.reindex(_vix_s.index)).dropna() if not _vix_s.empty and not _vix3m_s.empty else pd.Series(dtype=float)
-                _stress_parts = []
-                if not _hy_s.empty: _stress_parts.append(_zscore(_hy_s).rename('HY'))
-                if not _nfci_s.empty: _stress_parts.append(_zscore(_nfci_s).rename('NFCI'))
-                if not _vix_s.empty: _stress_parts.append(_zscore(_vix_s).rename('VIX'))
-                _stress_s = pd.concat(_stress_parts, axis=1).mean(axis=1).dropna() if _stress_parts else pd.Series(dtype=float)
-                _m2_s_raw = _fred('M2SL', _cy + 2)
-                _m2_yoy = (_m2_s_raw.pct_change(12) * 100).dropna() if not _m2_s_raw.empty else pd.Series(dtype=float)
-                _t3m_s  = _fred('T10Y3M', _cy)
-                if _t3m_s.empty:
-                    _dgs10 = _fred('DGS10', _cy); _dtb3 = _fred('DTB3', _cy)
-                    if not _dgs10.empty and not _dtb3.empty:
-                        _t3m_s = (_dgs10 - _dtb3.reindex(_dgs10.index).interpolate()).dropna()
-                # ISM proxy
-                _ord_s = pd.Series(dtype=float)
-                for _sid in ('AMTMNO', 'NEWORDER', 'DGORDER'):
-                    _ord_s = _fred(_sid, _cy + 2)
-                    if not _ord_s.empty: break
-                _ord_yoy = (_ord_s.pct_change(12) * 100).dropna() if not _ord_s.empty else pd.Series(dtype=float)
-                _inv_s = _fred('ISRATIO', _cy + 2)
-                _pmi_spread = pd.Series(dtype=float)
-                if not _ord_yoy.empty and not _inv_s.empty:
-                    _inv_yoy = (_inv_s.pct_change(12) * 100).dropna()
-                    _al_ord = _ord_yoy.reindex(_inv_yoy.index).dropna()
-                    _al_inv = _inv_yoy.reindex(_al_ord.index).dropna()
-                    _al_ord = _al_ord.reindex(_al_inv.index)
-                    _pmi_spread = (_al_ord - _al_inv).dropna()
-
-                _macro_named = {
-                    '① HY 스프레드(반전)':       -_hy_s,
-                    '② IG 스프레드(반전)':       -_ig_s,
-                    '③ 신용 스트레스(반전)':      -_stress_s,
-                    '④ VIX(반전)':                -_vix_s,
-                    '⑤ VIX-VIX3M(반전)':          -_vix_spread,
-                    '⑥ 신규주문-재고(반전)':      -_pmi_spread,
-                    '⑦ M2 YoY%':                  _m2_yoy,
-                    '⑧ 10Y-3M 스프레드(반전)':    -_t3m_s,
-                }
-
-                if _spx_s is not None and not _spx_s.empty:
-                    _spx_ret = _spx_s.pct_change().dropna()
-                    _corr_rows = []
-                    for _nm, _s in _macro_named.items():
-                        if _s.empty:
-                            # 문자열 '—' 대신 NaN 사용: 컬럼을 숫자형으로 유지해야
-                            # st.dataframe의 Arrow 변환(ArrowInvalid)이 깨지지 않음.
-                            # 화면 표시는 아래 .format()에서 NaN -> '—'로 처리됨.
-                            _corr_rows.append({'지표': _nm, '동기(r)': float('nan'),
-                                                '1M 선행(r)': float('nan'), '3M 선행(r)': float('nan')})
-                            continue
-                        def _calc_r(series, shift_days=0):
-                            try:
-                                _spx_shifted = _spx_ret.shift(-shift_days) if shift_days else _spx_ret
-                                _al = pd.concat([series.rename('x'), _spx_shifted.rename('y')], axis=1).dropna()
-                                if len(_al) < 20: return float('nan')
-                                return round(float(_al['x'].corr(_al['y'])), 2)
-                            except Exception:
-                                return float('nan')
-                        _corr_rows.append({
-                            '지표': _nm,
-                            '동기(r)':     _calc_r(_s),
-                            '1M 선행(r)': _calc_r(_s, 21),
-                            '3M 선행(r)': _calc_r(_s, 63),
-                        })
-
-                    _corr_df = pd.DataFrame(_corr_rows).set_index('지표')
-                    _corr_df = make_arrow_safe(_corr_df)  # Arrow 직렬화 안전장치
-
-                    def _style_r(v):
-                        if not isinstance(v, (int, float)) or pd.isna(v): return 'color:#666'
-                        if v >= 0.5:  return 'color:#4BFFB3;font-weight:600'
-                        if v >= 0.3:  return 'color:#4BFFB3'
-                        if v <= -0.5: return 'color:#FF4B6E;font-weight:600'
-                        if v <= -0.3: return 'color:#FF4B6E'
-                        return 'color:#AAAAAA'
-
-                    _styled_corr = (
-                        _corr_df.style
-                        .map(_style_r)
-                        .format(lambda v: f'{v:+.2f}' if isinstance(v, float) and not pd.isna(v) else '—')
-                    )
-                    st.dataframe(_styled_corr, width="stretch")
-                else:
-                    st.info("S&P500 오버레이를 체크해야 상관계수를 계산할 수 있습니다.")
 
 
 if __name__ == "__main__":
