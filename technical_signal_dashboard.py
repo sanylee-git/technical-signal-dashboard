@@ -4039,7 +4039,10 @@ def _compute_combo_downturn_frame(parts: dict[str, pd.Series], params=None) -> p
     return combo
 
 
-def make_macro_index_cycle_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500'):
+def make_macro_index_cycle_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500',
+                                 dynamic_mode: bool = False, dynamic_window: int = 126,
+                                 dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2,
+                                 ema_span: int | None = None):
     """⓪ 선택 지수 자체의 EMA 기반 Risk-off 사이클."""
     benchmark = _get_macro_benchmark(benchmark_name)
     if spx_s is None or spx_s.empty:
@@ -4053,7 +4056,19 @@ def make_macro_index_cycle_chart(years: int = 5, spx_s=None, show_raw=True, down
         line=dict(color='rgba(182,182,182,0.88)', width=1.55),
         hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>{benchmark["label"]} %{{y:,.1f}}<extra></extra>',
     ))
-    _add_ema20_downturn_signals(fig, spx_s, show_downturn=True, overlay_price=spx_s, overlay_yaxis='y', params=downturn_params)
+    if dynamic_mode:
+        _ema_span = int(ema_span or _resolve_downturn_params(downturn_params)['ema_span'])
+        _add_dynamic_quantile_signals(
+            fig, spx_s,
+            window=int(dynamic_window),
+            start_quantile=float(dynamic_start_quantile),
+            end_quantile=float(dynamic_end_quantile),
+            ema_span=_ema_span,
+            overlay_price=spx_s,
+            overlay_yaxis='y',
+        )
+    else:
+        _add_ema20_downturn_signals(fig, spx_s, show_downturn=True, overlay_price=spx_s, overlay_yaxis='y', params=downturn_params)
     fig.update_layout(
         **_ml(f'⓪ {benchmark["label"]} 지수 Risk-off 사이클', height=300),
     )
@@ -4180,6 +4195,11 @@ def _make_inverted_spread_chart(
     show_raw=True,
     show_downturn=True,
     downturn_params=None,
+    dynamic_mode: bool = False,
+    dynamic_window: int = 126,
+    dynamic_start_quantile: float = 0.4,
+    dynamic_end_quantile: float = 0.2,
+    ema_span: int | None = None,
 ):
     """스프레드는 -1배로 표시해 위험 확대가 아래쪽으로 보이게 한다."""
     if s is None or s.empty:
@@ -4198,7 +4218,19 @@ def _make_inverted_spread_chart(
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  반전값 %{y:.2f}<extra></extra>',
         ))
     _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2', label=benchmark_label)
-    _add_ema20_downturn_signals(fig, plot_s, show_downturn=show_downturn, overlay_price=spx_s, overlay_yaxis='y2', params=downturn_params)
+    if dynamic_mode:
+        _ema_span = int(ema_span or _resolve_downturn_params(downturn_params)['ema_span'])
+        _add_dynamic_quantile_signals(
+            fig, plot_s,
+            window=int(dynamic_window),
+            start_quantile=float(dynamic_start_quantile),
+            end_quantile=float(dynamic_end_quantile),
+            ema_span=_ema_span,
+            overlay_price=spx_s,
+            overlay_yaxis='y2',
+        )
+    else:
+        _add_ema20_downturn_signals(fig, plot_s, show_downturn=show_downturn, overlay_price=spx_s, overlay_yaxis='y2', params=downturn_params)
     fig.update_layout(
         **_ml(title, height=height),
         yaxis2=_visible_price_yaxis('y', 'right'),
@@ -4208,7 +4240,10 @@ def _make_inverted_spread_chart(
     return fig
 
 
-def make_macro_hy_spread_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500'):
+def make_macro_hy_spread_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500',
+                               dynamic_mode: bool = False, dynamic_window: int = 126,
+                               dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2,
+                               ema_span: int | None = None):
     """① HY 크레딧 스프레드: 반전 표시 + EMA 하락 경고."""
     benchmark = _get_macro_benchmark(benchmark_name)
     if benchmark['kind'] == 'kr':
@@ -4223,11 +4258,16 @@ def make_macro_hy_spread_chart(years: int = 5, spx_s=None, show_raw=True, downtu
         suffix = '%'
     return _make_inverted_spread_chart(
         hy, title, trace_name,
-        spx_s=spx_s, benchmark_label=benchmark['label'], color='#FF4B6E', suffix=suffix, show_raw=show_raw, downturn_params=downturn_params,
+        spx_s=spx_s, benchmark_label=benchmark['label'], color='#FF4B6E', suffix=suffix, show_raw=show_raw,
+        downturn_params=downturn_params, dynamic_mode=dynamic_mode, dynamic_window=dynamic_window,
+        dynamic_start_quantile=dynamic_start_quantile, dynamic_end_quantile=dynamic_end_quantile, ema_span=ema_span,
     )
 
 
-def make_macro_ig_spread_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500'):
+def make_macro_ig_spread_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500',
+                               dynamic_mode: bool = False, dynamic_window: int = 126,
+                               dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2,
+                               ema_span: int | None = None):
     """② IG 크레딧 스프레드: 반전 표시 + EMA 하락 경고."""
     benchmark = _get_macro_benchmark(benchmark_name)
     if benchmark['kind'] == 'kr':
@@ -4242,7 +4282,9 @@ def make_macro_ig_spread_chart(years: int = 5, spx_s=None, show_raw=True, downtu
         suffix = '%'
     return _make_inverted_spread_chart(
         ig, title, trace_name,
-        spx_s=spx_s, benchmark_label=benchmark['label'], color='#4BFFB3', suffix=suffix, show_raw=show_raw, downturn_params=downturn_params,
+        spx_s=spx_s, benchmark_label=benchmark['label'], color='#4BFFB3', suffix=suffix, show_raw=show_raw,
+        downturn_params=downturn_params, dynamic_mode=dynamic_mode, dynamic_window=dynamic_window,
+        dynamic_start_quantile=dynamic_start_quantile, dynamic_end_quantile=dynamic_end_quantile, ema_span=ema_span,
     )
 
 
@@ -4336,7 +4378,9 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True, do
 
 
 def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500',
-                             threshold_mode=False, threshold_value: float = -20.0, ema_span: int | None = None):
+                             threshold_mode=False, threshold_value: float = -20.0, ema_span: int | None = None,
+                             dynamic_mode: bool = False, dynamic_window: int = 126,
+                             dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2):
     """④ VIX 레벨: 반전 표시 + EMA 하락 경고."""
     benchmark = _get_macro_benchmark(benchmark_name)
     if benchmark['kind'] == 'kr':
@@ -4369,7 +4413,18 @@ def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True, downturn
             hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b>  {line_label} %{{y:.1f}}<extra></extra>',
         ))
     _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2', label=benchmark['label'])
-    if threshold_mode:
+    if dynamic_mode:
+        _ema_span = int(ema_span or _resolve_downturn_params(downturn_params)['ema_span'])
+        _add_dynamic_quantile_signals(
+            fig, plot_s,
+            window=int(dynamic_window),
+            start_quantile=float(dynamic_start_quantile),
+            end_quantile=float(dynamic_end_quantile),
+            ema_span=_ema_span,
+            overlay_price=spx_s,
+            overlay_yaxis='y2',
+        )
+    elif threshold_mode:
         _ema_span = int(ema_span or _resolve_downturn_params(downturn_params)['ema_span'])
         _add_threshold_ema_signals(fig, plot_s, threshold=threshold_value, ema_span=_ema_span,
                                    overlay_price=spx_s, overlay_yaxis='y2')
@@ -4384,7 +4439,9 @@ def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True, downturn
 
 
 def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500',
-                                threshold_mode=False, threshold_value: float = 2.0, ema_span: int | None = None):
+                                threshold_mode=False, threshold_value: float = 2.0, ema_span: int | None = None,
+                                dynamic_mode: bool = False, dynamic_window: int = 126,
+                                dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2):
     """⑥ VIX-VIX3M 스프레드: 반전 표시 + EMA 하락 경고."""
     benchmark = _get_macro_benchmark(benchmark_name)
     if benchmark['kind'] == 'kr':
@@ -4399,7 +4456,7 @@ def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True, downt
         spread = (vix - vix3m.reindex(vix.index)).dropna()
         title = '⑥ VIX-VIX3M 스프레드 (반전)'
         trace_name = 'VIX-VIX3M 스프레드'
-    if not threshold_mode:
+    if not threshold_mode and not dynamic_mode:
         return _make_inverted_spread_chart(
             spread, title, trace_name,
             spx_s=spx_s, benchmark_label=benchmark['label'], color='#FF8C69', suffix='', show_raw=show_raw, downturn_params=downturn_params,
@@ -4420,13 +4477,25 @@ def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True, downt
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  반전값 %{y:.2f}<extra></extra>',
         ))
     _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2', label=benchmark['label'])
-    _add_threshold_ema_signals(
-        fig, plot_s,
-        threshold=threshold_value,
-        ema_span=int(ema_span or _resolve_downturn_params(downturn_params)['ema_span']),
-        overlay_price=spx_s,
-        overlay_yaxis='y2',
-    )
+    _ema_span = int(ema_span or _resolve_downturn_params(downturn_params)['ema_span'])
+    if dynamic_mode:
+        _add_dynamic_quantile_signals(
+            fig, plot_s,
+            window=int(dynamic_window),
+            start_quantile=float(dynamic_start_quantile),
+            end_quantile=float(dynamic_end_quantile),
+            ema_span=_ema_span,
+            overlay_price=spx_s,
+            overlay_yaxis='y2',
+        )
+    else:
+        _add_threshold_ema_signals(
+            fig, plot_s,
+            threshold=threshold_value,
+            ema_span=_ema_span,
+            overlay_price=spx_s,
+            overlay_yaxis='y2',
+        )
     fig.update_layout(
         **_ml(title, height=300),
         yaxis2=_visible_price_yaxis('y', 'right'),
@@ -6026,7 +6095,7 @@ def main(page="signal"):
     if page in ("market_macro", "macro2"):
         _macro2_container = tab4 if page == "market_macro" else tab3
         with _macro2_container:
-            st.caption("실험용 축소판입니다. ③ 신용스트레스 반전 지표 하나만으로 동적 Risk 시작선/종료선을 계산합니다.")
+            st.caption("실험용 확장판입니다. ⓪/①/②/③/④/⑥ 차트 각각에 대해 동적 Risk 시작선/종료선을 개별 설정할 수 있습니다.")
 
             _c0, _c1, _c2 = st.columns([1.2, 2.8, 1.2])
             with _c0:
@@ -6050,53 +6119,100 @@ def main(page="signal"):
             with _c2:
                 _show_raw_macro2 = st.checkbox("원본선 표시", value=False, key='macro2_show_raw')
 
+            _macro2_cfgs = {}
+            _macro2_defaults = {
+                "0": {"label": "⓪ 지수", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
+                "1": {"label": "① HY", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
+                "2": {"label": "② IG", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
+                "3": {"label": "③ 신용스트레스", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
+                "4": {"label": "④ 옵션/변동성", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
+                "6": {"label": "⑥ 변동성 스프레드", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
+            }
             with st.expander("실험 설정", expanded=True):
-                _s0, _s1, _s2, _s3 = st.columns(4)
-                with _s0:
-                    _ema_span2 = st.selectbox("EMA", [10, 20, 30], index=1, key='macro2_ema_span')
-                with _s1:
-                    _dyn_window2 = st.selectbox("Rolling Window", [63, 126, 252, 504], index=1, key='macro2_dyn_window')
-                with _s2:
-                    _dyn_start_q2 = st.select_slider(
-                        "Risk 시작 분위수",
-                        options=[x / 100 for x in range(0, 101, 5)],
-                        value=0.40,
-                        format_func=lambda x: f"{int(x * 100)}%",
-                        key='macro2_dyn_start_q',
-                    )
-                with _s3:
-                    _dyn_end_q2 = st.select_slider(
-                        "Risk 종료 분위수",
-                        options=[x / 100 for x in range(0, 101, 5)],
-                        value=0.20,
-                        format_func=lambda x: f"{int(x * 100)}%",
-                        key='macro2_dyn_end_q',
-                    )
+                for _code, _cfg in _macro2_defaults.items():
+                    with st.expander(_cfg["label"], expanded=(_code == "0")):
+                        _s0, _s1, _s2, _s3 = st.columns(4)
+                        with _s0:
+                            _ema = st.selectbox("EMA", [10, 20, 30], index=[10, 20, 30].index(_cfg["ema"]), key=f'macro2_{_code}_ema')
+                        with _s1:
+                            _window = st.selectbox("Rolling Window", [63, 126, 252, 504], index=[63, 126, 252, 504].index(_cfg["window"]), key=f'macro2_{_code}_window')
+                        with _s2:
+                            _start = st.select_slider(
+                                "Risk 시작 분위수",
+                                options=[x / 100 for x in range(0, 101, 5)],
+                                value=_cfg["start"],
+                                format_func=lambda x: f"{int(x * 100)}%",
+                                key=f'macro2_{_code}_start',
+                            )
+                        with _s3:
+                            _end = st.select_slider(
+                                "Risk 종료 분위수",
+                                options=[x / 100 for x in range(0, 101, 5)],
+                                value=_cfg["end"],
+                                format_func=lambda x: f"{int(x * 100)}%",
+                                key=f'macro2_{_code}_end',
+                            )
+                        _macro2_cfgs[_code] = {"ema": int(_ema), "window": int(_window), "start": float(_start), "end": float(_end)}
 
             with st.spinner("📡 기준 지수 데이터 로딩 중..."):
                 _benchmark_cfg2 = _get_macro_benchmark(_benchmark_name)
                 _spx_s2 = _yf_close(_benchmark_cfg2['code'], _macro2_years)
 
-            if float(_dyn_start_q2) <= float(_dyn_end_q2):
-                st.warning("Risk 시작 분위수는 종료 분위수보다 높아야 합니다.")
+            _invalid_macro2 = [f"({_code})" for _code, _cfg in _macro2_cfgs.items() if _cfg["start"] <= _cfg["end"]]
+            if _invalid_macro2:
+                st.warning(f"Risk 시작 분위수는 종료 분위수보다 높아야 합니다: {' '.join(_invalid_macro2)}")
             else:
                 with st.spinner("📡 실험용 매크로 데이터 로딩 중..."):
-                    _macro2_fig = make_macro_credit_stress_chart(
-                        _macro2_years,
-                        _spx_s2,
-                        _show_raw_macro2,
-                        benchmark_name=_benchmark_name,
-                        dynamic_mode=True,
-                        ema_span=int(_ema_span2),
-                        dynamic_window=int(_dyn_window2),
-                        dynamic_start_quantile=float(_dyn_start_q2),
-                        dynamic_end_quantile=float(_dyn_end_q2),
-                    )
+                    _macro2_charts = [
+                        make_macro_index_cycle_chart(
+                            _macro2_years, _spx_s2, _show_raw_macro2, benchmark_name=_benchmark_name,
+                            dynamic_mode=True, ema_span=_macro2_cfgs["0"]["ema"],
+                            dynamic_window=_macro2_cfgs["0"]["window"],
+                            dynamic_start_quantile=_macro2_cfgs["0"]["start"],
+                            dynamic_end_quantile=_macro2_cfgs["0"]["end"],
+                        ),
+                        make_macro_hy_spread_chart(
+                            _macro2_years, _spx_s2, _show_raw_macro2, benchmark_name=_benchmark_name,
+                            dynamic_mode=True, ema_span=_macro2_cfgs["1"]["ema"],
+                            dynamic_window=_macro2_cfgs["1"]["window"],
+                            dynamic_start_quantile=_macro2_cfgs["1"]["start"],
+                            dynamic_end_quantile=_macro2_cfgs["1"]["end"],
+                        ),
+                        make_macro_ig_spread_chart(
+                            _macro2_years, _spx_s2, _show_raw_macro2, benchmark_name=_benchmark_name,
+                            dynamic_mode=True, ema_span=_macro2_cfgs["2"]["ema"],
+                            dynamic_window=_macro2_cfgs["2"]["window"],
+                            dynamic_start_quantile=_macro2_cfgs["2"]["start"],
+                            dynamic_end_quantile=_macro2_cfgs["2"]["end"],
+                        ),
+                        make_macro_credit_stress_chart(
+                            _macro2_years, _spx_s2, _show_raw_macro2, benchmark_name=_benchmark_name,
+                            dynamic_mode=True, ema_span=_macro2_cfgs["3"]["ema"],
+                            dynamic_window=_macro2_cfgs["3"]["window"],
+                            dynamic_start_quantile=_macro2_cfgs["3"]["start"],
+                            dynamic_end_quantile=_macro2_cfgs["3"]["end"],
+                        ),
+                        make_macro_options_chart(
+                            _macro2_years, _spx_s2, _show_raw_macro2, benchmark_name=_benchmark_name,
+                            dynamic_mode=True, ema_span=_macro2_cfgs["4"]["ema"],
+                            dynamic_window=_macro2_cfgs["4"]["window"],
+                            dynamic_start_quantile=_macro2_cfgs["4"]["start"],
+                            dynamic_end_quantile=_macro2_cfgs["4"]["end"],
+                        ),
+                        make_macro_vix_spread_chart(
+                            _macro2_years, _spx_s2, _show_raw_macro2, benchmark_name=_benchmark_name,
+                            dynamic_mode=True, ema_span=_macro2_cfgs["6"]["ema"],
+                            dynamic_window=_macro2_cfgs["6"]["window"],
+                            dynamic_start_quantile=_macro2_cfgs["6"]["start"],
+                            dynamic_end_quantile=_macro2_cfgs["6"]["end"],
+                        ),
+                    ]
 
-                if _macro2_fig is not None:
-                    st.plotly_chart(_macro2_fig, width="stretch", config={"displayModeBar": False})
-                else:
-                    st.warning("실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
+                for _fig in _macro2_charts:
+                    if _fig is not None:
+                        st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False})
+                    else:
+                        st.warning("실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
 
         # ═══════════════════════════════════════════════════════════
         # TAB 3B — 매크로 지표 3 (정적 threshold 실험용)
