@@ -4854,7 +4854,7 @@ def main(page="signal"):
     st.session_state.favorites = load_favorites()
     favorites = st.session_state.favorites
 
-    if page in ("market_macro", "macro2"):
+    if page in ("market_macro", "macro2", "macro3"):
         st.markdown("""
             <style>
             [data-testid="stSidebar"] { display: none !important; }
@@ -4863,7 +4863,7 @@ def main(page="signal"):
         """, unsafe_allow_html=True)
 
     # ─── 사이드바 ─────────────────────────────────────────────
-    if page not in ("market_macro", "macro2"):
+    if page not in ("market_macro", "macro2", "macro3"):
       with st.sidebar:
         # 즐겨찾기 파일 오류가 있을 때만 경고 표시
         if st.session_state.get('_fav_load_err'):
@@ -5089,6 +5089,7 @@ def main(page="signal"):
         "macro": ("MACRO INDICATORS", "🌍 매크로 지표"),
         "market_macro": ("MARKET & MACRO DASHBOARD", "🌐 시장/매크로 지표"),
         "macro2": ("MACRO INDICATORS 2", "🧪 매크로 지표 2"),
+        "macro3": ("MACRO INDICATORS 3", "🧪 매크로 지표 3"),
         "all": ("TECHNICAL SIGNAL SCANNER", "🎯 기술적 신호 스캐너"),
     }
     _eyebrow, _title = _page_titles.get(page, _page_titles["signal"])
@@ -5105,6 +5106,7 @@ def main(page="signal"):
     """, unsafe_allow_html=True)
 
     tab4 = None
+    tab5 = None
     if page == "all":
         tab1, tab2, tab3 = st.tabs(["📊 신호 스캐너", "🌐 시장 내부지표", "🌍 매크로 지표"])
     elif page == "signal":
@@ -5114,9 +5116,11 @@ def main(page="signal"):
     elif page == "macro":
         tab1, tab2, tab3 = None, None, st.container()
     elif page == "market_macro":
-        tab3, tab4, tab2 = st.tabs(["🌍 매크로 지표", "🧪 매크로 지표 2", "🌐 시장 내부지표"])
+        tab3, tab4, tab5, tab2 = st.tabs(["🌍 매크로 지표", "🧪 매크로 지표 2", "🧪 매크로 지표 3", "🌐 시장 내부지표"])
         tab1 = None
     elif page == "macro2":
+        tab1, tab2, tab3 = None, None, st.container()
+    elif page == "macro3":
         tab1, tab2, tab3 = None, None, st.container()
     else:
         st.error(f"알 수 없는 페이지입니다: {page}")
@@ -5984,6 +5988,76 @@ def main(page="signal"):
 
                 if _macro2_fig is not None:
                     st.plotly_chart(_macro2_fig, width="stretch", config={"displayModeBar": False})
+                else:
+                    st.warning("실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
+
+        # ═══════════════════════════════════════════════════════════
+        # TAB 3B — 매크로 지표 3 (정적 threshold 실험용)
+        # ═══════════════════════════════════════════════════════════
+    if page in ("market_macro", "macro3"):
+        _macro3_container = tab5 if page == "market_macro" else tab3
+        with _macro3_container:
+            st.caption("정적 threshold 실험판입니다. ③/④/⑥ 차트에서 각 지표의 EMA가 지정 임계값 아래로 내려가면 시작, 위로 올라오면 종료로 단순화했습니다.")
+
+            _c0, _c1, _c2 = st.columns([1.2, 2.8, 1.2])
+            with _c0:
+                _benchmark_name3 = st.selectbox(
+                    "기준지수",
+                    options=["S&P500", "Nasdaq", "KOSPI"],
+                    index=0,
+                    label_visibility='collapsed',
+                    key='macro3_benchmark',
+                )
+            with _c1:
+                _yr_opts3 = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
+                _macro3_years = st.select_slider(
+                    "기간",
+                    options=list(_yr_opts3.keys()),
+                    value=3,
+                    format_func=lambda x: _yr_opts3[x],
+                    label_visibility='collapsed',
+                    key='macro3_years',
+                )
+            with _c2:
+                _show_raw_macro3 = st.checkbox("원본선 표시", value=False, key='macro3_show_raw')
+
+            with st.expander("실험 설정", expanded=True):
+                _s1, _s2, _s3, _s4 = st.columns(4)
+                with _s1:
+                    _ema_span3 = st.selectbox("EMA", [10, 20, 30], index=1, key='macro3_ema_span')
+                with _s2:
+                    _thr3_3 = st.number_input("③ threshold", value=0.0, step=0.1, format="%.2f", key='macro3_thr3')
+                with _s3:
+                    _thr4_3 = st.number_input("④ threshold", value=-20.0, step=0.5, format="%.2f", key='macro3_thr4')
+                with _s4:
+                    _thr6_3 = st.number_input("⑥ threshold", value=2.0, step=0.1, format="%.2f", key='macro3_thr6')
+
+            _downturn_params3 = _DEFAULT_DOWNTURN_PARAMS.copy()
+            _downturn_params3['ema_span'] = int(_ema_span3)
+
+            with st.spinner("📡 기준 지수 데이터 로딩 중..."):
+                _benchmark_cfg3 = _get_macro_benchmark(_benchmark_name3)
+                _spx_s3 = _yf_close(_benchmark_cfg3['code'], _macro3_years)
+
+            with st.spinner("📡 실험용 매크로 데이터 로딩 중..."):
+                _macro3_charts = [
+                    make_macro_credit_stress_chart(
+                        _macro3_years, _spx_s3, _show_raw_macro3, _downturn_params3, _benchmark_name3,
+                        threshold_mode=True, threshold_value=float(_thr3_3), ema_span=int(_ema_span3)
+                    ),
+                    make_macro_options_chart(
+                        _macro3_years, _spx_s3, _show_raw_macro3, _downturn_params3, _benchmark_name3,
+                        threshold_mode=True, threshold_value=float(_thr4_3), ema_span=int(_ema_span3)
+                    ),
+                    make_macro_vix_spread_chart(
+                        _macro3_years, _spx_s3, _show_raw_macro3, _downturn_params3, _benchmark_name3,
+                        threshold_mode=True, threshold_value=float(_thr6_3), ema_span=int(_ema_span3)
+                    ),
+                ]
+
+            for _fig in _macro3_charts:
+                if _fig is not None:
+                    st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False})
                 else:
                     st.warning("실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
 
