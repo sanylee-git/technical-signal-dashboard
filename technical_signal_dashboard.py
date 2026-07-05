@@ -4951,6 +4951,7 @@ def main(page="signal"):
         </div>
     """, unsafe_allow_html=True)
 
+    tab4 = None
     if page == "all":
         tab1, tab2, tab3 = st.tabs(["📊 신호 스캐너", "🌐 시장 내부지표", "🌍 매크로 지표"])
     elif page == "signal":
@@ -4960,7 +4961,7 @@ def main(page="signal"):
     elif page == "macro":
         tab1, tab2, tab3 = None, None, st.container()
     elif page == "market_macro":
-        tab3, tab2 = st.tabs(["🌍 매크로 지표", "🌐 시장 내부지표"])
+        tab3, tab4, tab2 = st.tabs(["🌍 매크로 지표", "🧪 매크로 지표 2", "🌐 시장 내부지표"])
         tab1 = None
     elif page == "macro2":
         tab1, tab2, tab3 = None, None, st.container()
@@ -5758,8 +5759,9 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
         # TAB 3A — 매크로 지표 2 (실험용)
         # ═══════════════════════════════════════════════════════════
-    if page == "macro2":
-        with tab3:
+    if page in ("market_macro", "macro2"):
+        _macro2_container = tab4 if page == "market_macro" else tab3
+        with _macro2_container:
             st.caption("실험용 축소판입니다. ③/④/⑥ 차트만 유지하고, 각 차트의 EMA가 지정 임계값 아래로 내려가면 시작, 위로 올라오면 종료로 단순화했습니다.")
 
             _c0, _c1, _c2 = st.columns([1.2, 2.8, 1.2])
