@@ -3765,12 +3765,20 @@ def _compute_dynamic_quantile_signal_frame(
     window: int = 126,
     start_quantile: float = 0.2,
     end_quantile: float = 0.4,
+    ema_span: int = 20,
 ) -> pd.DataFrame:
     """동적 분위수 라인 기반 Risk-off 사이클 상태를 계산한다."""
     if s is None or s.empty:
         return pd.DataFrame()
 
+    ema_col = f'ema{int(ema_span)}'
     out = pd.DataFrame({'value': s}).dropna()
+    out[ema_col] = out['value'].ewm(
+        span=int(ema_span),
+        adjust=False,
+        min_periods=max(3, int(ema_span) // 2),
+    ).mean()
+    out = out.dropna().copy()
     if len(out) < max(30, int(window) // 2):
         return pd.DataFrame()
 
@@ -3816,6 +3824,7 @@ def _add_dynamic_quantile_signals(
     window: int = 126,
     start_quantile: float = 0.2,
     end_quantile: float = 0.4,
+    ema_span: int = 20,
     overlay_price=None,
     overlay_yaxis='y2',
     prefix='Risk-off',
@@ -3825,12 +3834,20 @@ def _add_dynamic_quantile_signals(
         window=window,
         start_quantile=start_quantile,
         end_quantile=end_quantile,
+        ema_span=ema_span,
     )
     if signal_df.empty:
         return
 
+    ema_col = f'ema{int(ema_span)}'
     start_pct = int(round(float(start_quantile) * 100))
     end_pct = int(round(float(end_quantile) * 100))
+    fig.add_trace(go.Scatter(
+        x=signal_df.index, y=signal_df[ema_col],
+        name=f'EMA{int(ema_span)}',
+        line=dict(color='rgba(255,255,255,0.32)', width=1.1, dash='dot'),
+        hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>EMA{int(ema_span)}  %{{y:.2f}}<extra></extra>',
+    ))
     fig.add_trace(go.Scatter(
         x=signal_df.index, y=signal_df['risk_start_line'],
         name=f'시작선 Q{start_pct}',
@@ -4165,12 +4182,14 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True, do
                                  hovertemplate='<b>%{x|%Y-%m-%d}</b>  %{y:.2f}<extra></extra>'))
     _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2', label=benchmark['label'])
     if dynamic_mode:
+        _ema_span = int(ema_span or _resolve_downturn_params(downturn_params)['ema_span'])
         _add_dynamic_quantile_signals(
             fig,
             plot_s,
             window=int(dynamic_window),
             start_quantile=float(dynamic_start_quantile),
             end_quantile=float(dynamic_end_quantile),
+            ema_span=_ema_span,
             overlay_price=spx_s,
             overlay_yaxis='y2',
         )
@@ -5901,7 +5920,9 @@ def main(page="signal"):
                 _show_raw_macro2 = st.checkbox("원본선 표시", value=False, key='macro2_show_raw')
 
             with st.expander("실험 설정", expanded=True):
-                _s1, _s2, _s3 = st.columns(3)
+                _s0, _s1, _s2, _s3 = st.columns(4)
+                with _s0:
+                    _ema_span2 = st.selectbox("EMA", [10, 20, 30], index=1, key='macro2_ema_span')
                 with _s1:
                     _dyn_window2 = st.selectbox("Rolling Window", [63, 126, 252, 504], index=1, key='macro2_dyn_window')
                 with _s2:
@@ -5935,6 +5956,7 @@ def main(page="signal"):
                         _show_raw_macro2,
                         benchmark_name=_benchmark_name,
                         dynamic_mode=True,
+                        ema_span=int(_ema_span2),
                         dynamic_window=int(_dyn_window2),
                         dynamic_start_quantile=float(_dyn_start_q2),
                         dynamic_end_quantile=float(_dyn_end_q2),
