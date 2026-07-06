@@ -4183,6 +4183,251 @@ def make_macro_combo_downturn_chart(years: int = 5, spx_s=None, signal_modes=Non
     return fig
 
 
+_MACRO2_SIGNAL_LABELS = {
+    "0": "⓪ 지수",
+    "1": "① HY",
+    "2": "② IG",
+    "3": "③ 신용스트레스",
+    "4": "④ 옵션/변동성",
+    "6": "⑥ 변동성 스프레드",
+}
+
+
+def _get_macro2_dynamic_defaults():
+    return {
+        "0": {"label": "⓪ 지수", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
+        "1": {"label": "① HY", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
+        "2": {"label": "② IG", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
+        "3": {"label": "③ 신용스트레스", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
+        "4": {"label": "④ 옵션/변동성", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
+        "6": {"label": "⑥ 변동성 스프레드", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
+    }
+
+
+def _build_macro2_dynamic_charts(years: int, spx_s, show_raw: bool, benchmark_name: str, cfgs: dict):
+    return [
+        make_macro_index_cycle_chart(
+            years, spx_s, show_raw, benchmark_name=benchmark_name,
+            dynamic_mode=True, ema_span=cfgs["0"]["ema"],
+            dynamic_window=cfgs["0"]["window"],
+            dynamic_start_quantile=cfgs["0"]["start"],
+            dynamic_end_quantile=cfgs["0"]["end"],
+        ),
+        make_macro_hy_spread_chart(
+            years, spx_s, show_raw, benchmark_name=benchmark_name,
+            dynamic_mode=True, ema_span=cfgs["1"]["ema"],
+            dynamic_window=cfgs["1"]["window"],
+            dynamic_start_quantile=cfgs["1"]["start"],
+            dynamic_end_quantile=cfgs["1"]["end"],
+        ),
+        make_macro_ig_spread_chart(
+            years, spx_s, show_raw, benchmark_name=benchmark_name,
+            dynamic_mode=True, ema_span=cfgs["2"]["ema"],
+            dynamic_window=cfgs["2"]["window"],
+            dynamic_start_quantile=cfgs["2"]["start"],
+            dynamic_end_quantile=cfgs["2"]["end"],
+        ),
+        make_macro_credit_stress_chart(
+            years, spx_s, show_raw, benchmark_name=benchmark_name,
+            dynamic_mode=True, ema_span=cfgs["3"]["ema"],
+            dynamic_window=cfgs["3"]["window"],
+            dynamic_start_quantile=cfgs["3"]["start"],
+            dynamic_end_quantile=cfgs["3"]["end"],
+        ),
+        make_macro_options_chart(
+            years, spx_s, show_raw, benchmark_name=benchmark_name,
+            dynamic_mode=True, ema_span=cfgs["4"]["ema"],
+            dynamic_window=cfgs["4"]["window"],
+            dynamic_start_quantile=cfgs["4"]["start"],
+            dynamic_end_quantile=cfgs["4"]["end"],
+        ),
+        make_macro_vix_spread_chart(
+            years, spx_s, show_raw, benchmark_name=benchmark_name,
+            dynamic_mode=True, ema_span=cfgs["6"]["ema"],
+            dynamic_window=cfgs["6"]["window"],
+            dynamic_start_quantile=cfgs["6"]["start"],
+            dynamic_end_quantile=cfgs["6"]["end"],
+        ),
+    ]
+
+
+def _get_macro2_signal_series(signal_code: str, years: int, benchmark_name: str = 'S&P500', spx_s=None) -> pd.Series:
+    benchmark = _get_macro_benchmark(benchmark_name)
+    if signal_code == "0":
+        if spx_s is None or spx_s.empty:
+            spx_s = _yf_close(benchmark['code'], years)
+        return spx_s.dropna() if spx_s is not None else pd.Series(dtype=float)
+
+    if signal_code == "1":
+        if benchmark['kind'] == 'kr':
+            hy = _korean_credit_proxy_series(years, 'A')
+        else:
+            hy = _credit_spread_series('BAMLH0A0HYM2', years)
+        return (-hy).dropna() if hy is not None else pd.Series(dtype=float)
+
+    if signal_code == "2":
+        if benchmark['kind'] == 'kr':
+            ig = _korean_credit_proxy_series(years, 'AA')
+        else:
+            ig = _credit_spread_series('BAMLC0A0CM', years)
+        return (-ig).dropna() if ig is not None else pd.Series(dtype=float)
+
+    if signal_code == "3":
+        parts = []
+        if benchmark['kind'] == 'kr':
+            hy = _korean_credit_proxy_series(years + 1, 'A')
+            ig = _korean_credit_proxy_series(years + 1, 'AA')
+            fx = _korean_fx_stress_series(years + 1)
+            hv20 = _korean_volatility_series(years + 1, benchmark_s=spx_s, window=20)
+            if not hy.empty:
+                parts.append(_zscore(hy).rename('CorpA'))
+            if not ig.empty:
+                parts.append(_zscore(ig).rename('CorpAA'))
+            if not fx.empty:
+                parts.append(_zscore(fx).rename('USDKRW'))
+            if not hv20.empty:
+                parts.append(_zscore(hv20).rename('HV20'))
+        else:
+            hy = _credit_spread_series('BAMLH0A0HYM2', years + 1)
+            nfci = _fred('NFCI', years + 1)
+            vix = _yf_close('^VIX', years + 1)
+            if not hy.empty:
+                parts.append(_zscore(hy).rename('HY'))
+            if not nfci.empty:
+                parts.append(_zscore(nfci).rename('NFCI'))
+            if not vix.empty:
+                parts.append(_zscore(vix).rename('VIX'))
+        if not parts:
+            return pd.Series(dtype=float)
+        cutoff = pd.Timestamp.now() - pd.DateOffset(years=years)
+        stress = pd.concat(parts, axis=1).mean(axis=1).dropna()
+        stress = stress[stress.index >= cutoff]
+        return (-stress).dropna()
+
+    if signal_code == "4":
+        if benchmark['kind'] == 'kr':
+            vol = _korean_volatility_series(years, benchmark_s=spx_s, window=20)
+        else:
+            vol = _yf_close('^VIX', years)
+        return (-vol).dropna() if vol is not None else pd.Series(dtype=float)
+
+    if signal_code == "6":
+        if benchmark['kind'] == 'kr':
+            spread = _korean_vol_term_spread_series(years, benchmark_s=spx_s)
+        else:
+            vix = _yf_close('^VIX', years)
+            vix3m = _yf_close('^VIX3M', years)
+            if vix.empty or vix3m.empty:
+                return pd.Series(dtype=float)
+            spread = (vix - vix3m.reindex(vix.index)).dropna()
+        return (-spread).dropna() if spread is not None else pd.Series(dtype=float)
+
+    return pd.Series(dtype=float)
+
+
+def make_macro_combo_dynamic_chart(
+    years: int = 5,
+    spx_s=None,
+    benchmark_name: str = 'S&P500',
+    selected_codes=None,
+    cfgs=None,
+    combo_k: int = 3,
+):
+    benchmark = _get_macro_benchmark(benchmark_name)
+    if spx_s is None or spx_s.empty:
+        spx_s = _yf_close(benchmark['code'], years)
+    if spx_s is None or spx_s.empty:
+        return None
+
+    selected_codes = list(selected_codes or ["0", "1", "3", "6"])
+    cfgs = cfgs or _get_macro2_dynamic_defaults()
+    if not selected_codes:
+        return None
+
+    frames = {}
+    for code in selected_codes:
+        series = _get_macro2_signal_series(code, years, benchmark_name=benchmark_name, spx_s=spx_s)
+        if series is None or series.empty or code not in cfgs:
+            continue
+        signal_df = _compute_dynamic_quantile_signal_frame(
+            series,
+            window=int(cfgs[code]["window"]),
+            start_quantile=float(cfgs[code]["start"]),
+            end_quantile=float(cfgs[code]["end"]),
+            ema_span=int(cfgs[code]["ema"]),
+        )
+        if signal_df.empty:
+            continue
+        frames[code] = signal_df[["down_flag"]].rename(columns={"down_flag": f"{code}_down_flag"})
+
+    if not frames:
+        return None
+
+    combo = pd.concat(frames.values(), axis=1).sort_index().fillna(False)
+    flag_cols = [f"{code}_down_flag" for code in frames]
+    combo["active_count"] = combo[flag_cols].sum(axis=1).astype(int)
+    combo["combo_risk_state"] = False
+    combo["combo_start_signal"] = False
+    combo["combo_end_signal"] = False
+
+    combo_k = max(1, min(int(combo_k), len(flag_cols)))
+    in_cycle = False
+    for idx in combo.index:
+        active_count = int(combo.at[idx, "active_count"])
+        if not in_cycle and active_count >= combo_k:
+            in_cycle = True
+            combo.at[idx, "combo_start_signal"] = True
+        elif in_cycle and active_count < combo_k:
+            in_cycle = False
+            combo.at[idx, "combo_end_signal"] = True
+        combo.at[idx, "combo_risk_state"] = in_cycle
+
+    spx_aligned = spx_s.reindex(combo.index).dropna()
+    if spx_aligned.empty:
+        return None
+    combo = combo.reindex(spx_aligned.index).fillna(False)
+    combo["active_count"] = combo["active_count"].astype(int)
+
+    selected_labels = ", ".join(_MACRO2_SIGNAL_LABELS.get(code, code) for code in selected_codes if code in frames)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=spx_aligned.index, y=spx_aligned, name=benchmark['label'],
+        line=dict(color='rgba(182,182,182,0.88)', width=1.55),
+        hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>{benchmark['label']} %{{y:,.1f}}<extra></extra>',
+    ))
+
+    start_y = spx_aligned.loc[combo["combo_start_signal"]]
+    end_y = spx_aligned.loc[combo["combo_end_signal"]]
+    if not start_y.empty:
+        fig.add_trace(go.Scatter(
+            x=start_y.index, y=start_y, name=f'Risk-off 시작 ({combo_k}/{len(flag_cols)})',
+            mode='markers',
+            marker=dict(symbol='triangle-down', size=10, color='rgba(255,75,110,0.92)'),
+            hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>Risk-off 시작: active_count >= {combo_k}<extra></extra>',
+        ))
+    if not end_y.empty:
+        fig.add_trace(go.Scatter(
+            x=end_y.index, y=end_y, name=f'Risk-off 종료 (<{combo_k}/{len(flag_cols)})',
+            mode='markers',
+            marker=dict(symbol='triangle-up', size=10, color='rgba(75,255,179,0.92)'),
+            hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>Risk-off 종료: active_count < {combo_k}<extra></extra>',
+        ))
+    fig.update_layout(
+        **_ml(f'⓪ 조합 Risk-off 사이클 ({benchmark["label"]}, {combo_k}/{len(flag_cols)})', height=300),
+    )
+    fig.add_annotation(
+        xref='paper', yref='paper', x=0.01, y=0.98, showarrow=False,
+        text=f'<b>조합</b>: {selected_labels}',
+        font=dict(size=11, color='#C8C8C8'),
+        align='left',
+        bgcolor='rgba(0,0,0,0.18)',
+        bordercolor='rgba(255,255,255,0.08)',
+        borderwidth=1,
+        borderpad=4,
+    )
+    return fig
+
+
 def _make_inverted_spread_chart(
     s: pd.Series,
     title: str,
@@ -5266,6 +5511,7 @@ def main(page="signal"):
         "market_macro": ("MARKET & MACRO DASHBOARD", "🌐 시장/매크로 지표"),
         "macro2": ("MACRO INDICATORS 2", "🧪 매크로 지표 2"),
         "macro3": ("MACRO INDICATORS 3", "🧪 매크로 지표 3"),
+        "macro4": ("MACRO INDICATORS 4", "🧪 매크로 지표 4"),
         "all": ("TECHNICAL SIGNAL SCANNER", "🎯 기술적 신호 스캐너"),
     }
     _eyebrow, _title = _page_titles.get(page, _page_titles["signal"])
@@ -5283,6 +5529,7 @@ def main(page="signal"):
 
     tab4 = None
     tab5 = None
+    tab6 = None
     if page == "all":
         tab1, tab2, tab3 = st.tabs(["📊 신호 스캐너", "🌐 시장 내부지표", "🌍 매크로 지표"])
     elif page == "signal":
@@ -5292,11 +5539,13 @@ def main(page="signal"):
     elif page == "macro":
         tab1, tab2, tab3 = None, None, st.container()
     elif page == "market_macro":
-        tab3, tab4, tab5, tab2 = st.tabs(["🌍 매크로 지표", "🧪 매크로 지표 2", "🧪 매크로 지표 3", "🌐 시장 내부지표"])
+        tab3, tab4, tab5, tab6, tab2 = st.tabs(["🌍 매크로 지표", "🧪 매크로 지표 2", "🧪 매크로 지표 3", "🧪 매크로 지표 4", "🌐 시장 내부지표"])
         tab1 = None
     elif page == "macro2":
         tab1, tab2, tab3 = None, None, st.container()
     elif page == "macro3":
+        tab1, tab2, tab3 = None, None, st.container()
+    elif page == "macro4":
         tab1, tab2, tab3 = None, None, st.container()
     else:
         st.error(f"알 수 없는 페이지입니다: {page}")
@@ -6120,14 +6369,7 @@ def main(page="signal"):
                 _show_raw_macro2 = st.checkbox("원본선 표시", value=False, key='macro2_show_raw')
 
             _macro2_cfgs = {}
-            _macro2_defaults = {
-                "0": {"label": "⓪ 지수", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
-                "1": {"label": "① HY", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
-                "2": {"label": "② IG", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
-                "3": {"label": "③ 신용스트레스", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
-                "4": {"label": "④ 옵션/변동성", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
-                "6": {"label": "⑥ 변동성 스프레드", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
-            }
+            _macro2_defaults = _get_macro2_dynamic_defaults()
             with st.expander("실험 설정", expanded=True):
                 for _code, _cfg in _macro2_defaults.items():
                     with st.expander(_cfg["label"], expanded=(_code == "0")):
@@ -6163,50 +6405,9 @@ def main(page="signal"):
                 st.warning(f"Risk 시작 분위수는 종료 분위수보다 높아야 합니다: {' '.join(_invalid_macro2)}")
             else:
                 with st.spinner("📡 실험용 매크로 데이터 로딩 중..."):
-                    _macro2_charts = [
-                        make_macro_index_cycle_chart(
-                            _macro2_years, _spx_s2, _show_raw_macro2, benchmark_name=_benchmark_name,
-                            dynamic_mode=True, ema_span=_macro2_cfgs["0"]["ema"],
-                            dynamic_window=_macro2_cfgs["0"]["window"],
-                            dynamic_start_quantile=_macro2_cfgs["0"]["start"],
-                            dynamic_end_quantile=_macro2_cfgs["0"]["end"],
-                        ),
-                        make_macro_hy_spread_chart(
-                            _macro2_years, _spx_s2, _show_raw_macro2, benchmark_name=_benchmark_name,
-                            dynamic_mode=True, ema_span=_macro2_cfgs["1"]["ema"],
-                            dynamic_window=_macro2_cfgs["1"]["window"],
-                            dynamic_start_quantile=_macro2_cfgs["1"]["start"],
-                            dynamic_end_quantile=_macro2_cfgs["1"]["end"],
-                        ),
-                        make_macro_ig_spread_chart(
-                            _macro2_years, _spx_s2, _show_raw_macro2, benchmark_name=_benchmark_name,
-                            dynamic_mode=True, ema_span=_macro2_cfgs["2"]["ema"],
-                            dynamic_window=_macro2_cfgs["2"]["window"],
-                            dynamic_start_quantile=_macro2_cfgs["2"]["start"],
-                            dynamic_end_quantile=_macro2_cfgs["2"]["end"],
-                        ),
-                        make_macro_credit_stress_chart(
-                            _macro2_years, _spx_s2, _show_raw_macro2, benchmark_name=_benchmark_name,
-                            dynamic_mode=True, ema_span=_macro2_cfgs["3"]["ema"],
-                            dynamic_window=_macro2_cfgs["3"]["window"],
-                            dynamic_start_quantile=_macro2_cfgs["3"]["start"],
-                            dynamic_end_quantile=_macro2_cfgs["3"]["end"],
-                        ),
-                        make_macro_options_chart(
-                            _macro2_years, _spx_s2, _show_raw_macro2, benchmark_name=_benchmark_name,
-                            dynamic_mode=True, ema_span=_macro2_cfgs["4"]["ema"],
-                            dynamic_window=_macro2_cfgs["4"]["window"],
-                            dynamic_start_quantile=_macro2_cfgs["4"]["start"],
-                            dynamic_end_quantile=_macro2_cfgs["4"]["end"],
-                        ),
-                        make_macro_vix_spread_chart(
-                            _macro2_years, _spx_s2, _show_raw_macro2, benchmark_name=_benchmark_name,
-                            dynamic_mode=True, ema_span=_macro2_cfgs["6"]["ema"],
-                            dynamic_window=_macro2_cfgs["6"]["window"],
-                            dynamic_start_quantile=_macro2_cfgs["6"]["start"],
-                            dynamic_end_quantile=_macro2_cfgs["6"]["end"],
-                        ),
-                    ]
+                    _macro2_charts = _build_macro2_dynamic_charts(
+                        _macro2_years, _spx_s2, _show_raw_macro2, _benchmark_name, _macro2_cfgs
+                    )
 
                 for _fig in _macro2_charts:
                     if _fig is not None:
@@ -6288,6 +6489,124 @@ def main(page="signal"):
                     st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False})
                 else:
                     st.warning("실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
+
+        # ═══════════════════════════════════════════════════════════
+        # TAB 3C — 매크로 지표 4 (조합 Risk-off 실험용)
+        # ═══════════════════════════════════════════════════════════
+    if page in ("market_macro", "macro4"):
+        _macro4_container = tab6 if page == "market_macro" else tab3
+        with _macro4_container:
+            st.caption("상단 조합 차트는 선택한 지표들의 Risk-off 상태를 합성하고, 아래 6개 차트는 매크로지표2와 동일한 개별 실험 차트입니다.")
+
+            _macro4_defaults = _get_macro2_dynamic_defaults()
+            _macro4_defaults["0"].update({"ema": 20, "window": 252, "start": 0.80, "end": 0.70})
+            _macro4_defaults["1"].update({"ema": 20, "window": 126, "start": 0.60, "end": 0.50})
+            _macro4_defaults["3"].update({"ema": 10, "window": 126, "start": 0.20, "end": 0.10})
+            _macro4_defaults["6"].update({"ema": 30, "window": 63, "start": 0.60, "end": 0.10})
+            _macro4_selected_default = ["0", "1", "3", "6"]
+
+            _m40, _m41, _m42 = st.columns([1.2, 2.8, 1.2])
+            with _m40:
+                _benchmark_name4 = st.selectbox(
+                    "기준지수",
+                    options=["S&P500", "Nasdaq"],
+                    index=0,
+                    label_visibility='collapsed',
+                    key='macro4_benchmark',
+                )
+            with _m41:
+                _yr_opts4 = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
+                _macro4_years = st.select_slider(
+                    "기간",
+                    options=list(_yr_opts4.keys()),
+                    value=3,
+                    format_func=lambda x: _yr_opts4[x],
+                    label_visibility='collapsed',
+                    key='macro4_years',
+                )
+            with _m42:
+                _show_raw_macro4 = st.checkbox("원본선 표시", value=False, key='macro4_show_raw')
+
+            _m43, _m44 = st.columns([4.4, 1.6])
+            with _m43:
+                _selected_codes4 = st.multiselect(
+                    "조합 지표",
+                    options=list(_MACRO2_SIGNAL_LABELS.keys()),
+                    default=_macro4_selected_default,
+                    format_func=lambda x: _MACRO2_SIGNAL_LABELS.get(x, x),
+                    key='macro4_selected_codes',
+                )
+            with _m44:
+                _default_k4 = 3 if len(_selected_codes4) >= 3 else max(1, len(_selected_codes4))
+                _combo_k4 = st.slider(
+                    "Risk 기준",
+                    min_value=1,
+                    max_value=max(1, len(_selected_codes4)),
+                    value=_default_k4,
+                    format="%d개 이상 ON",
+                    key='macro4_combo_k',
+                )
+
+            _macro4_cfgs = {}
+            with st.expander("실험 설정", expanded=True):
+                for _code, _cfg in _macro4_defaults.items():
+                    with st.expander(_cfg["label"], expanded=(_code in _selected_codes4)):
+                        _s0, _s1, _s2, _s3 = st.columns(4)
+                        with _s0:
+                            _ema = st.selectbox("EMA", [10, 20, 30], index=[10, 20, 30].index(_cfg["ema"]), key=f'macro4_{_code}_ema')
+                        with _s1:
+                            _window = st.selectbox("Rolling Window", [63, 126, 252, 504], index=[63, 126, 252, 504].index(_cfg["window"]), key=f'macro4_{_code}_window')
+                        with _s2:
+                            _start = st.select_slider(
+                                "Risk 시작 분위수",
+                                options=[x / 100 for x in range(0, 101, 5)],
+                                value=_cfg["start"],
+                                format_func=lambda x: f"{int(x * 100)}%",
+                                key=f'macro4_{_code}_start',
+                            )
+                        with _s3:
+                            _end = st.select_slider(
+                                "Risk 종료 분위수",
+                                options=[x / 100 for x in range(0, 101, 5)],
+                                value=_cfg["end"],
+                                format_func=lambda x: f"{int(x * 100)}%",
+                                key=f'macro4_{_code}_end',
+                            )
+                        _macro4_cfgs[_code] = {"ema": int(_ema), "window": int(_window), "start": float(_start), "end": float(_end)}
+
+            with st.spinner("📡 기준 지수 데이터 로딩 중..."):
+                _benchmark_cfg4 = _get_macro_benchmark(_benchmark_name4)
+                _spx_s4 = _yf_close(_benchmark_cfg4['code'], _macro4_years)
+
+            _invalid_macro4 = [f"({_code})" for _code, _cfg in _macro4_cfgs.items() if _cfg["start"] <= _cfg["end"]]
+            if _invalid_macro4:
+                st.warning(f"Risk 시작 분위수는 종료 분위수보다 높아야 합니다: {' '.join(_invalid_macro4)}")
+            elif not _selected_codes4:
+                st.warning("조합에 사용할 지표를 최소 1개 이상 선택해 주세요.")
+            else:
+                with st.spinner("📡 조합 매크로 데이터 로딩 중..."):
+                    _macro4_combo_fig = make_macro_combo_dynamic_chart(
+                        years=_macro4_years,
+                        spx_s=_spx_s4,
+                        benchmark_name=_benchmark_name4,
+                        selected_codes=_selected_codes4,
+                        cfgs=_macro4_cfgs,
+                        combo_k=_combo_k4,
+                    )
+                    _macro4_charts = _build_macro2_dynamic_charts(
+                        _macro4_years, _spx_s4, _show_raw_macro4, _benchmark_name4, _macro4_cfgs
+                    )
+
+                if _macro4_combo_fig is not None:
+                    st.plotly_chart(_macro4_combo_fig, width="stretch", config={"displayModeBar": False})
+                else:
+                    st.warning("조합 Risk-off 차트 데이터 로딩 실패 — 조합 지표/기간을 확인해 주세요.")
+
+                for _fig in _macro4_charts:
+                    if _fig is not None:
+                        st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False})
+                    else:
+                        st.warning("개별 실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
 
         # ═══════════════════════════════════════════════════════════
         # TAB 3 — 매크로 지표
