@@ -6242,11 +6242,46 @@ def main(page="signal"):
             def _set_kr(): st.session_state.scan_active = 'kr'
             def _set_us(): st.session_state.scan_active = 'us'
 
+            def _select_kr_scan(name):
+                st.session_state.scan_active = 'kr'
+                st.session_state.scan_kr_name = name
+                st.session_state.scan_kr_prev_name = name
+
+            def _select_us_scan(name):
+                st.session_state.scan_active = 'us'
+                st.session_state.scan_us_name = name
+                st.session_state.scan_us_prev_name = name
+
+            def _render_clickable_scan_list(rows, market):
+                _cols = st.columns(3)
+                for _idx, _row in enumerate(rows):
+                    _name = _row['name']
+                    _close = _row.get('close')
+                    _pct = _row.get('pct_change')
+                    _label = _name
+                    if pd.notna(_close):
+                        _label = f"{_name}\n{_close:,.2f}"
+                    if pd.notna(_pct):
+                        _label += f" ({_pct:+.2f}%)"
+                    with _cols[_idx % 3]:
+                        if st.button(
+                            _label,
+                            key=f"scan_pick_{market}_{_idx}_{_row['code']}",
+                            width="stretch",
+                        ):
+                            if market == 'kr':
+                                _select_kr_scan(_name)
+                            else:
+                                _select_us_scan(_name)
+                            st.rerun()
+
             # ① 전체 종목 현황 — 한국 / 미국 분리 (접힘)
             with st.expander(f"📋 🇰🇷 한국 즐겨찾기 현황 ({len(signal_rows)}개)", expanded=False):
+                _render_clickable_scan_list(signal_rows, 'kr')
                 st.markdown(render_signal_table(signal_rows), unsafe_allow_html=True)
 
             with st.expander(f"📋 🇺🇸 미국 지수/ETF 현황 ({len(us_signal_rows)}개)", expanded=False):
+                _render_clickable_scan_list(us_signal_rows, 'us')
                 st.markdown(render_signal_table(us_signal_rows), unsafe_allow_html=True)
 
             # ② 종목 선택 — 한국 / 미국 좌우 분리
