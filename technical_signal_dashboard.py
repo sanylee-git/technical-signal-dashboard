@@ -5559,11 +5559,12 @@ def main(page="signal"):
     elif page == "market_macro":
         _market_macro_sections = [
             ("macro", "🌍 매크로 지표"),
-            ("macro2", "🧪 매크로 지표 2"),
+            ("macro4", "🧪 매크로 지표 2"),
             ("macro3", "🧪 매크로 지표 3"),
-            ("macro4", "🧪 매크로 지표 4"),
             ("market", "🌐 시장 내부지표"),
         ]
+        if st.session_state.get("market_macro_section") not in {k for k, _ in _market_macro_sections}:
+            st.session_state["market_macro_section"] = "macro"
         _market_macro_section = st.radio(
             "섹션 선택",
             options=[k for k, _ in _market_macro_sections],
