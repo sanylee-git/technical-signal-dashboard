@@ -6409,9 +6409,14 @@ def main(page="signal"):
                         _macro2_years, _spx_s2, _show_raw_macro2, _benchmark_name, _macro2_cfgs
                     )
 
-                for _fig in _macro2_charts:
+                for _idx, _fig in enumerate(_macro2_charts):
                     if _fig is not None:
-                        st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False})
+                        st.plotly_chart(
+                            _fig,
+                            width="stretch",
+                            config={"displayModeBar": False},
+                            key=f"macro2_chart_{_idx}_{_benchmark_name}_{_macro2_years}",
+                        )
                     else:
                         st.warning("실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
 
@@ -6484,9 +6489,14 @@ def main(page="signal"):
                     ),
                 ]
 
-            for _fig in _macro3_charts:
+            for _idx, _fig in enumerate(_macro3_charts):
                 if _fig is not None:
-                    st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False})
+                    st.plotly_chart(
+                        _fig,
+                        width="stretch",
+                        config={"displayModeBar": False},
+                        key=f"macro3_chart_{_idx}_{_benchmark_name3}_{_macro3_years}",
+                    )
                 else:
                     st.warning("실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
 
@@ -6598,13 +6608,23 @@ def main(page="signal"):
                     )
 
                 if _macro4_combo_fig is not None:
-                    st.plotly_chart(_macro4_combo_fig, width="stretch", config={"displayModeBar": False})
+                    st.plotly_chart(
+                        _macro4_combo_fig,
+                        width="stretch",
+                        config={"displayModeBar": False},
+                        key=f"macro4_combo_{_benchmark_name4}_{_macro4_years}_{'_'.join(_selected_codes4)}_{_combo_k4}",
+                    )
                 else:
                     st.warning("조합 Risk-off 차트 데이터 로딩 실패 — 조합 지표/기간을 확인해 주세요.")
 
-                for _fig in _macro4_charts:
+                for _idx, _fig in enumerate(_macro4_charts):
                     if _fig is not None:
-                        st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False})
+                        st.plotly_chart(
+                            _fig,
+                            width="stretch",
+                            config={"displayModeBar": False},
+                            key=f"macro4_chart_{_idx}_{_benchmark_name4}_{_macro4_years}",
+                        )
                     else:
                         st.warning("개별 실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
 
@@ -6688,7 +6708,12 @@ def main(page="signal"):
             for i, ch in enumerate(_macro_charts):
                 if ch is not None:
                     with _mc[i % 2]:
-                        st.plotly_chart(ch, width="stretch", config={"displayModeBar": False})
+                        st.plotly_chart(
+                            ch,
+                            width="stretch",
+                            config={"displayModeBar": False},
+                            key=f"macro_main_chart_{i}_{_benchmark_name}_{_macro_years}_{int(_show_spx)}_{int(_show_raw_macro)}",
+                        )
                 else:
                     with _mc[i % 2]:
                         _labels = ['⓪ S&P500', '① HY 스프레드', '② IG 스프레드', '③ 크레딧 스트레스', '④ VIX',
