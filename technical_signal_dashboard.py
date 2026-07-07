@@ -5589,6 +5589,412 @@ def main(page="signal"):
         st.error(f"알 수 없는 페이지입니다: {page}")
         return
 
+    def render_market_internal_indicators_section(container):
+        with container:
+            col_mkt, col_period, _ = st.columns([2, 2, 2])
+            with col_mkt:
+                market_choice = st.radio(
+                    "시장", ["코스피", "코스닥", "S&P 500", "나스닥 200"],
+                    horizontal=True,
+                    label_visibility="collapsed",
+                )
+            with col_period:
+                _mkt_labels = {
+                    20: "20일", 42: "2개월", 63: "3개월",
+                    126: "6개월", 189: "9개월",
+                    252: "1년", 378: "1년 6개월",
+                    504: "2년", 756: "3년", 1008: "4년",
+                }
+                mkt_lookback = st.select_slider(
+                    "기간", options=list(_mkt_labels.keys()),
+                    value=63, format_func=lambda x: _mkt_labels[x],
+                    label_visibility="collapsed",
+                )
+
+            with st.spinner("📡 시장 데이터 로딩 중... (전체 종목 첫 로딩 시 1분 소요, 이후 1시간 캐시)"):
+                market_df, err = get_market_internals(market_choice, lookback_days=mkt_lookback)
+
+            if err:
+                st.error("데이터 로드 실패 — 아래 에러 전문을 복사해서 공유해주세요")
+                st.code(err, language="python")
+            elif market_df is not None and not market_df.empty:
+                latest = market_df.iloc[-1]
+                prev = market_df.iloc[-2] if len(market_df) >= 2 else latest
+
+                _score_ts_fig = make_score_timeseries_chart(market_df, market_choice)
+                if _score_ts_fig is not None:
+                    st.plotly_chart(_score_ts_fig, width="stretch", config={"displayModeBar": False})
+
+                render_market_score_ui(market_df, market_choice)
+
+                def _mkt_card(label, value, delta="", accent="#787EE7"):
+                    dlt = (f'<div style="font-size:9px;color:#555;margin-top:1px;">{delta}</div>' if delta else "")
+                    return (
+                        f'<div style="flex:1;min-width:0;background:#141416;'
+                        f'border:1px solid rgba(255,255,255,0.06);border-radius:6px;'
+                        f'padding:5px 10px 6px;">'
+                        f'<div style="font-size:9px;color:#444;text-transform:uppercase;'
+                        f'letter-spacing:0.6px;white-space:nowrap;overflow:hidden;'
+                        f'text-overflow:ellipsis;">{label}</div>'
+                        f'<div style="font-size:15px;font-weight:600;color:{accent};'
+                        f'margin-top:1px;font-variant-numeric:tabular-nums;">{value}</div>'
+                        f'{dlt}</div>'
+                    )
+
+                def _mkt_row(cards_html):
+                    return f'<div style="display:flex;gap:5px;margin-bottom:5px;">{cards_html}</div>'
+
+                summ_val = float(latest['서머레이션'])
+                vix_val = latest['VIX']
+                ma20_val = latest['상승비율MA20']
+                p200_val = latest['100MA상위']
+                p50_val = latest.get('20MA상위')
+                adl_chg = float(latest['ADL'] - prev['ADL'])
+                vix_lbl = "변동성(HV20)" if market_choice in ("코스피", "코스닥") else "VIX"
+
+                row1 = "".join([
+                    _mkt_card("시총가중", f"{latest['시총가중']:.1f}", f"{latest['시총가중']-prev['시총가중']:+.2f}",
+                              "#00FF7F" if latest['시총가중'] > prev['시총가중'] else "#FF4B6E"),
+                    _mkt_card("균일가중", f"{latest['균일가중']:.1f}", f"{latest['균일가중']-prev['균일가중']:+.2f}",
+                              "#FFD700" if latest['균일가중'] > prev['균일가중'] else "#FF4B6E"),
+                    _mkt_card("ADL", f"{latest['ADL']:.0f}", f"{adl_chg:+.0f}",
+                              "#4BFFB3" if adl_chg >= 0 else "#FF4B6E"),
+                    _mkt_card("서머레이션", f"{summ_val:+.0f}", "강세구간" if summ_val > 0 else "약세구간",
+                              "#4BFFB3" if summ_val > 0 else "#FF4B6E"),
+                    _mkt_card(vix_lbl, f"{vix_val:.1f}" if pd.notna(vix_val) else "—",
+                              "공포" if (pd.notna(vix_val) and float(vix_val) > 30)
+                              else ("탐욕" if (pd.notna(vix_val) and float(vix_val) < 20) else "중립"), "#FFB347"),
+                    _mkt_card("상승비율MA20", f"{ma20_val:.1f}%" if pd.notna(ma20_val) else "—", "",
+                              "#4BFFB3" if (pd.notna(ma20_val) and float(ma20_val) > 50) else "#FF4B6E"),
+                    _mkt_card("20MA 상위", f"{p50_val:.1f}%" if pd.notna(p50_val) else "—",
+                              "강세" if (pd.notna(p50_val) and float(p50_val) > 50) else "약세",
+                              "#87CEEB" if (pd.notna(p50_val) and float(p50_val) > 50) else "#FF4B6E"),
+                    _mkt_card("100MA 상위", f"{p200_val:.1f}%" if pd.notna(p200_val) else "—",
+                              "강세장" if (pd.notna(p200_val) and float(p200_val) > 70)
+                              else ("약세장" if (pd.notna(p200_val) and float(p200_val) < 30) else "중립"), "#C8C850"),
+                ])
+                st.markdown(_mkt_row(row1), unsafe_allow_html=True)
+
+                n_med = int(market_df['전체종목수'].median())
+                full_t = get_full_ticker_list(market_choice)
+                n_full = len(full_t) if full_t else 0
+                if n_full:
+                    src_label = f"전체 {n_full}종목"
+                elif market_choice in ("코스피", "코스닥"):
+                    src_label = "대형주 바스켓 (fallback)"
+                else:
+                    src_label = "구성종목"
+                st.caption(
+                    f"기준: {src_label} | 데이터 유효 (중앙값): {n_med}개 | "
+                    f"최근 상승: {int(latest['상승종목수'])}개 / {int(latest['전체종목수'])}개"
+                )
+
+                st.plotly_chart(make_market_chart(market_df, market_choice), width="stretch", config={"displayModeBar": False})
+
+                with st.expander("📖 지표 쉽게 이해하기", expanded=False):
+                    st.markdown("""
+    <style>
+    .guide-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .guide-table th { background:#1a1a2e; color:#787EE7; padding:7px 10px; text-align:left; border-bottom:1px solid #2a2a3e; }
+    .guide-table td { padding:6px 10px; border-bottom:1px solid #1e1e2e; vertical-align:top; line-height:1.6; }
+    .guide-table tr:hover td { background:rgba(120,126,231,0.04); }
+    .bull { color:#4BFFB3; font-weight:600; }
+    .bear { color:#FF4B6E; font-weight:600; }
+    .neut { color:#C8C850; font-weight:600; }
+    </style>
+
+    <table class="guide-table">
+    <tr>
+      <th>지표 이름</th>
+      <th>한 줄 설명 (쉽게)</th>
+      <th>🟢 좋은 신호</th>
+      <th>🔴 나쁜 신호</th>
+      <th>결론 내리는 법</th>
+    </tr>
+    <tr><td><b>시총가중 지수</b></td><td>삼성·애플 같은 큰 회사 위주로 시장이 얼마나 올랐나</td><td class="bull">꾸준히 우상향</td><td class="bear">꺾이며 하락</td><td>우리가 흔히 보는 코스피·S&P500 과 같은 개념. 가장 기본 지표</td></tr>
+    <tr><td><b>균일가중 지수</b></td><td>큰 회사·작은 회사 모두 똑같이 1표씩 줬을 때의 시장. "골고루 오르나?" 확인용</td><td class="bull">시총가중과 함께 오름</td><td class="bear">시총가중만 오르고 이건 제자리</td><td>둘이 같이 오르면 건강한 장. 시총가중만 오르면 일부 대형주만 끌어올리는 불안한 장</td></tr>
+    <tr><td><b>ADL (등락누적선)</b></td><td>매일 오른 종목 수 − 내린 종목 수를 계속 더한 값. 시장이 진짜 건강한지 보여줌</td><td class="bull">계속 우상향</td><td class="bear">지수는 오르는데 ADL은 내려감 (위험 신호!)</td><td><b>가장 중요한 선행지표.</b> 지수보다 ADL이 먼저 꺾이면 조정이 곧 온다는 경고. ADL이 먼저 올라오면 반등 시작 신호</td></tr>
+    <tr><td><b>52주 신고가 비율</b></td><td>오늘 1년(52주) 내 최고가를 찍은 종목 수 ÷ 전체 유효 종목 수 × 100. 진짜 상승 모멘텀이 있는지 확인</td><td class="bull">30% 이상 = 강한 상승 모멘텀</td><td class="bear">5% 이하 = 신고가 거의 없음 (약세 신호)</td><td>지수가 오르는데 신고가 비율이 낮으면 소수 대형주만 끌어올리는 불안한 장. 역대 최고가 갱신 구간에서 30%+ 유지되면 진짜 상승장</td></tr>
+    <tr><td><b>20일선 상위 비율</b></td><td>20일(약 1달) 평균 가격보다 지금 비싼 종목이 몇 %인지. 단기 추세의 건강도를 빠르게 파악</td><td class="bull">50% 이상 = 단기 강세 흐름</td><td class="bear">50% 이하 = 단기 약세 흐름</td><td>100일선 상위 비율보다 민감하게 반응해서 추세 전환을 더 빨리 알려줌. 50%선을 뚫고 올라오면 단기 반등 확인 신호</td></tr>
+    <tr><td><b>맥클렐란 서머레이션</b></td><td>단기·장기 평균 등락 차이를 계속 누적한 값. "지금 강세장인지 약세장인지" 큰 그림</td><td class="bull">0 이상 (강세장 영역)</td><td class="bear">0 이하 (약세장 영역)</td><td>0선 위면 강세장, 아래면 약세장. 0선을 뚫고 올라오면 장세 전환 신호. 0선 위에서 하락 전환하면 조정 경고</td></tr>
+    <tr><td><b>VIX / 역사적변동성(HV20)</b></td><td>투자자들이 얼마나 겁먹고 있나. 미국=VIX(옵션 내재변동성), 한국=HV20(지수 20일 실현변동성). 숫자 클수록 불안</td><td class="bull">급등 후 빠르게 내려올 때 → 공포 해소 = 반등 신호</td><td class="bear">낮은 수준에서 갑자기 급등 → 조정 시작 신호</td><td>미국 VIX: 20 이하=안심, 20~30=주의, 30 이상=공포. 한국 HV20: 15 이하=안심, 20 이상=주의, 25 이상=경계. <b>공포 극대일 때가 역발상 매수 타이밍</b>인 경우 많음</td></tr>
+    <tr><td><b>상승비율 MA20</b></td><td>오늘 전체 종목 중 오른 종목이 몇 %인지를 20일 평균낸 것</td><td class="bull">60% 이상 유지</td><td class="bear">40% 이하로 내려감</td><td>50% 위면 "대부분 오르는 중", 아래면 "대부분 내리는 중". 하루치 수치는 변동 크니 20일 평균선만 봐도 충분</td></tr>
+    <tr><td><b>100일선 상위 비율</b></td><td>100일(약 5개월) 평균 가격보다 지금 비싼 종목이 몇 %인지</td><td class="bull">70% 이상 = 강세장</td><td class="bear">30% 이하 = 약세장 / 20% 이하 = 침체 바닥권</td><td>중장기 건강도 지표. 30% 이하까지 내려간 뒤 반등하면 강력한 바닥 신호로 자주 활용됨</td></tr>
+    </table>
+
+    <br>
+
+    **🗺️ 지표 조합으로 지금 어느 상황인지 판단하기**
+
+    | 시장 상황 | ADL | 서머레이션 | 52주신고가 비율 | 100일선 상위 | 공포지수 | 내가 할 행동 |
+    |---------|-----|----------|------------|------------|---------|------------|
+    | 🟢 **상승 시작** | 바닥 찍고 올라오는 중 | 0선 위로 뚫음 | 30%→50% 회복 | 30%→50% 회복 중 | 30 이상에서 내려오는 중 | 적극적으로 매수할 타이밍 |
+    | 🟢 **상승 중반** | 계속 우상향 | +500 이상 | 70% 이상 유지 | 60~80% | 20 이하 (안심 구간) | 보유 유지. 추격 매수는 자제 |
+    | 🟡 **상승 막바지** | 지수는 오르는데 ADL은 정체 | +1000 이상이지만 더 안 오름 | 지수 오르는데 70% 이하 | 70% 이상 | 15 이하 (과도한 안심) | 비중 줄이고 차익실현 준비 |
+    | 🔴 **하락장** | 계속 우하향 | 0선 아래 | 30% 이하 | 30% 이하 | 30 이상 (공포) | 현금 비중 늘리기. 반등해도 매도 기회 |
+
+    > 균일가중 지수는 공식 지수가 아니라 직접 계산한 참고용 지표입니다.
+    > 첫 로딩 시 전체 종목 다운로드로 1~2분 소요됩니다.
+                    """, unsafe_allow_html=True)
+
+                with st.expander("🔬 지표 선행성 분석 (지수 예측력)", expanded=False):
+                    st.caption(
+                        "corr(지표[오늘], 지수[오늘+N일]) — 값이 높을수록 해당 지표가 N일 후 지수를 예측하는 경향이 있음. "
+                        "4년치 데이터를 별도 로딩합니다."
+                    )
+                    with st.spinner("4년 데이터 로딩 중..."):
+                        _ll_df, _ = get_market_internals(market_choice, lookback_days=1008)
+
+                    if _ll_df is not None and not _ll_df.empty:
+                        _ll_tbl = compute_lead_lag_table(_ll_df)
+                        _ll_tbl = make_arrow_safe(_ll_tbl)
+                        if not _ll_tbl.empty:
+                            def _style_corr(v):
+                                if pd.isna(v):
+                                    return 'color:#444'
+                                ab = abs(v)
+                                if ab >= 0.8:
+                                    c = '#00FF7F' if v > 0 else '#FF4B6E'
+                                elif ab >= 0.6:
+                                    c = '#4BFFB3' if v > 0 else '#FF6B6B'
+                                elif ab >= 0.4:
+                                    c = '#88D0B3' if v > 0 else '#FF9A6C'
+                                else:
+                                    c = '#555'
+                                return f'color:{c};font-weight:{"700" if ab>=0.7 else "400"}'
+
+                            _styled = _ll_tbl.style.map(_style_corr).format(
+                                lambda v: f"{v:+.2f}" if not pd.isna(v) else "—"
+                            )
+                            st.dataframe(_styled, width="stretch")
+                            st.download_button(
+                                "⬇ CSV 다운로드",
+                                data=_ll_tbl.to_csv(float_format="%.2f"),
+                                file_name=f"lead_lag_{market_choice}.csv",
+                                mime="text/csv",
+                            )
+                        else:
+                            st.info("데이터 부족으로 선행성 분석을 계산할 수 없습니다.")
+
+    def render_macro2_experimental_section(container):
+        with container:
+            st.caption("실험용 확장판입니다. ⓪/①/②/③/④/⑥ 차트 각각에 대해 동적 Risk 시작선/종료선을 개별 설정할 수 있습니다.")
+
+            _c0, _c1, _c2 = st.columns([1.2, 2.8, 1.2])
+            with _c0:
+                _benchmark_name = st.selectbox("기준지수", options=["S&P500", "Nasdaq", "KOSPI"], index=0, label_visibility='collapsed', key='macro2_benchmark')
+            with _c1:
+                _yr_opts = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
+                _macro2_years = st.select_slider("기간", options=list(_yr_opts.keys()), value=3, format_func=lambda x: _yr_opts[x], label_visibility='collapsed', key='macro2_years')
+            with _c2:
+                _show_raw_macro2 = st.checkbox("원본선 표시", value=False, key='macro2_show_raw')
+
+            _macro2_cfgs = {}
+            _macro2_defaults = _get_macro2_dynamic_defaults()
+            with st.expander("실험 설정", expanded=True):
+                for _code, _cfg in _macro2_defaults.items():
+                    with st.expander(_cfg["label"], expanded=(_code == "0")):
+                        _s0, _s1, _s2, _s3 = st.columns(4)
+                        with _s0:
+                            _ema = st.selectbox("EMA", [10, 20, 30], index=[10, 20, 30].index(_cfg["ema"]), key=f'macro2_{_code}_ema')
+                        with _s1:
+                            _window = st.selectbox("Rolling Window", [63, 126, 252, 504], index=[63, 126, 252, 504].index(_cfg["window"]), key=f'macro2_{_code}_window')
+                        with _s2:
+                            _start = st.select_slider("Risk 시작 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["start"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro2_{_code}_start')
+                        with _s3:
+                            _end = st.select_slider("Risk 종료 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["end"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro2_{_code}_end')
+                        _macro2_cfgs[_code] = {"ema": int(_ema), "window": int(_window), "start": float(_start), "end": float(_end)}
+
+            with st.spinner("📡 기준 지수 데이터 로딩 중..."):
+                _benchmark_cfg2 = _get_macro_benchmark(_benchmark_name)
+                _spx_s2 = _yf_close(_benchmark_cfg2['code'], _macro2_years)
+
+            _invalid_macro2 = [f"({_code})" for _code, _cfg in _macro2_cfgs.items() if _cfg["start"] <= _cfg["end"]]
+            if _invalid_macro2:
+                st.warning(f"Risk 시작 분위수는 종료 분위수보다 높아야 합니다: {' '.join(_invalid_macro2)}")
+            else:
+                with st.spinner("📡 실험용 매크로 데이터 로딩 중..."):
+                    _macro2_charts = _build_macro2_dynamic_charts(_macro2_years, _spx_s2, _show_raw_macro2, _benchmark_name, _macro2_cfgs)
+                for _idx, _fig in enumerate(_macro2_charts):
+                    if _fig is not None:
+                        st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False}, key=f"macro2_chart_{_idx}_{_benchmark_name}_{_macro2_years}")
+                    else:
+                        st.warning("실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
+
+    def render_macro3_threshold_section(container):
+        with container:
+            st.caption("정적 threshold 실험판입니다. ③/④/⑥ 차트에서 각 지표의 EMA가 지정 임계값 아래로 내려가면 시작, 위로 올라오면 종료로 단순화했습니다.")
+
+            _c0, _c1, _c2 = st.columns([1.2, 2.8, 1.2])
+            with _c0:
+                _benchmark_name3 = st.selectbox("기준지수", options=["S&P500", "Nasdaq", "KOSPI"], index=0, label_visibility='collapsed', key='macro3_benchmark')
+            with _c1:
+                _yr_opts3 = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
+                _macro3_years = st.select_slider("기간", options=list(_yr_opts3.keys()), value=3, format_func=lambda x: _yr_opts3[x], label_visibility='collapsed', key='macro3_years')
+            with _c2:
+                _show_raw_macro3 = st.checkbox("원본선 표시", value=False, key='macro3_show_raw')
+
+            with st.expander("실험 설정", expanded=True):
+                _s1, _s2, _s3, _s4, _s5 = st.columns(5)
+                with _s1:
+                    _ema_span3 = st.selectbox("EMA", [10, 20, 30], index=1, key='macro3_ema_span')
+                with _s2:
+                    _thr3_3 = st.number_input("③ 시작", value=0.5, step=0.1, format="%.2f", key='macro3_thr3')
+                with _s3:
+                    _thr3_end_3 = st.number_input("③ 종료", value=-0.5, step=0.1, format="%.2f", key='macro3_thr3_end')
+                with _s4:
+                    _thr4_3 = st.number_input("④ threshold", value=-20.0, step=0.5, format="%.2f", key='macro3_thr4')
+                with _s5:
+                    _thr6_3 = st.number_input("⑥ threshold", value=2.0, step=0.1, format="%.2f", key='macro3_thr6')
+
+            _downturn_params3 = _DEFAULT_DOWNTURN_PARAMS.copy()
+            _downturn_params3['ema_span'] = int(_ema_span3)
+
+            with st.spinner("📡 기준 지수 데이터 로딩 중..."):
+                _benchmark_cfg3 = _get_macro_benchmark(_benchmark_name3)
+                _spx_s3 = _yf_close(_benchmark_cfg3['code'], _macro3_years)
+
+            with st.spinner("📡 실험용 매크로 데이터 로딩 중..."):
+                _macro3_charts = [
+                    make_macro_credit_stress_chart(_macro3_years, _spx_s3, _show_raw_macro3, _downturn_params3, _benchmark_name3, threshold_mode=True, threshold_value=float(_thr3_3), threshold_end_value=float(_thr3_end_3), ema_span=int(_ema_span3)),
+                    make_macro_options_chart(_macro3_years, _spx_s3, _show_raw_macro3, _downturn_params3, _benchmark_name3, threshold_mode=True, threshold_value=float(_thr4_3), ema_span=int(_ema_span3)),
+                    make_macro_vix_spread_chart(_macro3_years, _spx_s3, _show_raw_macro3, _downturn_params3, _benchmark_name3, threshold_mode=True, threshold_value=float(_thr6_3), ema_span=int(_ema_span3)),
+                ]
+
+            for _idx, _fig in enumerate(_macro3_charts):
+                if _fig is not None:
+                    st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False}, key=f"macro3_chart_{_idx}_{_benchmark_name3}_{_macro3_years}")
+                else:
+                    st.warning("실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
+
+    def render_macro4_combo_section(container):
+        with container:
+            st.caption("상단 조합 차트는 선택한 지표들의 Risk-off 상태를 합성하고, 아래 6개 차트는 매크로지표2와 동일한 개별 실험 차트입니다.")
+
+            _macro4_defaults = _get_macro2_dynamic_defaults()
+            _macro4_defaults["0"].update({"ema": 20, "window": 252, "start": 0.80, "end": 0.70})
+            _macro4_defaults["1"].update({"ema": 20, "window": 126, "start": 0.60, "end": 0.50})
+            _macro4_defaults["3"].update({"ema": 10, "window": 126, "start": 0.20, "end": 0.10})
+            _macro4_defaults["6"].update({"ema": 30, "window": 63, "start": 0.60, "end": 0.10})
+            _macro4_selected_default = ["0", "1", "3", "6"]
+
+            _m40, _m41, _m42 = st.columns([1.2, 2.8, 1.2])
+            with _m40:
+                _benchmark_name4 = st.selectbox("기준지수", options=["S&P500", "Nasdaq"], index=0, label_visibility='collapsed', key='macro4_benchmark')
+            with _m41:
+                _yr_opts4 = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
+                _macro4_years = st.select_slider("기간", options=list(_yr_opts4.keys()), value=3, format_func=lambda x: _yr_opts4[x], label_visibility='collapsed', key='macro4_years')
+            with _m42:
+                _show_raw_macro4 = st.checkbox("원본선 표시", value=False, key='macro4_show_raw')
+
+            _m43, _m44 = st.columns([4.4, 1.6])
+            with _m43:
+                _selected_codes4 = st.multiselect("조합 지표", options=list(_MACRO2_SIGNAL_LABELS.keys()), default=_macro4_selected_default, format_func=lambda x: _MACRO2_SIGNAL_LABELS.get(x, x), key='macro4_selected_codes')
+            with _m44:
+                _default_k4 = 3 if len(_selected_codes4) >= 3 else max(1, len(_selected_codes4))
+                _combo_k4 = st.slider("Risk 기준", min_value=1, max_value=max(1, len(_selected_codes4)), value=_default_k4, format="%d개 이상 ON", key='macro4_combo_k')
+
+            _macro4_cfgs = {}
+            with st.expander("실험 설정", expanded=True):
+                for _code, _cfg in _macro4_defaults.items():
+                    with st.expander(_cfg["label"], expanded=(_code in _selected_codes4)):
+                        _s0, _s1, _s2, _s3 = st.columns(4)
+                        with _s0:
+                            _ema = st.selectbox("EMA", [10, 20, 30], index=[10, 20, 30].index(_cfg["ema"]), key=f'macro4_{_code}_ema')
+                        with _s1:
+                            _window = st.selectbox("Rolling Window", [63, 126, 252, 504], index=[63, 126, 252, 504].index(_cfg["window"]), key=f'macro4_{_code}_window')
+                        with _s2:
+                            _start = st.select_slider("Risk 시작 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["start"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro4_{_code}_start')
+                        with _s3:
+                            _end = st.select_slider("Risk 종료 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["end"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro4_{_code}_end')
+                        _macro4_cfgs[_code] = {"ema": int(_ema), "window": int(_window), "start": float(_start), "end": float(_end)}
+
+            with st.spinner("📡 기준 지수 데이터 로딩 중..."):
+                _benchmark_cfg4 = _get_macro_benchmark(_benchmark_name4)
+                _spx_s4 = _yf_close(_benchmark_cfg4['code'], _macro4_years)
+
+            _invalid_macro4 = [f"({_code})" for _code, _cfg in _macro4_cfgs.items() if _cfg["start"] <= _cfg["end"]]
+            if _invalid_macro4:
+                st.warning(f"Risk 시작 분위수는 종료 분위수보다 높아야 합니다: {' '.join(_invalid_macro4)}")
+            elif not _selected_codes4:
+                st.warning("조합에 사용할 지표를 최소 1개 이상 선택해 주세요.")
+            else:
+                with st.spinner("📡 조합 매크로 데이터 로딩 중..."):
+                    _macro4_combo_fig = make_macro_combo_dynamic_chart(years=_macro4_years, spx_s=_spx_s4, benchmark_name=_benchmark_name4, selected_codes=_selected_codes4, cfgs=_macro4_cfgs, combo_k=_combo_k4)
+                    _macro4_charts = _build_macro2_dynamic_charts(_macro4_years, _spx_s4, _show_raw_macro4, _benchmark_name4, _macro4_cfgs)
+
+                if _macro4_combo_fig is not None:
+                    st.plotly_chart(_macro4_combo_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_combo_{_benchmark_name4}_{_macro4_years}_{'_'.join(_selected_codes4)}_{_combo_k4}")
+                else:
+                    st.warning("조합 Risk-off 차트 데이터 로딩 실패 — 조합 지표/기간을 확인해 주세요.")
+
+                for _idx, _fig in enumerate(_macro4_charts):
+                    if _fig is not None:
+                        st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_chart_{_idx}_{_benchmark_name4}_{_macro4_years}")
+                    else:
+                        st.warning("개별 실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
+
+    def render_market_macro_main_section(container):
+        with container:
+            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 나스닥은 미국 매크로 세트를 그대로 쓰고, 코스피는 변동성·텀스프레드·신용계열을 한국형 프록시로 대체합니다.")
+
+            _c0, _c1, _c2, _c3, _c4 = st.columns([1.3, 2.7, 1, 1, 1.4])
+            with _c0:
+                _benchmark_name = st.selectbox("기준지수", options=["S&P500", "Nasdaq", "KOSPI"], index=0, label_visibility='collapsed')
+            with _c1:
+                _yr_opts = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
+                _macro_years = st.select_slider("기간", options=list(_yr_opts.keys()), value=3, format_func=lambda x: _yr_opts[x], label_visibility='collapsed')
+            with _c2:
+                _show_spx = st.checkbox("S&P500 오버레이", value=True)
+            with _c3:
+                _show_raw_macro = st.checkbox("원본선 표시", value=False)
+            with _c4:
+                _combo_modes = st.multiselect("⑤ 신호", options=["Watch", "Risk"], default=["Watch"], label_visibility='collapsed')
+
+            with st.expander("고급 설정", expanded=False):
+                _gp1, _gp2, _gp3, _gp4, _gp5 = st.columns(5)
+                with _gp1:
+                    _ema_span = st.selectbox("EMA", [10, 20], index=1)
+                with _gp2:
+                    _std_window = st.selectbox("rolling std N", [10, 20, 40], index=2)
+                with _gp3:
+                    _ema_compare_days = st.selectbox("EMA 비교 M일", [5, 10, 20], index=1)
+                with _gp4:
+                    _start_count = st.selectbox("하락 시작", [3, 4], index=1, format_func=lambda x: f"{x}/5")
+                with _gp5:
+                    _end_count = st.selectbox("하락 종료", [3, 4], index=0, format_func=lambda x: f"{x}/5")
+
+            _downturn_params = {'ema_span': _ema_span, 'std_window': _std_window, 'ema_compare_days': _ema_compare_days, 'start_count': _start_count, 'end_count': _end_count}
+
+            with st.spinner("📡 기준 지수 데이터 로딩 중..."):
+                _benchmark_cfg = _get_macro_benchmark(_benchmark_name)
+                _spx_s = _yf_close(_benchmark_cfg['code'], _macro_years) if _show_spx else None
+
+            with st.spinner("📡 매크로 데이터 로딩 중..."):
+                _macro_charts = [
+                    make_macro_index_cycle_chart(_macro_years, _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),
+                    make_macro_hy_spread_chart(_macro_years, _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),
+                    make_macro_ig_spread_chart(_macro_years, _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),
+                    make_macro_credit_stress_chart(_macro_years, _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),
+                    make_macro_options_chart(_macro_years, _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),
+                    make_macro_combo_downturn_chart(_macro_years, _spx_s, _combo_modes, _downturn_params, _benchmark_name),
+                    make_macro_vix_spread_chart(_macro_years, _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),
+                    make_macro_yield_curve_chart(_macro_years, _spx_s, _benchmark_name),
+                    make_macro_pmi_chart(_macro_years, _spx_s, _benchmark_name),
+                    make_macro_liquidity_chart(_macro_years, _spx_s, _benchmark_name),
+                    make_macro_ai_capex_chart(_macro_years, _spx_s),
+                ]
+
+            _mc = st.columns(2)
+            for i, ch in enumerate(_macro_charts):
+                if ch is not None:
+                    with _mc[i % 2]:
+                        st.plotly_chart(ch, width="stretch", config={"displayModeBar": False}, key=f"macro_main_chart_{i}_{_benchmark_name}_{_macro_years}_{int(_show_spx)}_{int(_show_raw_macro)}")
+                else:
+                    with _mc[i % 2]:
+                        _labels = ['⓪ S&P500', '① HY 스프레드', '② IG 스프레드', '③ 크레딧 스트레스', '④ VIX', '⑤ 종합 하락 사이클', '⑥ VIX 스프레드', '⑦ 금리차', '⑧ 경기 모멘텀', '⑨ 유동성', '⑩ AI CAPEX']
+                        st.warning(f"{_labels[i]} 데이터 로딩 실패 — FRED 일시 불가. 잠시 후 재시도해 주세요.")
+
     # ═══════════════════════════════════════════════════════════
     # TAB 1 — 신호 스캐너
     # ═══════════════════════════════════════════════════════════
@@ -6107,659 +6513,35 @@ def main(page="signal"):
         # TAB 2 — 시장 내부지표
         # ═══════════════════════════════════════════════════════════
     if page in ("all", "market") or (page == "market_macro" and _market_macro_section == "market"):
-        with tab2:
-            col_mkt, col_period, _ = st.columns([2, 2, 2])
-            with col_mkt:
-                market_choice = st.radio(
-                    "시장", ["코스피", "코스닥", "S&P 500", "나스닥 200"],
-                    horizontal=True,
-                    label_visibility="collapsed",
-                )
-            with col_period:
-                _mkt_labels = {
-                    20: "20일", 42: "2개월", 63: "3개월",
-                    126: "6개월", 189: "9개월",
-                    252: "1년", 378: "1년 6개월",
-                    504: "2년", 756: "3년", 1008: "4년",
-                }
-                mkt_lookback = st.select_slider(
-                    "기간", options=list(_mkt_labels.keys()),
-                    value=63, format_func=lambda x: _mkt_labels[x],
-                    label_visibility="collapsed",
-                )
-
-            with st.spinner("📡 시장 데이터 로딩 중... (전체 종목 첫 로딩 시 1분 소요, 이후 1시간 캐시)"):
-                market_df, err = get_market_internals(market_choice, lookback_days=mkt_lookback)
-
-            if err:
-                st.error("데이터 로드 실패 — 아래 에러 전문을 복사해서 공유해주세요")
-                st.code(err, language="python")
-            elif market_df is not None and not market_df.empty:
-                latest = market_df.iloc[-1]
-                prev = market_df.iloc[-2] if len(market_df) >= 2 else latest
-
-                # ── 종합판단 시계열 차트 (전폭)
-                _score_ts_fig = make_score_timeseries_chart(market_df, market_choice)
-                if _score_ts_fig is not None:
-                    st.plotly_chart(_score_ts_fig, width="stretch",
-                                    config={"displayModeBar": False})
-
-                # ── 시장 강도 점수 (기존 감성 요약 대체)
-                render_market_score_ui(market_df, market_choice)
-
-                # ── 소형 메트릭 카드 (신호 스캐너와 동일 스타일)
-                def _mkt_card(label, value, delta="", accent="#787EE7"):
-                    dlt = (f'<div style="font-size:9px;color:#555;margin-top:1px;">{delta}</div>'
-                           if delta else "")
-                    return (
-                        f'<div style="flex:1;min-width:0;background:#141416;'
-                        f'border:1px solid rgba(255,255,255,0.06);border-radius:6px;'
-                        f'padding:5px 10px 6px;">'
-                        f'<div style="font-size:9px;color:#444;text-transform:uppercase;'
-                        f'letter-spacing:0.6px;white-space:nowrap;overflow:hidden;'
-                        f'text-overflow:ellipsis;">{label}</div>'
-                        f'<div style="font-size:15px;font-weight:600;color:{accent};'
-                        f'margin-top:1px;font-variant-numeric:tabular-nums;">{value}</div>'
-                        f'{dlt}</div>'
-                    )
-
-                def _mkt_row(cards_html):
-                    return (f'<div style="display:flex;gap:5px;margin-bottom:5px;">'
-                            f'{cards_html}</div>')
-
-                summ_val = float(latest['서머레이션'])
-                vix_val  = latest['VIX']
-                ma20_val = latest['상승비율MA20']
-                p200_val = latest['100MA상위']
-                p50_val  = latest.get('20MA상위')
-                adl_chg  = float(latest['ADL'] - prev['ADL'])
-                vix_lbl  = "변동성(HV20)" if market_choice in ("코스피", "코스닥") else "VIX"
-
-                row1 = "".join([
-                    _mkt_card("시총가중",
-                        f"{latest['시총가중']:.1f}",
-                        f"{latest['시총가중']-prev['시총가중']:+.2f}",
-                        "#00FF7F" if latest['시총가중'] > prev['시총가중'] else "#FF4B6E"),
-                    _mkt_card("균일가중",
-                        f"{latest['균일가중']:.1f}",
-                        f"{latest['균일가중']-prev['균일가중']:+.2f}",
-                        "#FFD700" if latest['균일가중'] > prev['균일가중'] else "#FF4B6E"),
-                    _mkt_card("ADL",
-                        f"{latest['ADL']:.0f}",
-                        f"{adl_chg:+.0f}",
-                        "#4BFFB3" if adl_chg >= 0 else "#FF4B6E"),
-                    _mkt_card("서머레이션",
-                        f"{summ_val:+.0f}",
-                        "강세구간" if summ_val > 0 else "약세구간",
-                        "#4BFFB3" if summ_val > 0 else "#FF4B6E"),
-                    _mkt_card(vix_lbl,
-                        f"{vix_val:.1f}" if pd.notna(vix_val) else "—",
-                        "공포" if (pd.notna(vix_val) and float(vix_val) > 30)
-                        else ("탐욕" if (pd.notna(vix_val) and float(vix_val) < 20) else "중립"),
-                        "#FFB347"),
-                    _mkt_card("상승비율MA20",
-                        f"{ma20_val:.1f}%" if pd.notna(ma20_val) else "—",
-                        "",
-                        "#4BFFB3" if (pd.notna(ma20_val) and float(ma20_val) > 50) else "#FF4B6E"),
-                    _mkt_card("20MA 상위",
-                        f"{p50_val:.1f}%" if pd.notna(p50_val) else "—",
-                        "강세" if (pd.notna(p50_val) and float(p50_val) > 50)
-                        else "약세",
-                        "#87CEEB" if (pd.notna(p50_val) and float(p50_val) > 50) else "#FF4B6E"),
-                    _mkt_card("100MA 상위",
-                        f"{p200_val:.1f}%" if pd.notna(p200_val) else "—",
-                        "강세장" if (pd.notna(p200_val) and float(p200_val) > 70)
-                        else ("약세장" if (pd.notna(p200_val) and float(p200_val) < 30) else "중립"),
-                        "#C8C850"),
-                ])
-                st.markdown(_mkt_row(row1), unsafe_allow_html=True)
-
-                n_med  = int(market_df['전체종목수'].median())
-                full_t = get_full_ticker_list(market_choice)
-                n_full = len(full_t) if full_t else 0
-                if n_full:
-                    src_label = f"전체 {n_full}종목"
-                elif market_choice in ("코스피", "코스닥"):
-                    src_label = "대형주 바스켓 (fallback)"
-                else:
-                    src_label = "구성종목"
-                st.caption(
-                    f"기준: {src_label} | 데이터 유효 (중앙값): {n_med}개 | "
-                    f"최근 상승: {int(latest['상승종목수'])}개 / {int(latest['전체종목수'])}개"
-                )
-
-                st.plotly_chart(
-                    make_market_chart(market_df, market_choice),
-                    width="stretch",
-                    config={"displayModeBar": False},
-                )
-
-                with st.expander("📖 지표 쉽게 이해하기", expanded=False):
-                    st.markdown("""
-    <style>
-    .guide-table { width:100%; border-collapse:collapse; font-size:12px; }
-    .guide-table th { background:#1a1a2e; color:#787EE7; padding:7px 10px; text-align:left; border-bottom:1px solid #2a2a3e; }
-    .guide-table td { padding:6px 10px; border-bottom:1px solid #1e1e2e; vertical-align:top; line-height:1.6; }
-    .guide-table tr:hover td { background:rgba(120,126,231,0.04); }
-    .bull { color:#4BFFB3; font-weight:600; }
-    .bear { color:#FF4B6E; font-weight:600; }
-    .neut { color:#C8C850; font-weight:600; }
-    </style>
-
-    <table class="guide-table">
-    <tr>
-      <th>지표 이름</th>
-      <th>한 줄 설명 (쉽게)</th>
-      <th>🟢 좋은 신호</th>
-      <th>🔴 나쁜 신호</th>
-      <th>결론 내리는 법</th>
-    </tr>
-    <tr>
-      <td><b>시총가중 지수</b></td>
-      <td>삼성·애플 같은 큰 회사 위주로 시장이 얼마나 올랐나</td>
-      <td class="bull">꾸준히 우상향</td>
-      <td class="bear">꺾이며 하락</td>
-      <td>우리가 흔히 보는 코스피·S&P500 과 같은 개념. 가장 기본 지표</td>
-    </tr>
-    <tr>
-      <td><b>균일가중 지수</b></td>
-      <td>큰 회사·작은 회사 모두 똑같이 1표씩 줬을 때의 시장. "골고루 오르나?" 확인용</td>
-      <td class="bull">시총가중과 함께 오름</td>
-      <td class="bear">시총가중만 오르고 이건 제자리</td>
-      <td>둘이 같이 오르면 건강한 장. 시총가중만 오르면 일부 대형주만 끌어올리는 불안한 장</td>
-    </tr>
-    <tr>
-      <td><b>ADL (등락누적선)</b></td>
-      <td>매일 오른 종목 수 − 내린 종목 수를 계속 더한 값. 시장이 진짜 건강한지 보여줌</td>
-      <td class="bull">계속 우상향</td>
-      <td class="bear">지수는 오르는데 ADL은 내려감 (위험 신호!)</td>
-      <td><b>가장 중요한 선행지표.</b> 지수보다 ADL이 먼저 꺾이면 조정이 곧 온다는 경고. ADL이 먼저 올라오면 반등 시작 신호</td>
-    </tr>
-    <tr>
-      <td><b>52주 신고가 비율</b></td>
-      <td>오늘 1년(52주) 내 최고가를 찍은 종목 수 ÷ 전체 유효 종목 수 × 100. 진짜 상승 모멘텀이 있는지 확인</td>
-      <td class="bull">30% 이상 = 강한 상승 모멘텀</td>
-      <td class="bear">5% 이하 = 신고가 거의 없음 (약세 신호)</td>
-      <td>지수가 오르는데 신고가 비율이 낮으면 소수 대형주만 끌어올리는 불안한 장. 역대 최고가 갱신 구간에서 30%+ 유지되면 진짜 상승장</td>
-    </tr>
-    <tr>
-      <td><b>20일선 상위 비율</b></td>
-      <td>20일(약 1달) 평균 가격보다 지금 비싼 종목이 몇 %인지. 단기 추세의 건강도를 빠르게 파악</td>
-      <td class="bull">50% 이상 = 단기 강세 흐름</td>
-      <td class="bear">50% 이하 = 단기 약세 흐름</td>
-      <td>100일선 상위 비율보다 민감하게 반응해서 추세 전환을 더 빨리 알려줌. 50%선을 뚫고 올라오면 단기 반등 확인 신호</td>
-    </tr>
-    <tr>
-      <td><b>맥클렐란 서머레이션</b></td>
-      <td>단기·장기 평균 등락 차이를 계속 누적한 값. "지금 강세장인지 약세장인지" 큰 그림</td>
-      <td class="bull">0 이상 (강세장 영역)</td>
-      <td class="bear">0 이하 (약세장 영역)</td>
-      <td>0선 위면 강세장, 아래면 약세장. 0선을 뚫고 올라오면 장세 전환 신호. 0선 위에서 하락 전환하면 조정 경고</td>
-    </tr>
-    <tr>
-      <td><b>VIX / 역사적변동성(HV20)</b></td>
-      <td>투자자들이 얼마나 겁먹고 있나. 미국=VIX(옵션 내재변동성), 한국=HV20(지수 20일 실현변동성). 숫자 클수록 불안</td>
-      <td class="bull">급등 후 빠르게 내려올 때 → 공포 해소 = 반등 신호</td>
-      <td class="bear">낮은 수준에서 갑자기 급등 → 조정 시작 신호</td>
-      <td>미국 VIX: 20 이하=안심, 20~30=주의, 30 이상=공포. 한국 HV20: 15 이하=안심, 20 이상=주의, 25 이상=경계. <b>공포 극대일 때가 역발상 매수 타이밍</b>인 경우 많음</td>
-    </tr>
-    <tr>
-      <td><b>상승비율 MA20</b></td>
-      <td>오늘 전체 종목 중 오른 종목이 몇 %인지를 20일 평균낸 것</td>
-      <td class="bull">60% 이상 유지</td>
-      <td class="bear">40% 이하로 내려감</td>
-      <td>50% 위면 "대부분 오르는 중", 아래면 "대부분 내리는 중". 하루치 수치는 변동 크니 20일 평균선만 봐도 충분</td>
-    </tr>
-    <tr>
-      <td><b>100일선 상위 비율</b></td>
-      <td>100일(약 5개월) 평균 가격보다 지금 비싼 종목이 몇 %인지</td>
-      <td class="bull">70% 이상 = 강세장</td>
-      <td class="bear">30% 이하 = 약세장 / 20% 이하 = 침체 바닥권</td>
-      <td>중장기 건강도 지표. 30% 이하까지 내려간 뒤 반등하면 강력한 바닥 신호로 자주 활용됨</td>
-    </tr>
-    </table>
-
-    <br>
-
-    **🗺️ 지표 조합으로 지금 어느 상황인지 판단하기**
-
-    | 시장 상황 | ADL | 서머레이션 | 52주신고가 비율 | 100일선 상위 | 공포지수 | 내가 할 행동 |
-    |---------|-----|----------|------------|------------|---------|------------|
-    | 🟢 **상승 시작** | 바닥 찍고 올라오는 중 | 0선 위로 뚫음 | 30%→50% 회복 | 30%→50% 회복 중 | 30 이상에서 내려오는 중 | 적극적으로 매수할 타이밍 |
-    | 🟢 **상승 중반** | 계속 우상향 | +500 이상 | 70% 이상 유지 | 60~80% | 20 이하 (안심 구간) | 보유 유지. 추격 매수는 자제 |
-    | 🟡 **상승 막바지** | 지수는 오르는데 ADL은 정체 | +1000 이상이지만 더 안 오름 | 지수 오르는데 70% 이하 | 70% 이상 | 15 이하 (과도한 안심) | 비중 줄이고 차익실현 준비 |
-    | 🔴 **하락장** | 계속 우하향 | 0선 아래 | 30% 이하 | 30% 이하 | 30 이상 (공포) | 현금 비중 늘리기. 반등해도 매도 기회 |
-
-    > 균일가중 지수는 공식 지수가 아니라 직접 계산한 참고용 지표입니다.
-    > 첫 로딩 시 전체 종목 다운로드로 1~2분 소요됩니다.
-                    """, unsafe_allow_html=True)
-
-
-                # ── 지표 선행성 분석
-                with st.expander("🔬 지표 선행성 분석 (지수 예측력)", expanded=False):
-                    st.caption(
-                        "corr(지표[오늘], 지수[오늘+N일]) — 값이 높을수록 해당 지표가 N일 후 지수를 예측하는 경향이 있음. "
-                        "4년치 데이터를 별도 로딩합니다."
-                    )
-                    with st.spinner("4년 데이터 로딩 중..."):
-                        _ll_df, _ = get_market_internals(market_choice, lookback_days=1008)
-
-                    if _ll_df is not None and not _ll_df.empty:
-                        _ll_tbl = compute_lead_lag_table(_ll_df)
-                        _ll_tbl = make_arrow_safe(_ll_tbl)  # Arrow 직렬화 안전장치
-                        if not _ll_tbl.empty:
-                            # 색상 함수
-                            def _style_corr(v):
-                                if pd.isna(v):
-                                    return 'color:#444'
-                                ab = abs(v)
-                                if ab >= 0.8:
-                                    c = '#00FF7F' if v > 0 else '#FF4B6E'
-                                elif ab >= 0.6:
-                                    c = '#4BFFB3' if v > 0 else '#FF6B6B'
-                                elif ab >= 0.4:
-                                    c = '#88D0B3' if v > 0 else '#FF9A6C'
-                                else:
-                                    c = '#555'
-                                return f'color:{c};font-weight:{"700" if ab>=0.7 else "400"}'
-
-                            _styled = _ll_tbl.style.map(_style_corr).format(
-                                lambda v: f"{v:+.2f}" if not pd.isna(v) else "—"
-                            )
-                            st.dataframe(_styled, width="stretch")
-                            st.download_button(
-                                "⬇ CSV 다운로드",
-                                data=_ll_tbl.to_csv(float_format="%.2f"),
-                                file_name=f"lead_lag_{market_choice}.csv",
-                                mime="text/csv",
-                            )
-                        else:
-                            st.info("데이터 부족으로 선행성 분석을 계산할 수 없습니다.")
+        render_market_internal_indicators_section(tab2)
 
         # ═══════════════════════════════════════════════════════════
         # TAB 3A — 매크로 지표 2 (실험용)
         # ═══════════════════════════════════════════════════════════
     if page == "macro2" or (page == "market_macro" and _market_macro_section == "macro2"):
         _macro2_container = tab4 if page == "market_macro" else tab3
-        with _macro2_container:
-            st.caption("실험용 확장판입니다. ⓪/①/②/③/④/⑥ 차트 각각에 대해 동적 Risk 시작선/종료선을 개별 설정할 수 있습니다.")
-
-            _c0, _c1, _c2 = st.columns([1.2, 2.8, 1.2])
-            with _c0:
-                _benchmark_name = st.selectbox(
-                    "기준지수",
-                    options=["S&P500", "Nasdaq", "KOSPI"],
-                    index=0,
-                    label_visibility='collapsed',
-                    key='macro2_benchmark',
-                )
-            with _c1:
-                _yr_opts = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
-                _macro2_years = st.select_slider(
-                    "기간",
-                    options=list(_yr_opts.keys()),
-                    value=3,
-                    format_func=lambda x: _yr_opts[x],
-                    label_visibility='collapsed',
-                    key='macro2_years',
-                )
-            with _c2:
-                _show_raw_macro2 = st.checkbox("원본선 표시", value=False, key='macro2_show_raw')
-
-            _macro2_cfgs = {}
-            _macro2_defaults = _get_macro2_dynamic_defaults()
-            with st.expander("실험 설정", expanded=True):
-                for _code, _cfg in _macro2_defaults.items():
-                    with st.expander(_cfg["label"], expanded=(_code == "0")):
-                        _s0, _s1, _s2, _s3 = st.columns(4)
-                        with _s0:
-                            _ema = st.selectbox("EMA", [10, 20, 30], index=[10, 20, 30].index(_cfg["ema"]), key=f'macro2_{_code}_ema')
-                        with _s1:
-                            _window = st.selectbox("Rolling Window", [63, 126, 252, 504], index=[63, 126, 252, 504].index(_cfg["window"]), key=f'macro2_{_code}_window')
-                        with _s2:
-                            _start = st.select_slider(
-                                "Risk 시작 분위수",
-                                options=[x / 100 for x in range(0, 101, 5)],
-                                value=_cfg["start"],
-                                format_func=lambda x: f"{int(x * 100)}%",
-                                key=f'macro2_{_code}_start',
-                            )
-                        with _s3:
-                            _end = st.select_slider(
-                                "Risk 종료 분위수",
-                                options=[x / 100 for x in range(0, 101, 5)],
-                                value=_cfg["end"],
-                                format_func=lambda x: f"{int(x * 100)}%",
-                                key=f'macro2_{_code}_end',
-                            )
-                        _macro2_cfgs[_code] = {"ema": int(_ema), "window": int(_window), "start": float(_start), "end": float(_end)}
-
-            with st.spinner("📡 기준 지수 데이터 로딩 중..."):
-                _benchmark_cfg2 = _get_macro_benchmark(_benchmark_name)
-                _spx_s2 = _yf_close(_benchmark_cfg2['code'], _macro2_years)
-
-            _invalid_macro2 = [f"({_code})" for _code, _cfg in _macro2_cfgs.items() if _cfg["start"] <= _cfg["end"]]
-            if _invalid_macro2:
-                st.warning(f"Risk 시작 분위수는 종료 분위수보다 높아야 합니다: {' '.join(_invalid_macro2)}")
-            else:
-                with st.spinner("📡 실험용 매크로 데이터 로딩 중..."):
-                    _macro2_charts = _build_macro2_dynamic_charts(
-                        _macro2_years, _spx_s2, _show_raw_macro2, _benchmark_name, _macro2_cfgs
-                    )
-
-                for _idx, _fig in enumerate(_macro2_charts):
-                    if _fig is not None:
-                        st.plotly_chart(
-                            _fig,
-                            width="stretch",
-                            config={"displayModeBar": False},
-                            key=f"macro2_chart_{_idx}_{_benchmark_name}_{_macro2_years}",
-                        )
-                    else:
-                        st.warning("실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
+        render_macro2_experimental_section(_macro2_container)
 
         # ═══════════════════════════════════════════════════════════
         # TAB 3B — 매크로 지표 3 (정적 threshold 실험용)
         # ═══════════════════════════════════════════════════════════
     if page == "macro3" or (page == "market_macro" and _market_macro_section == "macro3"):
         _macro3_container = tab5 if page == "market_macro" else tab3
-        with _macro3_container:
-            st.caption("정적 threshold 실험판입니다. ③/④/⑥ 차트에서 각 지표의 EMA가 지정 임계값 아래로 내려가면 시작, 위로 올라오면 종료로 단순화했습니다.")
-
-            _c0, _c1, _c2 = st.columns([1.2, 2.8, 1.2])
-            with _c0:
-                _benchmark_name3 = st.selectbox(
-                    "기준지수",
-                    options=["S&P500", "Nasdaq", "KOSPI"],
-                    index=0,
-                    label_visibility='collapsed',
-                    key='macro3_benchmark',
-                )
-            with _c1:
-                _yr_opts3 = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
-                _macro3_years = st.select_slider(
-                    "기간",
-                    options=list(_yr_opts3.keys()),
-                    value=3,
-                    format_func=lambda x: _yr_opts3[x],
-                    label_visibility='collapsed',
-                    key='macro3_years',
-                )
-            with _c2:
-                _show_raw_macro3 = st.checkbox("원본선 표시", value=False, key='macro3_show_raw')
-
-            with st.expander("실험 설정", expanded=True):
-                _s1, _s2, _s3, _s4, _s5 = st.columns(5)
-                with _s1:
-                    _ema_span3 = st.selectbox("EMA", [10, 20, 30], index=1, key='macro3_ema_span')
-                with _s2:
-                    _thr3_3 = st.number_input("③ 시작", value=0.5, step=0.1, format="%.2f", key='macro3_thr3')
-                with _s3:
-                    _thr3_end_3 = st.number_input("③ 종료", value=-0.5, step=0.1, format="%.2f", key='macro3_thr3_end')
-                with _s4:
-                    _thr4_3 = st.number_input("④ threshold", value=-20.0, step=0.5, format="%.2f", key='macro3_thr4')
-                with _s5:
-                    _thr6_3 = st.number_input("⑥ threshold", value=2.0, step=0.1, format="%.2f", key='macro3_thr6')
-
-            _downturn_params3 = _DEFAULT_DOWNTURN_PARAMS.copy()
-            _downturn_params3['ema_span'] = int(_ema_span3)
-
-            with st.spinner("📡 기준 지수 데이터 로딩 중..."):
-                _benchmark_cfg3 = _get_macro_benchmark(_benchmark_name3)
-                _spx_s3 = _yf_close(_benchmark_cfg3['code'], _macro3_years)
-
-            with st.spinner("📡 실험용 매크로 데이터 로딩 중..."):
-                _macro3_charts = [
-                    make_macro_credit_stress_chart(
-                        _macro3_years, _spx_s3, _show_raw_macro3, _downturn_params3, _benchmark_name3,
-                        threshold_mode=True,
-                        threshold_value=float(_thr3_3),
-                        threshold_end_value=float(_thr3_end_3),
-                        ema_span=int(_ema_span3)
-                    ),
-                    make_macro_options_chart(
-                        _macro3_years, _spx_s3, _show_raw_macro3, _downturn_params3, _benchmark_name3,
-                        threshold_mode=True, threshold_value=float(_thr4_3), ema_span=int(_ema_span3)
-                    ),
-                    make_macro_vix_spread_chart(
-                        _macro3_years, _spx_s3, _show_raw_macro3, _downturn_params3, _benchmark_name3,
-                        threshold_mode=True, threshold_value=float(_thr6_3), ema_span=int(_ema_span3)
-                    ),
-                ]
-
-            for _idx, _fig in enumerate(_macro3_charts):
-                if _fig is not None:
-                    st.plotly_chart(
-                        _fig,
-                        width="stretch",
-                        config={"displayModeBar": False},
-                        key=f"macro3_chart_{_idx}_{_benchmark_name3}_{_macro3_years}",
-                    )
-                else:
-                    st.warning("실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
+        render_macro3_threshold_section(_macro3_container)
 
         # ═══════════════════════════════════════════════════════════
         # TAB 3C — 매크로 지표 4 (조합 Risk-off 실험용)
         # ═══════════════════════════════════════════════════════════
     if page == "macro4" or (page == "market_macro" and _market_macro_section == "macro4"):
         _macro4_container = tab6 if page == "market_macro" else tab3
-        with _macro4_container:
-            st.caption("상단 조합 차트는 선택한 지표들의 Risk-off 상태를 합성하고, 아래 6개 차트는 매크로지표2와 동일한 개별 실험 차트입니다.")
-
-            _macro4_defaults = _get_macro2_dynamic_defaults()
-            _macro4_defaults["0"].update({"ema": 20, "window": 252, "start": 0.80, "end": 0.70})
-            _macro4_defaults["1"].update({"ema": 20, "window": 126, "start": 0.60, "end": 0.50})
-            _macro4_defaults["3"].update({"ema": 10, "window": 126, "start": 0.20, "end": 0.10})
-            _macro4_defaults["6"].update({"ema": 30, "window": 63, "start": 0.60, "end": 0.10})
-            _macro4_selected_default = ["0", "1", "3", "6"]
-
-            _m40, _m41, _m42 = st.columns([1.2, 2.8, 1.2])
-            with _m40:
-                _benchmark_name4 = st.selectbox(
-                    "기준지수",
-                    options=["S&P500", "Nasdaq"],
-                    index=0,
-                    label_visibility='collapsed',
-                    key='macro4_benchmark',
-                )
-            with _m41:
-                _yr_opts4 = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
-                _macro4_years = st.select_slider(
-                    "기간",
-                    options=list(_yr_opts4.keys()),
-                    value=3,
-                    format_func=lambda x: _yr_opts4[x],
-                    label_visibility='collapsed',
-                    key='macro4_years',
-                )
-            with _m42:
-                _show_raw_macro4 = st.checkbox("원본선 표시", value=False, key='macro4_show_raw')
-
-            _m43, _m44 = st.columns([4.4, 1.6])
-            with _m43:
-                _selected_codes4 = st.multiselect(
-                    "조합 지표",
-                    options=list(_MACRO2_SIGNAL_LABELS.keys()),
-                    default=_macro4_selected_default,
-                    format_func=lambda x: _MACRO2_SIGNAL_LABELS.get(x, x),
-                    key='macro4_selected_codes',
-                )
-            with _m44:
-                _default_k4 = 3 if len(_selected_codes4) >= 3 else max(1, len(_selected_codes4))
-                _combo_k4 = st.slider(
-                    "Risk 기준",
-                    min_value=1,
-                    max_value=max(1, len(_selected_codes4)),
-                    value=_default_k4,
-                    format="%d개 이상 ON",
-                    key='macro4_combo_k',
-                )
-
-            _macro4_cfgs = {}
-            with st.expander("실험 설정", expanded=True):
-                for _code, _cfg in _macro4_defaults.items():
-                    with st.expander(_cfg["label"], expanded=(_code in _selected_codes4)):
-                        _s0, _s1, _s2, _s3 = st.columns(4)
-                        with _s0:
-                            _ema = st.selectbox("EMA", [10, 20, 30], index=[10, 20, 30].index(_cfg["ema"]), key=f'macro4_{_code}_ema')
-                        with _s1:
-                            _window = st.selectbox("Rolling Window", [63, 126, 252, 504], index=[63, 126, 252, 504].index(_cfg["window"]), key=f'macro4_{_code}_window')
-                        with _s2:
-                            _start = st.select_slider(
-                                "Risk 시작 분위수",
-                                options=[x / 100 for x in range(0, 101, 5)],
-                                value=_cfg["start"],
-                                format_func=lambda x: f"{int(x * 100)}%",
-                                key=f'macro4_{_code}_start',
-                            )
-                        with _s3:
-                            _end = st.select_slider(
-                                "Risk 종료 분위수",
-                                options=[x / 100 for x in range(0, 101, 5)],
-                                value=_cfg["end"],
-                                format_func=lambda x: f"{int(x * 100)}%",
-                                key=f'macro4_{_code}_end',
-                            )
-                        _macro4_cfgs[_code] = {"ema": int(_ema), "window": int(_window), "start": float(_start), "end": float(_end)}
-
-            with st.spinner("📡 기준 지수 데이터 로딩 중..."):
-                _benchmark_cfg4 = _get_macro_benchmark(_benchmark_name4)
-                _spx_s4 = _yf_close(_benchmark_cfg4['code'], _macro4_years)
-
-            _invalid_macro4 = [f"({_code})" for _code, _cfg in _macro4_cfgs.items() if _cfg["start"] <= _cfg["end"]]
-            if _invalid_macro4:
-                st.warning(f"Risk 시작 분위수는 종료 분위수보다 높아야 합니다: {' '.join(_invalid_macro4)}")
-            elif not _selected_codes4:
-                st.warning("조합에 사용할 지표를 최소 1개 이상 선택해 주세요.")
-            else:
-                with st.spinner("📡 조합 매크로 데이터 로딩 중..."):
-                    _macro4_combo_fig = make_macro_combo_dynamic_chart(
-                        years=_macro4_years,
-                        spx_s=_spx_s4,
-                        benchmark_name=_benchmark_name4,
-                        selected_codes=_selected_codes4,
-                        cfgs=_macro4_cfgs,
-                        combo_k=_combo_k4,
-                    )
-                    _macro4_charts = _build_macro2_dynamic_charts(
-                        _macro4_years, _spx_s4, _show_raw_macro4, _benchmark_name4, _macro4_cfgs
-                    )
-
-                if _macro4_combo_fig is not None:
-                    st.plotly_chart(
-                        _macro4_combo_fig,
-                        width="stretch",
-                        config={"displayModeBar": False},
-                        key=f"macro4_combo_{_benchmark_name4}_{_macro4_years}_{'_'.join(_selected_codes4)}_{_combo_k4}",
-                    )
-                else:
-                    st.warning("조합 Risk-off 차트 데이터 로딩 실패 — 조합 지표/기간을 확인해 주세요.")
-
-                for _idx, _fig in enumerate(_macro4_charts):
-                    if _fig is not None:
-                        st.plotly_chart(
-                            _fig,
-                            width="stretch",
-                            config={"displayModeBar": False},
-                            key=f"macro4_chart_{_idx}_{_benchmark_name4}_{_macro4_years}",
-                        )
-                    else:
-                        st.warning("개별 실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
+        render_macro4_combo_section(_macro4_container)
 
         # ═══════════════════════════════════════════════════════════
         # TAB 3 — 매크로 지표
         # ═══════════════════════════════════════════════════════════
     if page in ("all", "macro") or (page == "market_macro" and _market_macro_section == "macro"):
-        with tab3:
-            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 나스닥은 미국 매크로 세트를 그대로 쓰고, 코스피는 변동성·텀스프레드·신용계열을 한국형 프록시로 대체합니다.")
-
-            _c0, _c1, _c2, _c3, _c4 = st.columns([1.3, 2.7, 1, 1, 1.4])
-            with _c0:
-                _benchmark_name = st.selectbox(
-                    "기준지수",
-                    options=["S&P500", "Nasdaq", "KOSPI"],
-                    index=0,
-                    label_visibility='collapsed',
-                )
-            with _c1:
-                _yr_opts = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
-                _macro_years = st.select_slider(
-                    "기간",
-                    options=list(_yr_opts.keys()),
-                    value=3,
-                    format_func=lambda x: _yr_opts[x],
-                    label_visibility='collapsed',
-                )
-            with _c2:
-                _show_spx = st.checkbox("S&P500 오버레이", value=True)
-            with _c3:
-                _show_raw_macro = st.checkbox("원본선 표시", value=False)
-            with _c4:
-                _combo_modes = st.multiselect(
-                    "⑤ 신호",
-                    options=["Watch", "Risk"],
-                    default=["Watch"],
-                    label_visibility='collapsed',
-                )
-
-            with st.expander("고급 설정", expanded=False):
-                _gp1, _gp2, _gp3, _gp4, _gp5 = st.columns(5)
-                with _gp1:
-                    _ema_span = st.selectbox("EMA", [10, 20], index=1)
-                with _gp2:
-                    _std_window = st.selectbox("rolling std N", [10, 20, 40], index=2)
-                with _gp3:
-                    _ema_compare_days = st.selectbox("EMA 비교 M일", [5, 10, 20], index=1)
-                with _gp4:
-                    _start_count = st.selectbox("하락 시작", [3, 4], index=1, format_func=lambda x: f"{x}/5")
-                with _gp5:
-                    _end_count = st.selectbox("하락 종료", [3, 4], index=0, format_func=lambda x: f"{x}/5")
-
-            _downturn_params = {
-                'ema_span': _ema_span,
-                'std_window': _std_window,
-                'ema_compare_days': _ema_compare_days,
-                'start_count': _start_count,
-                'end_count': _end_count,
-            }
-
-            with st.spinner("📡 기준 지수 데이터 로딩 중..."):
-                _benchmark_cfg = _get_macro_benchmark(_benchmark_name)
-                _spx_s = _yf_close(_benchmark_cfg['code'], _macro_years) if _show_spx else None
-
-            with st.spinner("📡 매크로 데이터 로딩 중..."):
-                _macro_charts = [
-                    make_macro_index_cycle_chart(_macro_years,    _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),  # ⓪ 지수
-                    make_macro_hy_spread_chart(_macro_years,     _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),  # ① HY/한국형 proxy
-                    make_macro_ig_spread_chart(_macro_years,     _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),  # ② IG/한국형 proxy
-                    make_macro_credit_stress_chart(_macro_years, _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),  # ③ 크레딧 스트레스
-                    make_macro_options_chart(_macro_years,       _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),  # ④ VIX/HV20
-                    make_macro_combo_downturn_chart(_macro_years, _spx_s, _combo_modes, _downturn_params, _benchmark_name),  # ⑤ 종합 하락 사이클
-                    make_macro_vix_spread_chart(_macro_years,    _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),  # ⑥ VIX/HV term
-                    make_macro_yield_curve_chart(_macro_years,   _spx_s, _benchmark_name),   # ⑦ 장단기 금리차
-                    make_macro_pmi_chart(_macro_years,           _spx_s, _benchmark_name),   # ⑧ 경기 모멘텀
-                    make_macro_liquidity_chart(_macro_years,     _spx_s, _benchmark_name),   # ⑨ 유동성
-                    make_macro_ai_capex_chart(_macro_years,      _spx_s),   # ⑩ AI CAPEX
-                ]
-
-            _mc = st.columns(2)
-            for i, ch in enumerate(_macro_charts):
-                if ch is not None:
-                    with _mc[i % 2]:
-                        st.plotly_chart(
-                            ch,
-                            width="stretch",
-                            config={"displayModeBar": False},
-                            key=f"macro_main_chart_{i}_{_benchmark_name}_{_macro_years}_{int(_show_spx)}_{int(_show_raw_macro)}",
-                        )
-                else:
-                    with _mc[i % 2]:
-                        _labels = ['⓪ S&P500', '① HY 스프레드', '② IG 스프레드', '③ 크레딧 스트레스', '④ VIX',
-                                   '⑤ 종합 하락 사이클', '⑥ VIX 스프레드', '⑦ 금리차', '⑧ 경기 모멘텀', '⑨ 유동성',
-                                   '⑩ AI CAPEX']
-                        st.warning(f"{_labels[i]} 데이터 로딩 실패 — FRED 일시 불가. 잠시 후 재시도해 주세요.")
+        render_market_macro_main_section(tab3)
 
 
 if __name__ == "__main__":
     main()
-    benchmark = _get_macro_benchmark(benchmark_name)
