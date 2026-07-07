@@ -21,6 +21,7 @@ import json
 import os
 import re
 import sys
+import time
 import warnings
 import traceback
 warnings.filterwarnings('ignore')
@@ -3185,13 +3186,29 @@ def _credit_spread_series(series_id: str, years: int = 5) -> pd.Series:
 
 @st.cache_data(ttl=86400)
 def _yf_close(ticker: str, years: int = 5) -> pd.Series:
-    try:
-        start = (pd.Timestamp.now() - pd.DateOffset(years=years)).strftime('%Y-%m-%d')
-        raw = yf.download(ticker, start=start, progress=False)
-        df = _normalize_yf_ohlcv(raw)
-        return df['Close'].dropna() if 'Close' in df.columns else pd.Series(dtype=float)
-    except Exception:
-        return pd.Series(dtype=float)
+    start = (pd.Timestamp.now() - pd.DateOffset(years=years)).strftime('%Y-%m-%d')
+
+    def _extract_close(raw_obj):
+        df = _normalize_yf_ohlcv(raw_obj)
+        if df is None or df.empty or 'Close' not in df.columns:
+            return pd.Series(dtype=float)
+        return df['Close'].dropna()
+
+    fetchers = [
+        lambda: yf.download(ticker, start=start, progress=False, threads=False, auto_adjust=False),
+        lambda: yf.Ticker(ticker).history(start=start, auto_adjust=False),
+    ]
+
+    for fetcher in fetchers:
+        for _ in range(2):
+            try:
+                series = _extract_close(fetcher())
+                if not series.empty:
+                    return series
+            except Exception:
+                pass
+            time.sleep(0.6)
+    return pd.Series(dtype=float)
 
 
 @st.cache_data(ttl=3600)
