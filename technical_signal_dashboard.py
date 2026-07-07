@@ -5530,6 +5530,7 @@ def main(page="signal"):
     tab4 = None
     tab5 = None
     tab6 = None
+    _market_macro_section = None
     if page == "all":
         tab1, tab2, tab3 = st.tabs(["📊 신호 스캐너", "🌐 시장 내부지표", "🌍 매크로 지표"])
     elif page == "signal":
@@ -5539,7 +5540,26 @@ def main(page="signal"):
     elif page == "macro":
         tab1, tab2, tab3 = None, None, st.container()
     elif page == "market_macro":
-        tab3, tab4, tab5, tab6, tab2 = st.tabs(["🌍 매크로 지표", "🧪 매크로 지표 2", "🧪 매크로 지표 3", "🧪 매크로 지표 4", "🌐 시장 내부지표"])
+        _market_macro_sections = [
+            ("macro", "🌍 매크로 지표"),
+            ("macro2", "🧪 매크로 지표 2"),
+            ("macro3", "🧪 매크로 지표 3"),
+            ("macro4", "🧪 매크로 지표 4"),
+            ("market", "🌐 시장 내부지표"),
+        ]
+        _market_macro_section = st.radio(
+            "섹션 선택",
+            options=[k for k, _ in _market_macro_sections],
+            format_func=lambda k: dict(_market_macro_sections).get(k, k),
+            horizontal=True,
+            label_visibility='collapsed',
+            key="market_macro_section",
+        )
+        tab2 = st.container()
+        tab3 = st.container()
+        tab4 = st.container()
+        tab5 = st.container()
+        tab6 = st.container()
         tab1 = None
     elif page == "macro2":
         tab1, tab2, tab3 = None, None, st.container()
@@ -6068,7 +6088,7 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
         # TAB 2 — 시장 내부지표
         # ═══════════════════════════════════════════════════════════
-    if page in ("all", "market", "market_macro"):
+    if page in ("all", "market") or (page == "market_macro" and _market_macro_section == "market"):
         with tab2:
             col_mkt, col_period, _ = st.columns([2, 2, 2])
             with col_mkt:
@@ -6341,7 +6361,7 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
         # TAB 3A — 매크로 지표 2 (실험용)
         # ═══════════════════════════════════════════════════════════
-    if page in ("market_macro", "macro2"):
+    if page == "macro2" or (page == "market_macro" and _market_macro_section == "macro2"):
         _macro2_container = tab4 if page == "market_macro" else tab3
         with _macro2_container:
             st.caption("실험용 확장판입니다. ⓪/①/②/③/④/⑥ 차트 각각에 대해 동적 Risk 시작선/종료선을 개별 설정할 수 있습니다.")
@@ -6423,7 +6443,7 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
         # TAB 3B — 매크로 지표 3 (정적 threshold 실험용)
         # ═══════════════════════════════════════════════════════════
-    if page in ("market_macro", "macro3"):
+    if page == "macro3" or (page == "market_macro" and _market_macro_section == "macro3"):
         _macro3_container = tab5 if page == "market_macro" else tab3
         with _macro3_container:
             st.caption("정적 threshold 실험판입니다. ③/④/⑥ 차트에서 각 지표의 EMA가 지정 임계값 아래로 내려가면 시작, 위로 올라오면 종료로 단순화했습니다.")
@@ -6503,7 +6523,7 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
         # TAB 3C — 매크로 지표 4 (조합 Risk-off 실험용)
         # ═══════════════════════════════════════════════════════════
-    if page in ("market_macro", "macro4"):
+    if page == "macro4" or (page == "market_macro" and _market_macro_section == "macro4"):
         _macro4_container = tab6 if page == "market_macro" else tab3
         with _macro4_container:
             st.caption("상단 조합 차트는 선택한 지표들의 Risk-off 상태를 합성하고, 아래 6개 차트는 매크로지표2와 동일한 개별 실험 차트입니다.")
@@ -6631,7 +6651,7 @@ def main(page="signal"):
         # ═══════════════════════════════════════════════════════════
         # TAB 3 — 매크로 지표
         # ═══════════════════════════════════════════════════════════
-    if page in ("all", "macro", "market_macro"):
+    if page in ("all", "macro") or (page == "market_macro" and _market_macro_section == "macro"):
         with tab3:
             st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 나스닥은 미국 매크로 세트를 그대로 쓰고, 코스피는 변동성·텀스프레드·신용계열을 한국형 프록시로 대체합니다.")
 
