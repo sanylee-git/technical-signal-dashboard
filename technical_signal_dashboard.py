@@ -1534,7 +1534,7 @@ def signal_badges_html(dyn_buy, dyn_sell, band_buy, band_sell,
     return " ".join(parts)
 
 
-def render_signal_table(signal_rows):
+def render_signal_table(signal_rows, market=None):
     rows_html = []
     for row in signal_rows:
         dyn_buy       = row.get('dyn_buy_signal',  False)
@@ -1579,9 +1579,20 @@ def render_signal_table(signal_rows):
             dyn_holding=dyn_holding, band_holding=band_holding,
         )
 
+        _name_html = row['name']
+        if market in {"kr", "us"}:
+            _scan_href = f"?scan_market={market}&scan_code={row['code']}"
+            _name_html = (
+                f'<a href="{_scan_href}" style="color:#EDEDED;text-decoration:none;display:block;">'
+                f'{star}{row["name"]}'
+                f'</a>'
+            )
+        else:
+            _name_html = f"{star}{row['name']}"
+
         rows_html.append(f"""
         <tr style="background:{row_bg};border-bottom:1px solid rgba(255,255,255,0.04);">
-            <td style="padding:2px 14px;font-size:13px;color:#EDEDED;font-weight:500;white-space:nowrap;">{star}{row['name']}</td>
+            <td style="padding:2px 14px;font-size:13px;color:#EDEDED;font-weight:500;white-space:nowrap;">{_name_html}</td>
             <td style="padding:2px 14px;font-size:13px;color:#EDEDED;text-align:right;font-variant-numeric:tabular-nums;">{close_str}</td>
             <td style="padding:2px 14px;font-size:13px;color:{pct_color};text-align:right;font-variant-numeric:tabular-nums;">{pct_str}</td>
             <td style="padding:2px 14px;font-size:13px;color:{rsi_color};text-align:right;font-variant-numeric:tabular-nums;">{rsi_str}</td>
@@ -5292,6 +5303,22 @@ def main(page="signal"):
     st.session_state.favorites = load_favorites()
     favorites = st.session_state.favorites
 
+    _scan_market_param = st.query_params.get("scan_market")
+    _scan_code_param = st.query_params.get("scan_code")
+    if _scan_market_param and _scan_code_param:
+        if _scan_market_param == "kr":
+            _matched_kr = next((f for f in favorites if f['code'] == _scan_code_param), None)
+            if _matched_kr is not None:
+                st.session_state.scan_active = 'kr'
+                st.session_state.scan_kr_name = _matched_kr['name']
+                st.session_state.scan_kr_prev_name = _matched_kr['name']
+        elif _scan_market_param == "us":
+            _matched_us = next((t for t in _US_WATCHLIST if t['code'] == _scan_code_param), None)
+            if _matched_us is not None:
+                st.session_state.scan_active = 'us'
+                st.session_state.scan_us_name = _matched_us['name']
+                st.session_state.scan_us_prev_name = _matched_us['name']
+
     if page in ("market_macro", "macro2", "macro3"):
         st.markdown("""
             <style>
@@ -6242,47 +6269,12 @@ def main(page="signal"):
             def _set_kr(): st.session_state.scan_active = 'kr'
             def _set_us(): st.session_state.scan_active = 'us'
 
-            def _select_kr_scan(name):
-                st.session_state.scan_active = 'kr'
-                st.session_state.scan_kr_name = name
-                st.session_state.scan_kr_prev_name = name
-
-            def _select_us_scan(name):
-                st.session_state.scan_active = 'us'
-                st.session_state.scan_us_name = name
-                st.session_state.scan_us_prev_name = name
-
-            def _render_clickable_scan_list(rows, market):
-                _cols = st.columns(3)
-                for _idx, _row in enumerate(rows):
-                    _name = _row['name']
-                    _close = _row.get('close')
-                    _pct = _row.get('pct_change')
-                    _label = _name
-                    if pd.notna(_close):
-                        _label = f"{_name}\n{_close:,.2f}"
-                    if pd.notna(_pct):
-                        _label += f" ({_pct:+.2f}%)"
-                    with _cols[_idx % 3]:
-                        if st.button(
-                            _label,
-                            key=f"scan_pick_{market}_{_idx}_{_row['code']}",
-                            width="stretch",
-                        ):
-                            if market == 'kr':
-                                _select_kr_scan(_name)
-                            else:
-                                _select_us_scan(_name)
-                            st.rerun()
-
             # ① 전체 종목 현황 — 한국 / 미국 분리 (접힘)
             with st.expander(f"📋 🇰🇷 한국 즐겨찾기 현황 ({len(signal_rows)}개)", expanded=False):
-                _render_clickable_scan_list(signal_rows, 'kr')
-                st.markdown(render_signal_table(signal_rows), unsafe_allow_html=True)
+                st.markdown(render_signal_table(signal_rows, market='kr'), unsafe_allow_html=True)
 
             with st.expander(f"📋 🇺🇸 미국 지수/ETF 현황 ({len(us_signal_rows)}개)", expanded=False):
-                _render_clickable_scan_list(us_signal_rows, 'us')
-                st.markdown(render_signal_table(us_signal_rows), unsafe_allow_html=True)
+                st.markdown(render_signal_table(us_signal_rows, market='us'), unsafe_allow_html=True)
 
             # ② 종목 선택 — 한국 / 미국 좌우 분리
             col_kr, col_us = st.columns(2)
