@@ -5899,11 +5899,79 @@ def main(page="signal"):
             st.caption("상단 조합 차트는 선택한 지표들의 Risk-off 상태를 합성하고, 아래 6개 차트는 매크로지표2와 동일한 개별 실험 차트입니다.")
 
             _macro4_defaults = _get_macro2_dynamic_defaults()
-            _macro4_defaults["0"].update({"ema": 20, "window": 252, "start": 0.80, "end": 0.70})
-            _macro4_defaults["1"].update({"ema": 20, "window": 126, "start": 0.60, "end": 0.50})
-            _macro4_defaults["3"].update({"ema": 10, "window": 126, "start": 0.20, "end": 0.10})
-            _macro4_defaults["6"].update({"ema": 30, "window": 63, "start": 0.60, "end": 0.10})
-            _macro4_selected_default = ["0", "1", "3", "6"]
+            _macro4_presets = {
+                "nasdaq": {
+                    "label": "나스닥 전용 조합",
+                    "benchmark": "Nasdaq",
+                    "selected_codes": ["0", "2", "3", "4"],
+                    "combo_k": 3,
+                    "cfgs": {
+                        "0": {"ema": 10, "window": 252, "start": 0.80, "end": 0.50},
+                        "2": {"ema": 30, "window": 63, "start": 0.20, "end": 0.10},
+                        "3": {"ema": 20, "window": 252, "start": 0.20, "end": 0.10},
+                        "4": {"ema": 10, "window": 63, "start": 0.60, "end": 0.30},
+                    },
+                },
+                "snp": {
+                    "label": "S&P 전용 조합",
+                    "benchmark": "S&P500",
+                    "selected_codes": ["0", "1", "3", "6"],
+                    "combo_k": 3,
+                    "cfgs": {
+                        "0": {"ema": 20, "window": 252, "start": 0.80, "end": 0.70},
+                        "1": {"ema": 20, "window": 126, "start": 0.60, "end": 0.50},
+                        "3": {"ema": 10, "window": 126, "start": 0.20, "end": 0.10},
+                        "6": {"ema": 30, "window": 63, "start": 0.60, "end": 0.10},
+                    },
+                },
+                "common": {
+                    "label": "미국 주식 공통 조합",
+                    "benchmark": "S&P500",
+                    "selected_codes": ["0", "1", "3", "6"],
+                    "combo_k": 3,
+                    "cfgs": {
+                        "0": {"ema": 20, "window": 252, "start": 0.80, "end": 0.70},
+                        "1": {"ema": 20, "window": 126, "start": 0.60, "end": 0.50},
+                        "3": {"ema": 10, "window": 126, "start": 0.20, "end": 0.10},
+                        "6": {"ema": 30, "window": 63, "start": 0.60, "end": 0.10},
+                    },
+                },
+                "custom": {
+                    "label": "직접 설정",
+                    "benchmark": "S&P500",
+                    "selected_codes": ["0", "1", "3", "6"],
+                    "combo_k": 3,
+                    "cfgs": {
+                        "0": {"ema": 20, "window": 252, "start": 0.80, "end": 0.70},
+                        "1": {"ema": 20, "window": 126, "start": 0.60, "end": 0.50},
+                        "3": {"ema": 10, "window": 126, "start": 0.20, "end": 0.10},
+                        "6": {"ema": 30, "window": 63, "start": 0.60, "end": 0.10},
+                    },
+                },
+            }
+            if "macro4_preset" not in st.session_state:
+                st.session_state["macro4_preset"] = "snp"
+            _macro4_preset = st.selectbox(
+                "조합 프리셋",
+                options=list(_macro4_presets.keys()),
+                index=list(_macro4_presets.keys()).index(st.session_state.get("macro4_preset", "snp")),
+                format_func=lambda x: _macro4_presets[x]["label"],
+                key="macro4_preset",
+            )
+            if st.session_state.get("macro4_preset_applied") != _macro4_preset:
+                _preset_cfg = _macro4_presets[_macro4_preset]
+                st.session_state["macro4_benchmark"] = _preset_cfg["benchmark"]
+                st.session_state["macro4_selected_codes"] = _preset_cfg["selected_codes"]
+                st.session_state["macro4_combo_k"] = _preset_cfg["combo_k"]
+                for _code, _cfg in _preset_cfg["cfgs"].items():
+                    st.session_state[f'macro4_{_code}_ema'] = _cfg["ema"]
+                    st.session_state[f'macro4_{_code}_window'] = _cfg["window"]
+                    st.session_state[f'macro4_{_code}_start'] = _cfg["start"]
+                    st.session_state[f'macro4_{_code}_end'] = _cfg["end"]
+                st.session_state["macro4_preset_applied"] = _macro4_preset
+
+            _macro4_preset_cfg = _macro4_presets[_macro4_preset]
+            _macro4_selected_default = list(_macro4_preset_cfg["selected_codes"])
 
             _m40, _m41, _m42 = st.columns([1.2, 2.8, 1.2])
             with _m40:
@@ -5918,7 +5986,7 @@ def main(page="signal"):
             with _m43:
                 _selected_codes4 = st.multiselect("조합 지표", options=list(_MACRO2_SIGNAL_LABELS.keys()), default=_macro4_selected_default, format_func=lambda x: _MACRO2_SIGNAL_LABELS.get(x, x), key='macro4_selected_codes')
             with _m44:
-                _default_k4 = 3 if len(_selected_codes4) >= 3 else max(1, len(_selected_codes4))
+                _default_k4 = min(_macro4_preset_cfg["combo_k"], max(1, len(_selected_codes4)))
                 _combo_k4 = st.slider("Risk 기준", min_value=1, max_value=max(1, len(_selected_codes4)), value=_default_k4, format="%d개 이상 ON", key='macro4_combo_k')
 
             _macro4_cfgs = {}
