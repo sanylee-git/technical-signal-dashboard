@@ -6465,11 +6465,19 @@ def main(page="signal"):
                 else:
                     st.warning("조합 리스크 차트 데이터 로딩 실패 — 조합 지표/기간을 확인해 주세요.")
 
-                for _idx, _fig in enumerate(_macro4_charts):
-                    if _fig is not None:
-                        st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_chart_{_idx}_{_benchmark_name4}_{_macro4_years}_{_macro_dynamic_cfg_signature(_macro4_cfgs, [_code for _code in _MACRO2_SIGNAL_LABELS.keys() if _code in _macro4_cfgs])}")
-                    else:
-                        st.warning("개별 실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
+                _macro4_chart_codes = ["0", "1", "2", "3", "4", "6"]
+                for _idx, (_code, _fig) in enumerate(zip(_macro4_chart_codes, _macro4_charts)):
+                    _label = _MACRO2_SIGNAL_LABELS.get(_code, _code)
+                    with st.expander(_label, expanded=(_code in _selected_codes4)):
+                        if _fig is not None:
+                            st.plotly_chart(
+                                _fig,
+                                width="stretch",
+                                config={"displayModeBar": False},
+                                key=f"macro4_chart_{_idx}_{_code}_{_benchmark_name4}_{_macro4_years}_{_macro_dynamic_cfg_signature(_macro4_cfgs, [_code for _code in _MACRO2_SIGNAL_LABELS.keys() if _code in _macro4_cfgs])}"
+                            )
+                        else:
+                            st.warning("개별 실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
 
     def render_market_macro_main_section(container):
         with container:
