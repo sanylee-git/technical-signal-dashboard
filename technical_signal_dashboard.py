@@ -4506,7 +4506,9 @@ def _extract_combo_marker_dates(fig: go.Figure):
     for trace in fig.data:
         trace_name = str(getattr(trace, "name", "") or "")
         legend_group = str(getattr(trace, "legendgroup", "") or "")
-        x_vals = [pd.Timestamp(x).normalize() for x in list(getattr(trace, "x", []) or []) if x is not None]
+        x_raw = getattr(trace, "x", None)
+        x_iter = [] if x_raw is None else list(x_raw)
+        x_vals = [pd.Timestamp(x).normalize() for x in x_iter if x is not None]
         if trace_name == "__COMBO_START_MARKER__" or legend_group == "__COMBO_START_MARKER__":
             for dt in x_vals:
                 start_dates.append(dt)
@@ -4679,10 +4681,12 @@ def make_macro_combo_dynamic_chart(
         hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>{benchmark['label']} %{{y:,.1f}}<extra></extra>',
     ))
 
-    start_y = spx_aligned.loc[combo["combo_start_signal"]]
-    end_y = spx_aligned.loc[combo["combo_end_signal"]]
-    if not start_y.empty:
-        start_rows = combo_event_df.set_index("date").reindex(start_y.index)
+    start_rows = combo_event_df.loc[combo_event_df["combo_start_signal"]].copy()
+    end_rows = combo_event_df.loc[combo_event_df["combo_end_signal"]].copy()
+    start_y = spx_aligned.reindex(pd.to_datetime(start_rows["date"])) if not start_rows.empty else pd.Series(dtype=float)
+    end_y = spx_aligned.reindex(pd.to_datetime(end_rows["date"])) if not end_rows.empty else pd.Series(dtype=float)
+    if not start_rows.empty and not start_y.empty:
+        start_rows = start_rows.set_index("date").reindex(start_y.index)
         fig.add_trace(go.Scatter(
             x=start_y.index, y=start_y, name='__COMBO_START_MARKER__',
             mode='markers',
@@ -4713,8 +4717,8 @@ def make_macro_combo_dynamic_chart(
             hoverinfo='skip',
             legendgroup='__COMBO_START_MARKER__',
         ))
-    if not end_y.empty:
-        end_rows = combo_event_df.set_index("date").reindex(end_y.index)
+    if not end_rows.empty and not end_y.empty:
+        end_rows = end_rows.set_index("date").reindex(end_y.index)
         fig.add_trace(go.Scatter(
             x=end_y.index, y=end_y, name='__COMBO_END_MARKER__',
             mode='markers',
