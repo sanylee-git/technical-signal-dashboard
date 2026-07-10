@@ -6334,6 +6334,16 @@ def main(page="signal"):
             st.caption("상단 조합 차트는 선택한 지표들의 리스크 상태를 합성하고, 아래 6개 차트는 매크로지표2와 동일한 개별 실험 차트입니다.")
             st.markdown("""
             <style>
+            .macro2-divider {
+                border-top: 1px solid rgba(255,255,255,0.08);
+                margin: 14px 0 12px 0;
+            }
+            .macro2-rowfix [data-testid="stVerticalBlock"] {
+                gap: 0.2rem;
+            }
+            .macro2-rowfix div[data-testid="stCheckbox"] {
+                padding-top: 1.65rem;
+            }
             div[data-testid="stSelectbox"] label p,
             div[data-testid="stMultiSelect"] label p,
             div[data-testid="stSlider"] label p,
@@ -6403,6 +6413,8 @@ def main(page="signal"):
             if "macro4_preset" not in st.session_state:
                 st.session_state["macro4_preset"] = "snp"
 
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-rowfix">', unsafe_allow_html=True)
             _m39, _m40, _m41, _m42 = st.columns([1.6, 1.2, 2.4, 1.0])
             with _m39:
                 _macro4_preset = st.selectbox(
@@ -6433,7 +6445,9 @@ def main(page="signal"):
                 _macro4_years = st.select_slider("기간", options=list(_yr_opts4.keys()), value=3, format_func=lambda x: _yr_opts4[x], label_visibility='collapsed', key='macro4_years')
             with _m42:
                 _show_raw_macro4 = st.checkbox("원본선 표시", value=False, key='macro4_show_raw')
+            st.markdown('</div>', unsafe_allow_html=True)
 
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
             _m43, _m44 = st.columns([4.4, 1.6])
             with _m43:
                 _selected_codes4 = st.multiselect("조합 지표", options=list(_MACRO2_SIGNAL_LABELS.keys()), default=_macro4_selected_default, format_func=lambda x: _MACRO2_SIGNAL_LABELS.get(x, x), key='macro4_selected_codes')
@@ -6456,6 +6470,7 @@ def main(page="signal"):
                             _end = st.select_slider("리스크 종료 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["end"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro4_{_code}_end')
                         _macro4_cfgs[_code] = {"ema": int(_ema), "window": int(_window), "start": float(_start), "end": float(_end)}
 
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
             with st.spinner("📡 기준 지수 데이터 로딩 중..."):
                 _benchmark_cfg4 = _get_macro_benchmark(_benchmark_name4)
                 _spx_s4 = _yf_close(_benchmark_cfg4['code'], _macro4_years)
