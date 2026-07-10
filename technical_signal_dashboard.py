@@ -4417,7 +4417,10 @@ def _compute_macro_combo_signal_frame(
         )
         if signal_df.empty:
             continue
-        frames[code] = signal_df[["down_flag"]].rename(columns={"down_flag": f"{code}_down_flag"})
+        frames[code] = signal_df[["down_start_signal", "down_end_signal"]].rename(columns={
+            "down_start_signal": f"{code}_start_signal",
+            "down_end_signal": f"{code}_end_signal",
+        })
         active_codes.append(code)
 
     if not frames:
@@ -4427,16 +4430,53 @@ def _compute_macro_combo_signal_frame(
     if spx_aligned.empty:
         return pd.DataFrame(), []
 
-    combo = pd.concat(frames.values(), axis=1).sort_index()
+    combo = pd.DataFrame(index=spx_aligned.index.copy())
+    start_cols = [f"{code}_start_signal" for code in active_codes]
+    end_cols = [f"{code}_end_signal" for code in active_codes]
+    signal_frame = pd.concat(frames.values(), axis=1).sort_index()
+    signal_frame = signal_frame.reindex(spx_aligned.index).fillna(False).astype(bool)
+
+    indicator_states = {code: False for code in active_codes}
     flag_cols = [f"{code}_down_flag" for code in active_codes]
-    combo = combo.reindex(spx_aligned.index)
-    combo[flag_cols] = combo[flag_cols].ffill().fillna(False).astype(bool)
+    for code in active_codes:
+        combo[f"{code}_start_signal"] = signal_frame[f"{code}_start_signal"]
+        combo[f"{code}_end_signal"] = signal_frame[f"{code}_end_signal"]
+        combo[f"{code}_down_flag"] = False
 
     combo_k = max(1, min(int(combo_k), len(flag_cols)))
-    combo["active_count"] = combo[flag_cols].sum(axis=1).astype(int)
-    combo["combo_risk_state"] = combo["active_count"].ge(combo_k)
-    combo["combo_start_signal"] = combo["combo_risk_state"] & ~combo["combo_risk_state"].shift(1).fillna(False)
-    combo["combo_end_signal"] = ~combo["combo_risk_state"] & combo["combo_risk_state"].shift(1).fillna(False)
+    combo["active_count"] = 0
+    combo["combo_risk_state"] = False
+    combo["combo_start_signal"] = False
+    combo["combo_end_signal"] = False
+
+    combo_in_cycle = False
+    for idx in combo.index:
+        for code in active_codes:
+            start_hit = bool(combo.at[idx, f"{code}_start_signal"])
+            end_hit = bool(combo.at[idx, f"{code}_end_signal"])
+            if start_hit:
+                indicator_states[code] = True
+            elif end_hit:
+                indicator_states[code] = False
+            combo.at[idx, f"{code}_down_flag"] = indicator_states[code]
+
+        active_count = sum(1 for code in active_codes if indicator_states[code])
+        combo.at[idx, "active_count"] = active_count
+
+        if not combo_in_cycle and active_count >= combo_k:
+            combo_in_cycle = True
+            combo.at[idx, "combo_start_signal"] = True
+        elif combo_in_cycle and active_count < combo_k:
+            combo_in_cycle = False
+            combo.at[idx, "combo_end_signal"] = True
+
+        combo.at[idx, "combo_risk_state"] = combo_in_cycle
+
+    combo["active_count"] = combo["active_count"].astype(int)
+    combo[flag_cols + start_cols + end_cols + ["combo_risk_state", "combo_start_signal", "combo_end_signal"]] = (
+        combo[flag_cols + start_cols + end_cols + ["combo_risk_state", "combo_start_signal", "combo_end_signal"]]
+        .astype(bool)
+    )
     return combo, active_codes
 
 
