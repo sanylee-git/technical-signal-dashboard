@@ -4006,7 +4006,7 @@ def _add_dynamic_quantile_signals(
     fig.add_trace(go.Scatter(
         x=signal_df.index, y=signal_df['risk_end_line'],
         name=f'종료선 Q{end_pct}',
-        line=dict(color='rgba(75,255,179,0.55)', width=1.2, dash='dot'),
+        line=dict(color='rgba(120,220,255,0.60)', width=1.2, dash='dot'),
         hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>리스크 종료선 (Q{end_pct})  %{{y:.2f}}<extra></extra>',
     ))
     if overlay_price is not None and not overlay_price.empty:
