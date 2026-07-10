@@ -3590,7 +3590,7 @@ def _add_spx_overlay(fig, main_s: pd.Series, spx_s, yaxis='y2', label='S&P500'):
     ))
 
 
-def _add_price_signal_markers(fig, signal_df: pd.DataFrame, price_s: pd.Series, yaxis='y2', prefix='Risk-off'):
+def _add_price_signal_markers(fig, signal_df: pd.DataFrame, price_s: pd.Series, yaxis='y2', prefix='리스크 사이클'):
     """신호 마커를 가격 오버레이 축 위에 표시한다."""
     if signal_df is None or signal_df.empty or price_s is None or price_s.empty:
         return
@@ -3615,14 +3615,14 @@ def _add_price_signal_markers(fig, signal_df: pd.DataFrame, price_s: pd.Series, 
             x=start_y.index, y=start_y, name=f'{prefix} 시작',
             mode='markers', yaxis=yaxis,
             marker=dict(symbol='triangle-down', size=9, color='rgba(255,140,105,0.92)'),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Risk-off 시작<extra></extra>',
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>리스크 시작<extra></extra>',
         ))
     if not end_y.empty:
         fig.add_trace(go.Scatter(
             x=end_y.index, y=end_y, name=f'{prefix} 종료',
             mode='markers', yaxis=yaxis,
             marker=dict(symbol='triangle-up', size=9, color='rgba(75,255,179,0.92)'),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Risk-off 종료<extra></extra>',
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>리스크 종료<extra></extra>',
         ))
 
 
@@ -3643,7 +3643,7 @@ def _resolve_downturn_params(params=None) -> dict:
 
 
 def _compute_downturn_signal_frame(s: pd.Series, params=None) -> pd.DataFrame:
-    """단일 지표의 Risk-off 사이클 상태를 계산한다."""
+    """단일 지표의 리스크 사이클 상태를 계산한다."""
     if s is None or s.empty:
         return pd.DataFrame()
     params = _resolve_downturn_params(params)
@@ -3723,7 +3723,7 @@ def _compute_threshold_ema_signal_frame(s: pd.Series, ema_span: int = 20, thresh
 
 
 def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True, overlay_price=None, overlay_yaxis='y2', params=None):
-    """EMA 기반 Risk-off 시작/종료 이벤트를 추가."""
+    """EMA 기반 리스크 시작/종료 이벤트를 추가."""
     params = _resolve_downturn_params(params)
     ema_span = int(params['ema_span'])
     std_window = int(params['std_window'])
@@ -3753,14 +3753,14 @@ def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True, overlay_p
 
     if not sig1_start.empty:
         fig.add_trace(go.Scatter(
-            x=sig1_start.index, y=sig1_start, name=f'1: Risk-off 시작 ({start_count}/5 하락 + EMA{ema_span}<{ema_compare_days}D전)',
+            x=sig1_start.index, y=sig1_start, name=f'1: 리스크 시작 ({start_count}/5 하락 + EMA{ema_span}<{ema_compare_days}D전)',
             mode='markers',
             marker=dict(symbol='triangle-down', size=8, color='rgba(255,140,105,0.80)'),
             hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>최근 5일 중 slope < -0.5*{std_window}일 std 가 {start_count}일 이상<br>현재 EMA{ema_span} < {ema_compare_days}일 전 EMA{ema_span}<extra></extra>',
         ))
     if not sig1_end.empty:
         fig.add_trace(go.Scatter(
-            x=sig1_end.index, y=sig1_end, name=f'1: Risk-off 종료 ({end_count}/5 상승 + EMA{ema_span}>{ema_compare_days}D전)',
+            x=sig1_end.index, y=sig1_end, name=f'1: 리스크 종료 ({end_count}/5 상승 + EMA{ema_span}>{ema_compare_days}D전)',
             mode='markers',
             marker=dict(symbol='triangle-up', size=8, color='rgba(75,255,179,0.80)'),
             hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>최근 5일 중 slope > +0.5*{std_window}일 std 가 {end_count}일 이상<br>현재 EMA{ema_span} > {ema_compare_days}일 전 EMA{ema_span}<extra></extra>',
@@ -3768,7 +3768,7 @@ def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True, overlay_p
 
 
 def _add_threshold_ema_signals(fig, s: pd.Series, threshold: float, ema_span: int = 20,
-                               overlay_price=None, overlay_yaxis='y2', prefix='Risk-off'):
+                               overlay_price=None, overlay_yaxis='y2', prefix='리스크 사이클'):
     signal_df = _compute_threshold_ema_signal_frame(s, ema_span=ema_span, threshold=threshold)
     if signal_df.empty:
         return
@@ -3845,7 +3845,7 @@ def _add_dual_threshold_ema_signals(
     ema_span: int = 20,
     overlay_price=None,
     overlay_yaxis='y2',
-    prefix='Risk-off',
+    prefix='리스크 사이클',
 ):
     signal_df = _compute_dual_threshold_ema_signal_frame(
         s,
@@ -3890,7 +3890,7 @@ def _compute_dynamic_quantile_signal_frame(
     end_quantile: float = 0.2,
     ema_span: int = 20,
 ) -> pd.DataFrame:
-    """동적 분위수 라인 기반 Risk-off 사이클 상태를 계산한다."""
+    """동적 분위수 라인 기반 리스크 사이클 상태를 계산한다."""
     if s is None or s.empty:
         return pd.DataFrame()
 
@@ -3969,7 +3969,7 @@ def _add_dynamic_quantile_signals(
     ema_span: int = 20,
     overlay_price=None,
     overlay_yaxis='y2',
-    prefix='Risk-off',
+    prefix='리스크 사이클',
 ):
     signal_df = _compute_dynamic_quantile_signal_frame(
         s,
@@ -3994,13 +3994,13 @@ def _add_dynamic_quantile_signals(
         x=signal_df.index, y=signal_df['risk_start_line'],
         name=f'시작선 Q{start_pct}',
         line=dict(color='rgba(255,140,105,0.55)', width=1.2, dash='dot'),
-        hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>Risk 시작선 (Q{start_pct})  %{{y:.2f}}<extra></extra>',
+        hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>리스크 시작선 (Q{start_pct})  %{{y:.2f}}<extra></extra>',
     ))
     fig.add_trace(go.Scatter(
         x=signal_df.index, y=signal_df['risk_end_line'],
         name=f'종료선 Q{end_pct}',
         line=dict(color='rgba(75,255,179,0.55)', width=1.2, dash='dot'),
-        hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>Risk 종료선 (Q{end_pct})  %{{y:.2f}}<extra></extra>',
+        hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>리스크 종료선 (Q{end_pct})  %{{y:.2f}}<extra></extra>',
     ))
     if overlay_price is not None and not overlay_price.empty:
         _add_price_signal_markers(fig, signal_df, overlay_price, yaxis=overlay_yaxis, prefix=prefix)
@@ -4022,7 +4022,7 @@ def _add_dynamic_quantile_signals(
 
 
 def _compute_combo_downturn_frame(parts: dict[str, pd.Series], params=None) -> pd.DataFrame:
-    """0~4 개별 Risk-off 상태를 합성한 종합 하락 사이클 상태를 계산한다."""
+    """0~4 개별 리스크 상태를 합성한 종합 하락 사이클 상태를 계산한다."""
     frames = {}
     for name, series in parts.items():
         sig = _compute_downturn_signal_frame(series, params=params)
@@ -4071,7 +4071,7 @@ def make_macro_index_cycle_chart(years: int = 5, spx_s=None, show_raw=True, down
                                  dynamic_mode: bool = False, dynamic_window: int = 126,
                                  dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2,
                                  ema_span: int | None = None):
-    """⓪ 선택 지수 자체의 EMA 기반 Risk-off 사이클."""
+    """⓪ 선택 지수 자체의 EMA 기반 리스크 사이클."""
     benchmark = _get_macro_benchmark(benchmark_name)
     if spx_s is None or spx_s.empty:
         spx_s = _yf_close(benchmark['code'], years)
@@ -4098,13 +4098,13 @@ def make_macro_index_cycle_chart(years: int = 5, spx_s=None, show_raw=True, down
     else:
         _add_ema20_downturn_signals(fig, spx_s, show_downturn=True, overlay_price=spx_s, overlay_yaxis='y', params=downturn_params)
     fig.update_layout(
-        **_ml(f'⓪ {benchmark["label"]} 지수 Risk-off 사이클', height=300),
+        **_ml(f'⓪ {benchmark["label"]} 지수 리스크 사이클', height=300),
     )
     return fig
 
 
 def make_macro_combo_downturn_chart(years: int = 5, spx_s=None, signal_modes=None, downturn_params=None, benchmark_name='S&P500'):
-    """⑤ 0~4 종합 Risk-off 사이클."""
+    """⑤ 0~4 종합 리스크 사이클."""
     benchmark = _get_macro_benchmark(benchmark_name)
     if spx_s is None or spx_s.empty:
         spx_s = _yf_close(benchmark['code'], years)
@@ -4134,7 +4134,7 @@ def make_macro_combo_downturn_chart(years: int = 5, spx_s=None, signal_modes=Non
             'stress': stress.dropna(),
             'vix': vix.dropna(),
         }
-        title = f'⑤ 종합 하락 사이클 (KOSPI 한국형 5지표 조합, {benchmark["label"]} 위 표시)'
+        title = f'⑤ 종합 리스크 사이클 (KOSPI 한국형 5지표 조합, {benchmark["label"]} 위 표시)'
     else:
         hy = _credit_spread_series('BAMLH0A0HYM2', years)
         ig = _credit_spread_series('BAMLC0A0CM', years)
@@ -4155,7 +4155,7 @@ def make_macro_combo_downturn_chart(years: int = 5, spx_s=None, signal_modes=Non
             'stress': (-stress).dropna(),
             'vix': (-vix).dropna(),
         }
-        title = f'⑤ 종합 하락 사이클 (0~4 조합, {benchmark["label"]} 위 시작/종료 표시)'
+        title = f'⑤ 종합 리스크 사이클 (0~4 조합, {benchmark["label"]} 위 시작/종료 표시)'
 
     combo = _compute_combo_downturn_frame(parts, params=downturn_params)
     if combo.empty:
@@ -4193,17 +4193,17 @@ def make_macro_combo_downturn_chart(years: int = 5, spx_s=None, signal_modes=Non
         ))
     if show_risk and not risk_start_y.empty:
         fig.add_trace(go.Scatter(
-            x=risk_start_y.index, y=risk_start_y, name='⑤ Risk 시작 (4/5)',
+            x=risk_start_y.index, y=risk_start_y, name='⑤ 리스크 시작 (4/5)',
             mode='markers',
             marker=dict(symbol='triangle-down', size=10, color='rgba(255,75,110,0.92)'),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Risk 시작: active_down_count >= 4<extra></extra>',
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>리스크 시작: active_down_count >= 4<extra></extra>',
         ))
     if show_risk and not risk_end_y.empty:
         fig.add_trace(go.Scatter(
-            x=risk_end_y.index, y=risk_end_y, name='⑤ Risk 종료 (3/5)',
+            x=risk_end_y.index, y=risk_end_y, name='⑤ 리스크 종료 (3/5)',
             mode='markers',
             marker=dict(symbol='triangle-up', size=10, color='rgba(80,160,255,0.92)'),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Risk 종료: active_down_count <= 3<extra></extra>',
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>리스크 종료: active_down_count <= 3<extra></extra>',
         ))
     fig.update_layout(
         **_ml(title, height=300),
@@ -4230,6 +4230,19 @@ def _get_macro2_dynamic_defaults():
         "4": {"label": "④ 옵션/변동성", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
         "6": {"label": "⑥ 변동성 스프레드", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
     }
+
+
+def _macro_dynamic_cfg_signature(cfgs: dict, codes=None) -> str:
+    codes = list(codes or cfgs.keys())
+    parts = []
+    for code in codes:
+        cfg = cfgs.get(code)
+        if not cfg:
+            continue
+        parts.append(
+            f"{code}-E{int(cfg['ema'])}-W{int(cfg['window'])}-S{int(round(float(cfg['start']) * 100))}-X{int(round(float(cfg['end']) * 100))}"
+        )
+    return "__".join(parts)
 
 
 def _build_macro2_dynamic_charts(years: int, spx_s, show_raw: bool, benchmark_name: str, cfgs: dict):
@@ -4394,29 +4407,18 @@ def make_macro_combo_dynamic_chart(
     combo = pd.concat(frames.values(), axis=1).sort_index().fillna(False)
     flag_cols = [f"{code}_down_flag" for code in frames]
     combo["active_count"] = combo[flag_cols].sum(axis=1).astype(int)
-    combo["combo_risk_state"] = False
-    combo["combo_start_signal"] = False
-    combo["combo_end_signal"] = False
-
     combo_k = max(1, min(int(combo_k), len(flag_cols)))
-    in_cycle = False
-    for idx in combo.index:
-        active_count = int(combo.at[idx, "active_count"])
-        if not in_cycle and active_count >= combo_k:
-            in_cycle = True
-            combo.at[idx, "combo_start_signal"] = True
-        elif in_cycle and active_count < combo_k:
-            in_cycle = False
-            combo.at[idx, "combo_end_signal"] = True
-        combo.at[idx, "combo_risk_state"] = in_cycle
-
     spx_aligned = spx_s.reindex(combo.index).dropna()
     if spx_aligned.empty:
         return None
     combo = combo.reindex(spx_aligned.index).fillna(False)
     combo["active_count"] = combo["active_count"].astype(int)
+    combo["combo_risk_state"] = combo["active_count"].ge(combo_k)
+    combo["combo_start_signal"] = combo["combo_risk_state"] & ~combo["combo_risk_state"].shift(1).fillna(False)
+    combo["combo_end_signal"] = ~combo["combo_risk_state"] & combo["combo_risk_state"].shift(1).fillna(False)
 
-    selected_labels = ", ".join(_MACRO2_SIGNAL_LABELS.get(code, code) for code in selected_codes if code in frames)
+    active_codes = [code for code in selected_codes if code in frames]
+    selected_labels = ", ".join(_MACRO2_SIGNAL_LABELS.get(code, code) for code in active_codes)
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -4429,20 +4431,20 @@ def make_macro_combo_dynamic_chart(
     end_y = spx_aligned.loc[combo["combo_end_signal"]]
     if not start_y.empty:
         fig.add_trace(go.Scatter(
-            x=start_y.index, y=start_y, name=f'Risk-off 시작 ({combo_k}/{len(flag_cols)})',
+            x=start_y.index, y=start_y, name=f'리스크 시작 ({combo_k}/{len(flag_cols)})',
             mode='markers',
             marker=dict(symbol='triangle-down', size=10, color='rgba(255,75,110,0.92)'),
-            hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>Risk-off 시작: active_count >= {combo_k}<extra></extra>',
+            hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>리스크 시작: active_count >= {combo_k}<extra></extra>',
         ))
     if not end_y.empty:
         fig.add_trace(go.Scatter(
-            x=end_y.index, y=end_y, name=f'Risk-off 종료 (<{combo_k}/{len(flag_cols)})',
+            x=end_y.index, y=end_y, name=f'리스크 종료 (<{combo_k}/{len(flag_cols)})',
             mode='markers',
             marker=dict(symbol='triangle-up', size=10, color='rgba(75,255,179,0.92)'),
-            hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>Risk-off 종료: active_count < {combo_k}<extra></extra>',
+            hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>리스크 종료: active_count < {combo_k}<extra></extra>',
         ))
     fig.update_layout(
-        **_ml(f'⓪ 조합 Risk-off 사이클 ({benchmark["label"]}, {combo_k}/{len(flag_cols)})', height=300),
+        **_ml(f'⓪ 조합 리스크 사이클 ({benchmark["label"]}, {combo_k}/{len(flag_cols)})', height=300),
     )
     fig.add_annotation(
         xref='paper', yref='paper', x=0.01, y=0.98, showarrow=False,
@@ -5806,7 +5808,7 @@ def main(page="signal"):
 
     def render_macro2_experimental_section(container):
         with container:
-            st.caption("실험용 확장판입니다. ⓪/①/②/③/④/⑥ 차트 각각에 대해 동적 Risk 시작선/종료선을 개별 설정할 수 있습니다.")
+            st.caption("실험용 확장판입니다. ⓪/①/②/③/④/⑥ 차트 각각에 대해 동적 리스크 시작선/종료선을 개별 설정할 수 있습니다.")
 
             _c0, _c1, _c2 = st.columns([1.2, 2.8, 1.2])
             with _c0:
@@ -5828,9 +5830,9 @@ def main(page="signal"):
                         with _s1:
                             _window = st.selectbox("Rolling Window", [63, 126, 252, 504], index=[63, 126, 252, 504].index(_cfg["window"]), key=f'macro2_{_code}_window')
                         with _s2:
-                            _start = st.select_slider("Risk 시작 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["start"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro2_{_code}_start')
+                            _start = st.select_slider("리스크 시작 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["start"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro2_{_code}_start')
                         with _s3:
-                            _end = st.select_slider("Risk 종료 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["end"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro2_{_code}_end')
+                            _end = st.select_slider("리스크 종료 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["end"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro2_{_code}_end')
                         _macro2_cfgs[_code] = {"ema": int(_ema), "window": int(_window), "start": float(_start), "end": float(_end)}
 
             with st.spinner("📡 기준 지수 데이터 로딩 중..."):
@@ -5839,13 +5841,13 @@ def main(page="signal"):
 
             _invalid_macro2 = [f"({_code})" for _code, _cfg in _macro2_cfgs.items() if _cfg["start"] <= _cfg["end"]]
             if _invalid_macro2:
-                st.warning(f"Risk 시작 분위수는 종료 분위수보다 높아야 합니다: {' '.join(_invalid_macro2)}")
+                st.warning(f"리스크 시작 분위수는 종료 분위수보다 높아야 합니다: {' '.join(_invalid_macro2)}")
             else:
                 with st.spinner("📡 실험용 매크로 데이터 로딩 중..."):
                     _macro2_charts = _build_macro2_dynamic_charts(_macro2_years, _spx_s2, _show_raw_macro2, _benchmark_name, _macro2_cfgs)
                 for _idx, _fig in enumerate(_macro2_charts):
                     if _fig is not None:
-                        st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False}, key=f"macro2_chart_{_idx}_{_benchmark_name}_{_macro2_years}")
+                        st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False}, key=f"macro2_chart_{_idx}_{_benchmark_name}_{_macro2_years}_{_macro_dynamic_cfg_signature(_macro2_cfgs, [_code for _code in _MACRO2_SIGNAL_LABELS.keys() if _code in _macro2_cfgs])}")
                     else:
                         st.warning("실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
 
@@ -5897,7 +5899,7 @@ def main(page="signal"):
 
     def render_macro4_combo_section(container):
         with container:
-            st.caption("상단 조합 차트는 선택한 지표들의 Risk-off 상태를 합성하고, 아래 6개 차트는 매크로지표2와 동일한 개별 실험 차트입니다.")
+            st.caption("상단 조합 차트는 선택한 지표들의 리스크 상태를 합성하고, 아래 6개 차트는 매크로지표2와 동일한 개별 실험 차트입니다.")
 
             _macro4_defaults = _get_macro2_dynamic_defaults()
             _macro4_presets = {
@@ -5988,7 +5990,7 @@ def main(page="signal"):
                 _selected_codes4 = st.multiselect("조합 지표", options=list(_MACRO2_SIGNAL_LABELS.keys()), default=_macro4_selected_default, format_func=lambda x: _MACRO2_SIGNAL_LABELS.get(x, x), key='macro4_selected_codes')
             with _m44:
                 _default_k4 = min(_macro4_preset_cfg["combo_k"], max(1, len(_selected_codes4)))
-                _combo_k4 = st.slider("Risk 기준", min_value=1, max_value=max(1, len(_selected_codes4)), value=_default_k4, format="%d개 이상 ON", key='macro4_combo_k')
+                _combo_k4 = st.slider("리스크 기준", min_value=1, max_value=max(1, len(_selected_codes4)), value=_default_k4, format="%d개 이상 ON", key='macro4_combo_k')
 
             _macro4_cfgs = {}
             with st.expander("실험 설정", expanded=True):
@@ -6000,9 +6002,9 @@ def main(page="signal"):
                         with _s1:
                             _window = st.selectbox("Rolling Window", [63, 126, 252, 504], index=[63, 126, 252, 504].index(_cfg["window"]), key=f'macro4_{_code}_window')
                         with _s2:
-                            _start = st.select_slider("Risk 시작 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["start"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro4_{_code}_start')
+                            _start = st.select_slider("리스크 시작 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["start"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro4_{_code}_start')
                         with _s3:
-                            _end = st.select_slider("Risk 종료 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["end"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro4_{_code}_end')
+                            _end = st.select_slider("리스크 종료 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["end"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro4_{_code}_end')
                         _macro4_cfgs[_code] = {"ema": int(_ema), "window": int(_window), "start": float(_start), "end": float(_end)}
 
             with st.spinner("📡 기준 지수 데이터 로딩 중..."):
@@ -6011,7 +6013,7 @@ def main(page="signal"):
 
             _invalid_macro4 = [f"({_code})" for _code, _cfg in _macro4_cfgs.items() if _cfg["start"] <= _cfg["end"]]
             if _invalid_macro4:
-                st.warning(f"Risk 시작 분위수는 종료 분위수보다 높아야 합니다: {' '.join(_invalid_macro4)}")
+                st.warning(f"리스크 시작 분위수는 종료 분위수보다 높아야 합니다: {' '.join(_invalid_macro4)}")
             elif not _selected_codes4:
                 st.warning("조합에 사용할 지표를 최소 1개 이상 선택해 주세요.")
             else:
@@ -6020,13 +6022,13 @@ def main(page="signal"):
                     _macro4_charts = _build_macro2_dynamic_charts(_macro4_years, _spx_s4, _show_raw_macro4, _benchmark_name4, _macro4_cfgs)
 
                 if _macro4_combo_fig is not None:
-                    st.plotly_chart(_macro4_combo_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_combo_{_benchmark_name4}_{_macro4_years}_{'_'.join(_selected_codes4)}_{_combo_k4}")
+                    st.plotly_chart(_macro4_combo_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_combo_{_benchmark_name4}_{_macro4_years}_{'_'.join(_selected_codes4)}_{_combo_k4}_{_macro_dynamic_cfg_signature(_macro4_cfgs, _selected_codes4)}")
                 else:
-                    st.warning("조합 Risk-off 차트 데이터 로딩 실패 — 조합 지표/기간을 확인해 주세요.")
+                    st.warning("조합 리스크 차트 데이터 로딩 실패 — 조합 지표/기간을 확인해 주세요.")
 
                 for _idx, _fig in enumerate(_macro4_charts):
                     if _fig is not None:
-                        st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_chart_{_idx}_{_benchmark_name4}_{_macro4_years}")
+                        st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_chart_{_idx}_{_benchmark_name4}_{_macro4_years}_{_macro_dynamic_cfg_signature(_macro4_cfgs, [_code for _code in _MACRO2_SIGNAL_LABELS.keys() if _code in _macro4_cfgs])}")
                     else:
                         st.warning("개별 실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
 
@@ -6626,7 +6628,7 @@ def main(page="signal"):
         render_macro3_threshold_section(_macro3_container)
 
         # ═══════════════════════════════════════════════════════════
-        # TAB 3C — 매크로 지표 4 (조합 Risk-off 실험용)
+        # TAB 3C — 매크로 지표 4 (조합 리스크 실험용)
         # ═══════════════════════════════════════════════════════════
     if page == "macro4" or (page == "market_macro" and _market_macro_section == "macro4"):
         _macro4_container = tab6 if page == "market_macro" else tab3
