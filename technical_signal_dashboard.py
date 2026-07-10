@@ -4891,6 +4891,8 @@ def make_macro_combo_dynamic_chart(
     fig.update_layout(
         **_ml(f'⓪ 조합 리스크 사이클 ({benchmark["label"]}, {combo_k}/{len(flag_cols)})', height=300),
     )
+    if len(spx_aligned.index) >= 2:
+        fig.update_xaxes(range=[spx_aligned.index.min(), spx_aligned.index.max()])
     fig.add_annotation(
         xref='paper', yref='paper', x=0.01, y=0.98, showarrow=False,
         text=f'<b>조합</b>: {selected_labels}',
