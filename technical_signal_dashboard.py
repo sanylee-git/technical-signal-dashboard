@@ -5216,6 +5216,8 @@ def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True, downt
         **_ml(title, height=300),
         yaxis2=_visible_price_yaxis('y', 'right'),
     )
+    if len(plot_s.index) >= 2:
+        fig.update_xaxes(range=[plot_s.index.min(), plot_s.index.max()])
     _add_corr_annotation(fig, plot_s, spx_s, label=f'vs {benchmark["label"]}')
     return fig
 
