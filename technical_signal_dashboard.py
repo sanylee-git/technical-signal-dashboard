@@ -4366,6 +4366,59 @@ def _get_macro2_signal_series(signal_code: str, years: int, benchmark_name: str 
     return pd.Series(dtype=float)
 
 
+def _compute_macro_combo_signal_frame(
+    spx_s: pd.Series,
+    years: int,
+    benchmark_name: str,
+    selected_codes,
+    cfgs: dict,
+    combo_k: int,
+):
+    if spx_s is None or spx_s.empty:
+        return pd.DataFrame(), []
+
+    selected_codes = list(selected_codes or [])
+    if not selected_codes:
+        return pd.DataFrame(), []
+
+    frames = {}
+    active_codes = []
+    for code in selected_codes:
+        series = _get_macro2_signal_series(code, years, benchmark_name=benchmark_name, spx_s=spx_s)
+        if series is None or series.empty or code not in cfgs:
+            continue
+        signal_df = _compute_dynamic_quantile_signal_frame(
+            series,
+            window=int(cfgs[code]["window"]),
+            start_quantile=float(cfgs[code]["start"]),
+            end_quantile=float(cfgs[code]["end"]),
+            ema_span=int(cfgs[code]["ema"]),
+        )
+        if signal_df.empty:
+            continue
+        frames[code] = signal_df[["down_flag"]].rename(columns={"down_flag": f"{code}_down_flag"})
+        active_codes.append(code)
+
+    if not frames:
+        return pd.DataFrame(), []
+
+    spx_aligned = spx_s.dropna().copy()
+    if spx_aligned.empty:
+        return pd.DataFrame(), []
+
+    combo = pd.concat(frames.values(), axis=1).sort_index()
+    flag_cols = [f"{code}_down_flag" for code in active_codes]
+    combo = combo.reindex(spx_aligned.index)
+    combo[flag_cols] = combo[flag_cols].ffill().fillna(False).astype(bool)
+
+    combo_k = max(1, min(int(combo_k), len(flag_cols)))
+    combo["active_count"] = combo[flag_cols].sum(axis=1).astype(int)
+    combo["combo_risk_state"] = combo["active_count"].ge(combo_k)
+    combo["combo_start_signal"] = combo["combo_risk_state"] & ~combo["combo_risk_state"].shift(1).fillna(False)
+    combo["combo_end_signal"] = ~combo["combo_risk_state"] & combo["combo_risk_state"].shift(1).fillna(False)
+    return combo, active_codes
+
+
 def make_macro_combo_dynamic_chart(
     years: int = 5,
     spx_s=None,
@@ -4385,39 +4438,18 @@ def make_macro_combo_dynamic_chart(
     if not selected_codes:
         return None
 
-    frames = {}
-    for code in selected_codes:
-        series = _get_macro2_signal_series(code, years, benchmark_name=benchmark_name, spx_s=spx_s)
-        if series is None or series.empty or code not in cfgs:
-            continue
-        signal_df = _compute_dynamic_quantile_signal_frame(
-            series,
-            window=int(cfgs[code]["window"]),
-            start_quantile=float(cfgs[code]["start"]),
-            end_quantile=float(cfgs[code]["end"]),
-            ema_span=int(cfgs[code]["ema"]),
-        )
-        if signal_df.empty:
-            continue
-        frames[code] = signal_df[["down_flag"]].rename(columns={"down_flag": f"{code}_down_flag"})
-
-    if not frames:
+    combo, active_codes = _compute_macro_combo_signal_frame(
+        spx_s=spx_s,
+        years=years,
+        benchmark_name=benchmark_name,
+        selected_codes=selected_codes,
+        cfgs=cfgs,
+        combo_k=combo_k,
+    )
+    if combo.empty or not active_codes:
         return None
-
-    combo = pd.concat(frames.values(), axis=1).sort_index().fillna(False)
-    flag_cols = [f"{code}_down_flag" for code in frames]
-    combo["active_count"] = combo[flag_cols].sum(axis=1).astype(int)
-    combo_k = max(1, min(int(combo_k), len(flag_cols)))
-    spx_aligned = spx_s.reindex(combo.index).dropna()
-    if spx_aligned.empty:
-        return None
-    combo = combo.reindex(spx_aligned.index).fillna(False)
-    combo["active_count"] = combo["active_count"].astype(int)
-    combo["combo_risk_state"] = combo["active_count"].ge(combo_k)
-    combo["combo_start_signal"] = combo["combo_risk_state"] & ~combo["combo_risk_state"].shift(1).fillna(False)
-    combo["combo_end_signal"] = ~combo["combo_risk_state"] & combo["combo_risk_state"].shift(1).fillna(False)
-
-    active_codes = [code for code in selected_codes if code in frames]
+    spx_aligned = spx_s.dropna().reindex(combo.index)
+    flag_cols = [f"{code}_down_flag" for code in active_codes]
     selected_labels = ", ".join(_MACRO2_SIGNAL_LABELS.get(code, code) for code in active_codes)
 
     fig = go.Figure()
