@@ -3131,7 +3131,7 @@ rsi_sell_lower_global = 75   # 기본: 80 - 5
 # ============================================================
 
 @st.cache_data(ttl=86400)
-def _fred(series_id: str, years: int = 5) -> pd.Series:
+def _fred(series_id: str, years: int = 5, sync_bucket: str | None = None) -> pd.Series:
     """FRED 공개 CSV (API 키 불필요). SSL 자체 서명 대응 + 타임아웃 처리."""
     import urllib.request, ssl, io as _io
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
@@ -3158,9 +3158,9 @@ _CREDIT_SPREAD_PROXY_MAP = {
 
 
 @st.cache_data(ttl=86400)
-def _credit_spread_series(series_id: str, years: int = 5) -> pd.Series:
+def _credit_spread_series(series_id: str, years: int = 5, sync_bucket: str | None = None) -> pd.Series:
     """HY/IG OAS는 최근 3년 원본 + 이전 구간은 장기 프록시로 이어 붙여 반환."""
-    exact = _fred(series_id, years)
+    exact = _fred(series_id, years, sync_bucket=sync_bucket)
     proxy_meta = _CREDIT_SPREAD_PROXY_MAP.get(series_id)
     if proxy_meta is None:
         return exact
@@ -3168,8 +3168,8 @@ def _credit_spread_series(series_id: str, years: int = 5) -> pd.Series:
     corp_id, treasury_id, label = proxy_meta
     cutoff = pd.Timestamp.now().normalize() - pd.DateOffset(years=years)
     fetch_years = max(years + 2, 6)
-    corp_yield = _fred(corp_id, fetch_years)
-    treasury_yield = _fred(treasury_id, fetch_years)
+    corp_yield = _fred(corp_id, fetch_years, sync_bucket=sync_bucket)
+    treasury_yield = _fred(treasury_id, fetch_years, sync_bucket=sync_bucket)
     if corp_yield.empty or treasury_yield.empty:
         return exact
 
@@ -3197,7 +3197,7 @@ def _credit_spread_series(series_id: str, years: int = 5) -> pd.Series:
 
 
 @st.cache_data(ttl=86400)
-def _yf_close(ticker: str, years: int = 5) -> pd.Series:
+def _yf_close(ticker: str, years: int = 5, sync_bucket: str | None = None) -> pd.Series:
     start = (pd.Timestamp.now() - pd.DateOffset(years=years)).strftime('%Y-%m-%d')
 
     def _extract_close(raw_obj):
@@ -3278,6 +3278,12 @@ def _quarter_timestamp_to_label(idx) -> str:
         return f"{p.year}Q{p.quarter}"
     except Exception:
         return str(idx)
+
+
+def _macro_sync_bucket(minutes: int = 60) -> str:
+    minutes = max(5, int(minutes))
+    ts = pd.Timestamp.now().floor(f"{minutes}min")
+    return ts.strftime("%Y%m%d%H%M")
 
 
 def _load_quarterly_csv(path: str, required_cols: list[str]) -> pd.DataFrame:
@@ -3540,30 +3546,30 @@ def _relative_strength_spread(leader_s: pd.Series, lagger_s: pd.Series) -> pd.Se
     return (leader_norm - lagger_norm).dropna()
 
 
-def _korean_credit_proxy_series(years: int, quality: str = 'AA') -> pd.Series:
-    treasury_3y = _yf_close('114260.KS', years + 1)   # KODEX 국고채3년
+def _korean_credit_proxy_series(years: int, quality: str = 'AA', sync_bucket: str | None = None) -> pd.Series:
+    treasury_3y = _yf_close('114260.KS', years + 1, sync_bucket=sync_bucket)   # KODEX 국고채3년
     corp_map = {
         'AA': ('273130.KS', '종합채권(AA-이상)'),
         'A': ('385540.KS', '종합채권(A-이상)'),
     }
     corp_ticker, _ = corp_map.get(quality, corp_map['AA'])
-    corp = _yf_close(corp_ticker, years + 1)
+    corp = _yf_close(corp_ticker, years + 1, sync_bucket=sync_bucket)
     return _relative_strength_spread(treasury_3y, corp)
 
 
-def _korean_fx_stress_series(years: int) -> pd.Series:
-    return _yf_close('KRW=X', years + 1)
+def _korean_fx_stress_series(years: int, sync_bucket: str | None = None) -> pd.Series:
+    return _yf_close('KRW=X', years + 1, sync_bucket=sync_bucket)
 
 
-def _korean_volatility_series(years: int, benchmark_s: pd.Series | None = None, window: int = 20) -> pd.Series:
+def _korean_volatility_series(years: int, benchmark_s: pd.Series | None = None, window: int = 20, sync_bucket: str | None = None) -> pd.Series:
     if benchmark_s is None or benchmark_s.empty:
-        benchmark_s = _yf_close('^KS11', years + 1)
+        benchmark_s = _yf_close('^KS11', years + 1, sync_bucket=sync_bucket)
     return _realized_volatility(benchmark_s, window=window)
 
 
-def _korean_vol_term_spread_series(years: int, benchmark_s: pd.Series | None = None) -> pd.Series:
+def _korean_vol_term_spread_series(years: int, benchmark_s: pd.Series | None = None, sync_bucket: str | None = None) -> pd.Series:
     if benchmark_s is None or benchmark_s.empty:
-        benchmark_s = _yf_close('^KS11', years + 1)
+        benchmark_s = _yf_close('^KS11', years + 1, sync_bucket=sync_bucket)
     hv20 = _realized_volatility(benchmark_s, window=20)
     hv60 = _realized_volatility(benchmark_s, window=60)
     return (hv20 - hv60.reindex(hv20.index)).dropna()
@@ -4071,11 +4077,11 @@ def _compute_combo_downturn_frame(parts: dict[str, pd.Series], params=None) -> p
 def make_macro_index_cycle_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500',
                                  dynamic_mode: bool = False, dynamic_window: int = 126,
                                  dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2,
-                                 ema_span: int | None = None):
+                                 ema_span: int | None = None, sync_bucket: str | None = None):
     """⓪ 선택 지수 자체의 EMA 기반 리스크 사이클."""
     benchmark = _get_macro_benchmark(benchmark_name)
     if spx_s is None or spx_s.empty:
-        spx_s = _yf_close(benchmark['code'], years)
+        spx_s = _yf_close(benchmark['code'], years, sync_bucket=sync_bucket)
     if spx_s is None or spx_s.empty:
         return None
 
@@ -4276,7 +4282,7 @@ def _macro_combo_warmup_years(visible_years: int, cfgs: dict, selected_codes) ->
     return int(visible_years) + extra_years
 
 
-def _build_macro2_dynamic_charts(years: int, spx_s, show_raw: bool, benchmark_name: str, cfgs: dict):
+def _build_macro2_dynamic_charts(years: int, spx_s, show_raw: bool, benchmark_name: str, cfgs: dict, sync_bucket: str | None = None):
     return [
         make_macro_index_cycle_chart(
             years, spx_s, show_raw, benchmark_name=benchmark_name,
@@ -4284,6 +4290,7 @@ def _build_macro2_dynamic_charts(years: int, spx_s, show_raw: bool, benchmark_na
             dynamic_window=cfgs["0"]["window"],
             dynamic_start_quantile=cfgs["0"]["start"],
             dynamic_end_quantile=cfgs["0"]["end"],
+            sync_bucket=sync_bucket,
         ),
         make_macro_hy_spread_chart(
             years, spx_s, show_raw, benchmark_name=benchmark_name,
@@ -4291,6 +4298,7 @@ def _build_macro2_dynamic_charts(years: int, spx_s, show_raw: bool, benchmark_na
             dynamic_window=cfgs["1"]["window"],
             dynamic_start_quantile=cfgs["1"]["start"],
             dynamic_end_quantile=cfgs["1"]["end"],
+            sync_bucket=sync_bucket,
         ),
         make_macro_ig_spread_chart(
             years, spx_s, show_raw, benchmark_name=benchmark_name,
@@ -4298,6 +4306,7 @@ def _build_macro2_dynamic_charts(years: int, spx_s, show_raw: bool, benchmark_na
             dynamic_window=cfgs["2"]["window"],
             dynamic_start_quantile=cfgs["2"]["start"],
             dynamic_end_quantile=cfgs["2"]["end"],
+            sync_bucket=sync_bucket,
         ),
         make_macro_credit_stress_chart(
             years, spx_s, show_raw, benchmark_name=benchmark_name,
@@ -4305,6 +4314,7 @@ def _build_macro2_dynamic_charts(years: int, spx_s, show_raw: bool, benchmark_na
             dynamic_window=cfgs["3"]["window"],
             dynamic_start_quantile=cfgs["3"]["start"],
             dynamic_end_quantile=cfgs["3"]["end"],
+            sync_bucket=sync_bucket,
         ),
         make_macro_options_chart(
             years, spx_s, show_raw, benchmark_name=benchmark_name,
@@ -4312,6 +4322,7 @@ def _build_macro2_dynamic_charts(years: int, spx_s, show_raw: bool, benchmark_na
             dynamic_window=cfgs["4"]["window"],
             dynamic_start_quantile=cfgs["4"]["start"],
             dynamic_end_quantile=cfgs["4"]["end"],
+            sync_bucket=sync_bucket,
         ),
         make_macro_vix_spread_chart(
             years, spx_s, show_raw, benchmark_name=benchmark_name,
@@ -4319,38 +4330,39 @@ def _build_macro2_dynamic_charts(years: int, spx_s, show_raw: bool, benchmark_na
             dynamic_window=cfgs["6"]["window"],
             dynamic_start_quantile=cfgs["6"]["start"],
             dynamic_end_quantile=cfgs["6"]["end"],
+            sync_bucket=sync_bucket,
         ),
     ]
 
 
-def _get_macro2_signal_series(signal_code: str, years: int, benchmark_name: str = 'S&P500', spx_s=None) -> pd.Series:
+def _get_macro2_signal_series(signal_code: str, years: int, benchmark_name: str = 'S&P500', spx_s=None, sync_bucket: str | None = None) -> pd.Series:
     benchmark = _get_macro_benchmark(benchmark_name)
     if signal_code == "0":
         if spx_s is None or spx_s.empty:
-            spx_s = _yf_close(benchmark['code'], years)
+            spx_s = _yf_close(benchmark['code'], years, sync_bucket=sync_bucket)
         return spx_s.dropna() if spx_s is not None else pd.Series(dtype=float)
 
     if signal_code == "1":
         if benchmark['kind'] == 'kr':
-            hy = _korean_credit_proxy_series(years, 'A')
+            hy = _korean_credit_proxy_series(years, 'A', sync_bucket=sync_bucket)
         else:
-            hy = _credit_spread_series('BAMLH0A0HYM2', years)
+            hy = _credit_spread_series('BAMLH0A0HYM2', years, sync_bucket=sync_bucket)
         return (-hy).dropna() if hy is not None else pd.Series(dtype=float)
 
     if signal_code == "2":
         if benchmark['kind'] == 'kr':
-            ig = _korean_credit_proxy_series(years, 'AA')
+            ig = _korean_credit_proxy_series(years, 'AA', sync_bucket=sync_bucket)
         else:
-            ig = _credit_spread_series('BAMLC0A0CM', years)
+            ig = _credit_spread_series('BAMLC0A0CM', years, sync_bucket=sync_bucket)
         return (-ig).dropna() if ig is not None else pd.Series(dtype=float)
 
     if signal_code == "3":
         parts = []
         if benchmark['kind'] == 'kr':
-            hy = _korean_credit_proxy_series(years + 1, 'A')
-            ig = _korean_credit_proxy_series(years + 1, 'AA')
-            fx = _korean_fx_stress_series(years + 1)
-            hv20 = _korean_volatility_series(years + 1, benchmark_s=spx_s, window=20)
+            hy = _korean_credit_proxy_series(years + 1, 'A', sync_bucket=sync_bucket)
+            ig = _korean_credit_proxy_series(years + 1, 'AA', sync_bucket=sync_bucket)
+            fx = _korean_fx_stress_series(years + 1, sync_bucket=sync_bucket)
+            hv20 = _korean_volatility_series(years + 1, benchmark_s=spx_s, window=20, sync_bucket=sync_bucket)
             if not hy.empty:
                 parts.append(_zscore(hy).rename('CorpA'))
             if not ig.empty:
@@ -4360,9 +4372,9 @@ def _get_macro2_signal_series(signal_code: str, years: int, benchmark_name: str 
             if not hv20.empty:
                 parts.append(_zscore(hv20).rename('HV20'))
         else:
-            hy = _credit_spread_series('BAMLH0A0HYM2', years + 1)
-            nfci = _fred('NFCI', years + 1)
-            vix = _yf_close('^VIX', years + 1)
+            hy = _credit_spread_series('BAMLH0A0HYM2', years + 1, sync_bucket=sync_bucket)
+            nfci = _fred('NFCI', years + 1, sync_bucket=sync_bucket)
+            vix = _yf_close('^VIX', years + 1, sync_bucket=sync_bucket)
             if not hy.empty:
                 parts.append(_zscore(hy).rename('HY'))
             if not nfci.empty:
@@ -4378,17 +4390,17 @@ def _get_macro2_signal_series(signal_code: str, years: int, benchmark_name: str 
 
     if signal_code == "4":
         if benchmark['kind'] == 'kr':
-            vol = _korean_volatility_series(years, benchmark_s=spx_s, window=20)
+            vol = _korean_volatility_series(years, benchmark_s=spx_s, window=20, sync_bucket=sync_bucket)
         else:
-            vol = _yf_close('^VIX', years)
+            vol = _yf_close('^VIX', years, sync_bucket=sync_bucket)
         return (-vol).dropna() if vol is not None else pd.Series(dtype=float)
 
     if signal_code == "6":
         if benchmark['kind'] == 'kr':
-            spread = _korean_vol_term_spread_series(years, benchmark_s=spx_s)
+            spread = _korean_vol_term_spread_series(years, benchmark_s=spx_s, sync_bucket=sync_bucket)
         else:
-            vix = _yf_close('^VIX', years)
-            vix3m = _yf_close('^VIX3M', years)
+            vix = _yf_close('^VIX', years, sync_bucket=sync_bucket)
+            vix3m = _yf_close('^VIX3M', years, sync_bucket=sync_bucket)
             if vix.empty or vix3m.empty:
                 return pd.Series(dtype=float)
             spread = (vix - vix3m.reindex(vix.index)).dropna()
@@ -4403,6 +4415,7 @@ def _compute_macro_combo_signal_frame(
     selected_codes,
     cfgs: dict,
     combo_k: int,
+    sync_bucket: str | None = None,
 ):
     if spx_s is None or spx_s.empty:
         return pd.DataFrame(), []
@@ -4415,7 +4428,7 @@ def _compute_macro_combo_signal_frame(
     active_codes = []
     for code in selected_codes:
         fetch_years = max(1, int(np.ceil(len(spx_s.dropna()) / 252.0)) + 1)
-        series = _get_macro2_signal_series(code, fetch_years, benchmark_name=benchmark_name, spx_s=spx_s)
+        series = _get_macro2_signal_series(code, fetch_years, benchmark_name=benchmark_name, spx_s=spx_s, sync_bucket=sync_bucket)
         if series is None or series.empty or code not in cfgs:
             continue
         signal_df = _compute_dynamic_quantile_signal_frame(
@@ -4750,11 +4763,12 @@ def make_macro_combo_dynamic_chart(
     cfgs=None,
     combo_k: int = 3,
     return_debug: bool = False,
+    sync_bucket: str | None = None,
 ):
     benchmark = _get_macro_benchmark(benchmark_name)
     visible_spx_s = spx_s
     if visible_spx_s is None or visible_spx_s.empty:
-        visible_spx_s = _yf_close(benchmark['code'], years)
+        visible_spx_s = _yf_close(benchmark['code'], years, sync_bucket=sync_bucket)
     if visible_spx_s is None or visible_spx_s.empty:
         return (None, pd.DataFrame()) if return_debug else None
 
@@ -4764,7 +4778,7 @@ def make_macro_combo_dynamic_chart(
         return (None, pd.DataFrame()) if return_debug else None
 
     warmup_years = _macro_combo_warmup_years(years, cfgs, selected_codes)
-    combo_spx_s = _yf_close(benchmark['code'], warmup_years)
+    combo_spx_s = _yf_close(benchmark['code'], warmup_years, sync_bucket=sync_bucket)
     if combo_spx_s is None or combo_spx_s.empty:
         combo_spx_s = visible_spx_s
 
@@ -4774,6 +4788,7 @@ def make_macro_combo_dynamic_chart(
         selected_codes=selected_codes,
         cfgs=cfgs,
         combo_k=combo_k,
+        sync_bucket=sync_bucket,
     )
     if combo.empty or not active_codes:
         return (None, pd.DataFrame()) if return_debug else None
@@ -4951,16 +4966,16 @@ def _make_inverted_spread_chart(
 def make_macro_hy_spread_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500',
                                dynamic_mode: bool = False, dynamic_window: int = 126,
                                dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2,
-                               ema_span: int | None = None):
+                               ema_span: int | None = None, sync_bucket: str | None = None):
     """① HY 크레딧 스프레드: 반전 표시 + EMA 하락 경고."""
     benchmark = _get_macro_benchmark(benchmark_name)
     if benchmark['kind'] == 'kr':
-        hy = _korean_credit_proxy_series(years, 'A')
+        hy = _korean_credit_proxy_series(years, 'A', sync_bucket=sync_bucket)
         title = '① 회사채(A-이상)-국고채 상대강도 (반전, 한국 proxy)'
         trace_name = 'A-이상 회사채 프록시'
         suffix = ''
     else:
-        hy = _credit_spread_series('BAMLH0A0HYM2', years)
+        hy = _credit_spread_series('BAMLH0A0HYM2', years, sync_bucket=sync_bucket)
         title = '① HY 크레딧 스프레드 (반전, OAS %)'
         trace_name = 'HY 스프레드'
         suffix = '%'
@@ -4975,16 +4990,16 @@ def make_macro_hy_spread_chart(years: int = 5, spx_s=None, show_raw=True, downtu
 def make_macro_ig_spread_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500',
                                dynamic_mode: bool = False, dynamic_window: int = 126,
                                dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2,
-                               ema_span: int | None = None):
+                               ema_span: int | None = None, sync_bucket: str | None = None):
     """② IG 크레딧 스프레드: 반전 표시 + EMA 하락 경고."""
     benchmark = _get_macro_benchmark(benchmark_name)
     if benchmark['kind'] == 'kr':
-        ig = _korean_credit_proxy_series(years, 'AA')
+        ig = _korean_credit_proxy_series(years, 'AA', sync_bucket=sync_bucket)
         title = '② 회사채(AA-이상)-국고채 상대강도 (반전, 한국 proxy)'
         trace_name = 'AA-이상 회사채 프록시'
         suffix = ''
     else:
-        ig = _credit_spread_series('BAMLC0A0CM', years)
+        ig = _credit_spread_series('BAMLC0A0CM', years, sync_bucket=sync_bucket)
         title = '② IG 크레딧 스프레드 (반전, OAS %)'
         trace_name = 'IG 스프레드'
         suffix = '%'
@@ -5000,24 +5015,24 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True, do
                                    threshold_mode=False, threshold_value: float = 0.0, ema_span: int | None = None,
                                    dynamic_mode: bool = False, dynamic_window: int = 126,
                                    dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2,
-                                   threshold_end_value: float | None = None):
+                                   threshold_end_value: float | None = None, sync_bucket: str | None = None):
     """③ 신용 스트레스 지수: HY + NFCI + VIX z-score 합성, 반전 표시."""
     benchmark = _get_macro_benchmark(benchmark_name)
     parts = []
     if benchmark['kind'] == 'kr':
-        hy = _korean_credit_proxy_series(years + 1, 'A')
-        ig = _korean_credit_proxy_series(years + 1, 'AA')
-        fx = _korean_fx_stress_series(years + 1)
-        hv20 = _korean_volatility_series(years + 1, benchmark_s=spx_s, window=20)
+        hy = _korean_credit_proxy_series(years + 1, 'A', sync_bucket=sync_bucket)
+        ig = _korean_credit_proxy_series(years + 1, 'AA', sync_bucket=sync_bucket)
+        fx = _korean_fx_stress_series(years + 1, sync_bucket=sync_bucket)
+        hv20 = _korean_volatility_series(years + 1, benchmark_s=spx_s, window=20, sync_bucket=sync_bucket)
         if not hy.empty: parts.append(_zscore(hy).rename('CorpA'))
         if not ig.empty: parts.append(_zscore(ig).rename('CorpAA'))
         if not fx.empty: parts.append(_zscore(fx).rename('USDKRW'))
         if not hv20.empty: parts.append(_zscore(hv20).rename('HV20'))
         title = '③ 한국 스트레스 지수 (반전, 회사채·환율·변동성)'
     else:
-        hy   = _credit_spread_series('BAMLH0A0HYM2', years + 1)
-        nfci = _fred('NFCI',         years + 1)
-        vix  = _yf_close('^VIX',     years + 1)
+        hy   = _credit_spread_series('BAMLH0A0HYM2', years + 1, sync_bucket=sync_bucket)
+        nfci = _fred('NFCI',         years + 1, sync_bucket=sync_bucket)
+        vix  = _yf_close('^VIX',     years + 1, sync_bucket=sync_bucket)
         if not hy.empty:   parts.append(_zscore(hy).rename('HY'))
         if not nfci.empty: parts.append(_zscore(nfci).rename('NFCI'))
         if not vix.empty:  parts.append(_zscore(vix).rename('VIX'))
@@ -5085,17 +5100,18 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True, do
 def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500',
                              threshold_mode=False, threshold_value: float = -20.0, ema_span: int | None = None,
                              dynamic_mode: bool = False, dynamic_window: int = 126,
-                             dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2):
+                             dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2,
+                             sync_bucket: str | None = None):
     """④ VIX 레벨: 반전 표시 + EMA 하락 경고."""
     benchmark = _get_macro_benchmark(benchmark_name)
     if benchmark['kind'] == 'kr':
-        vix = _korean_volatility_series(years, benchmark_s=spx_s, window=20)
+        vix = _korean_volatility_series(years, benchmark_s=spx_s, window=20, sync_bucket=sync_bucket)
         title = '④ VIX (한국 proxy: HV20, 반전)'
         trace_name = 'HV20 (반전)'
         line_label = '반전 HV20'
         corr_label = f'반전 HV20 vs {benchmark["label"]}'
     else:
-        vix = _yf_close('^VIX', years)
+        vix = _yf_close('^VIX', years, sync_bucket=sync_bucket)
         title = '④ VIX (반전)'
         trace_name = 'VIX 레벨 (반전)'
         line_label = '반전 VIX'
@@ -5140,16 +5156,17 @@ def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True, downturn
 def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True, downturn_params=None, benchmark_name='S&P500',
                                 threshold_mode=False, threshold_value: float = 2.0, ema_span: int | None = None,
                                 dynamic_mode: bool = False, dynamic_window: int = 126,
-                                dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2):
+                                dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2,
+                                sync_bucket: str | None = None):
     """⑥ VIX-VIX3M 스프레드: 반전 표시 + EMA 하락 경고."""
     benchmark = _get_macro_benchmark(benchmark_name)
     if benchmark['kind'] == 'kr':
-        spread = _korean_vol_term_spread_series(years, benchmark_s=spx_s)
+        spread = _korean_vol_term_spread_series(years, benchmark_s=spx_s, sync_bucket=sync_bucket)
         title = '⑥ VIX 스프레드 (한국 proxy, 반전)'
         trace_name = 'HV20-HV60 스프레드'
     else:
-        vix   = _yf_close('^VIX',   years)
-        vix3m = _yf_close('^VIX3M', years)
+        vix   = _yf_close('^VIX',   years, sync_bucket=sync_bucket)
+        vix3m = _yf_close('^VIX3M', years, sync_bucket=sync_bucket)
         if vix.empty or vix3m.empty:
             return None
         spread = (vix - vix3m.reindex(vix.index)).dropna()
@@ -6244,6 +6261,7 @@ def main(page="signal"):
     def render_macro2_experimental_section(container):
         with container:
             st.caption("실험용 확장판입니다. ⓪/①/②/③/④/⑥ 차트 각각에 대해 동적 리스크 시작선/종료선을 개별 설정할 수 있습니다.")
+            _macro2_sync_bucket = _macro_sync_bucket(60)
 
             _c0, _c1, _c2 = st.columns([1.2, 2.8, 1.2])
             with _c0:
@@ -6272,14 +6290,14 @@ def main(page="signal"):
 
             with st.spinner("📡 기준 지수 데이터 로딩 중..."):
                 _benchmark_cfg2 = _get_macro_benchmark(_benchmark_name)
-                _spx_s2 = _yf_close(_benchmark_cfg2['code'], _macro2_years)
+                _spx_s2 = _yf_close(_benchmark_cfg2['code'], _macro2_years, sync_bucket=_macro2_sync_bucket)
 
             _invalid_macro2 = [f"({_code})" for _code, _cfg in _macro2_cfgs.items() if _cfg["start"] <= _cfg["end"]]
             if _invalid_macro2:
                 st.warning(f"리스크 시작 분위수는 종료 분위수보다 높아야 합니다: {' '.join(_invalid_macro2)}")
             else:
                 with st.spinner("📡 실험용 매크로 데이터 로딩 중..."):
-                    _macro2_charts = _build_macro2_dynamic_charts(_macro2_years, _spx_s2, _show_raw_macro2, _benchmark_name, _macro2_cfgs)
+                    _macro2_charts = _build_macro2_dynamic_charts(_macro2_years, _spx_s2, _show_raw_macro2, _benchmark_name, _macro2_cfgs, sync_bucket=_macro2_sync_bucket)
                 for _idx, _fig in enumerate(_macro2_charts):
                     if _fig is not None:
                         st.plotly_chart(_fig, width="stretch", config={"displayModeBar": False}, key=f"macro2_chart_{_idx}_{_benchmark_name}_{_macro2_years}_{_macro_dynamic_cfg_signature(_macro2_cfgs, [_code for _code in _MACRO2_SIGNAL_LABELS.keys() if _code in _macro2_cfgs])}")
@@ -6335,6 +6353,7 @@ def main(page="signal"):
     def render_macro4_combo_section(container):
         with container:
             st.caption("상단 조합 차트는 선택한 지표들의 리스크 상태를 합성하고, 아래 6개 차트는 매크로지표2와 동일한 개별 실험 차트입니다.")
+            _macro4_sync_bucket = _macro_sync_bucket(60)
             st.markdown("""
             <style>
             .macro2-divider {
@@ -6498,7 +6517,7 @@ def main(page="signal"):
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
             with st.spinner("📡 기준 지수 데이터 로딩 중..."):
                 _benchmark_cfg4 = _get_macro_benchmark(_benchmark_name4)
-                _spx_s4 = _yf_close(_benchmark_cfg4['code'], _macro4_years)
+                _spx_s4 = _yf_close(_benchmark_cfg4['code'], _macro4_years, sync_bucket=_macro4_sync_bucket)
 
             _invalid_macro4 = [f"({_code})" for _code, _cfg in _macro4_cfgs.items() if _cfg["start"] <= _cfg["end"]]
             if _invalid_macro4:
@@ -6514,8 +6533,9 @@ def main(page="signal"):
                         selected_codes=_selected_codes4,
                         cfgs=_macro4_cfgs,
                         combo_k=_combo_k4,
+                        sync_bucket=_macro4_sync_bucket,
                     )
-                    _macro4_charts = _build_macro2_dynamic_charts(_macro4_years, _spx_s4, _show_raw_macro4, _benchmark_name4, _macro4_cfgs)
+                    _macro4_charts = _build_macro2_dynamic_charts(_macro4_years, _spx_s4, _show_raw_macro4, _benchmark_name4, _macro4_cfgs, sync_bucket=_macro4_sync_bucket)
 
                 if _macro4_combo_fig is not None:
                     st.plotly_chart(_macro4_combo_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_combo_{_benchmark_name4}_{_macro4_years}_{'_'.join(_selected_codes4)}_{_combo_k4}_{_macro_dynamic_cfg_signature(_macro4_cfgs, _selected_codes4)}")
