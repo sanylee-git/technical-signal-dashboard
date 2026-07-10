@@ -3988,7 +3988,7 @@ def _add_dynamic_quantile_signals(
     fig.add_trace(go.Scatter(
         x=signal_df.index, y=signal_df[ema_col],
         name=f'EMA{int(ema_span)}',
-        line=dict(color='rgba(255,255,255,0.32)', width=1.1, dash='dot'),
+        line=dict(color='rgba(216,195,106,0.32)', width=1.1),
         hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>EMA{int(ema_span)}  %{{y:.2f}}<extra></extra>',
     ))
     fig.add_trace(go.Scatter(
@@ -6346,10 +6346,10 @@ def main(page="signal"):
                 color: #D0D0D0;
                 font-weight: 500;
                 line-height: 1.2;
-                margin-bottom: 0.7rem;
+                margin-bottom: 0.9rem;
             }
             .macro2-control-spacer {
-                height: 0.55rem;
+                height: 0.8rem;
             }
             div[data-testid="stSelectbox"] label p,
             div[data-testid="stMultiSelect"] label p,
