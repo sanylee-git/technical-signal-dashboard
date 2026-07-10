@@ -6332,6 +6332,22 @@ def main(page="signal"):
     def render_macro4_combo_section(container):
         with container:
             st.caption("상단 조합 차트는 선택한 지표들의 리스크 상태를 합성하고, 아래 6개 차트는 매크로지표2와 동일한 개별 실험 차트입니다.")
+            st.markdown("""
+            <style>
+            div[data-testid="stSelectbox"] label p,
+            div[data-testid="stMultiSelect"] label p,
+            div[data-testid="stSlider"] label p,
+            div[data-testid="stCheckbox"] label p,
+            div[data-testid="stExpander"] summary p,
+            div[data-testid="stExpander"] summary {
+                font-size: 13px !important;
+                color: #D0D0D0 !important;
+            }
+            div[data-testid="stExpander"] summary {
+                font-weight: 500 !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
 
             _macro4_defaults = _get_macro2_dynamic_defaults()
             _macro4_presets = {
@@ -6386,13 +6402,16 @@ def main(page="signal"):
             }
             if "macro4_preset" not in st.session_state:
                 st.session_state["macro4_preset"] = "snp"
-            _macro4_preset = st.selectbox(
-                "조합 프리셋",
-                options=list(_macro4_presets.keys()),
-                index=list(_macro4_presets.keys()).index(st.session_state.get("macro4_preset", "snp")),
-                format_func=lambda x: _macro4_presets[x]["label"],
-                key="macro4_preset",
-            )
+
+            _m39, _m40, _m41, _m42 = st.columns([1.6, 1.2, 2.4, 1.0])
+            with _m39:
+                _macro4_preset = st.selectbox(
+                    "조합 프리셋",
+                    options=list(_macro4_presets.keys()),
+                    index=list(_macro4_presets.keys()).index(st.session_state.get("macro4_preset", "snp")),
+                    format_func=lambda x: _macro4_presets[x]["label"],
+                    key="macro4_preset",
+                )
             if st.session_state.get("macro4_preset_applied") != _macro4_preset:
                 _preset_cfg = _macro4_presets[_macro4_preset]
                 st.session_state["macro4_benchmark"] = _preset_cfg["benchmark"]
@@ -6407,8 +6426,6 @@ def main(page="signal"):
 
             _macro4_preset_cfg = _macro4_presets[_macro4_preset]
             _macro4_selected_default = list(_macro4_preset_cfg["selected_codes"])
-
-            _m40, _m41, _m42 = st.columns([1.2, 2.8, 1.2])
             with _m40:
                 _benchmark_name4 = st.selectbox("기준지수", options=["S&P500", "Nasdaq"], index=0, label_visibility='collapsed', key='macro4_benchmark')
             with _m41:
@@ -6423,25 +6440,6 @@ def main(page="signal"):
             with _m44:
                 _default_k4 = min(_macro4_preset_cfg["combo_k"], max(1, len(_selected_codes4)))
                 _combo_k4 = st.slider("리스크 기준", min_value=1, max_value=max(1, len(_selected_codes4)), value=_default_k4, format="%d개 이상 ON", key='macro4_combo_k')
-
-            _selected_label_summary4 = " · ".join([
-                _MACRO2_SIGNAL_LABELS.get(_code, _code).replace("⓪ ", "").replace("① ", "").replace("② ", "").replace("③ ", "").replace("④ ", "").replace("⑥ ", "")
-                for _code in _selected_codes4
-            ]) or "선택 없음"
-            _param_summary4 = ", ".join([
-                f"{_MACRO2_SIGNAL_LABELS.get(_code, _code).split(' ', 1)[-1]} EMA{int(st.session_state.get(f'macro4_{_code}_ema', _macro4_defaults[_code]['ema']))}/W{int(st.session_state.get(f'macro4_{_code}_window', _macro4_defaults[_code]['window']))}/S{int(round(float(st.session_state.get(f'macro4_{_code}_start', _macro4_defaults[_code]['start'])) * 100))}/E{int(round(float(st.session_state.get(f'macro4_{_code}_end', _macro4_defaults[_code]['end'])) * 100))}"
-                for _code in _selected_codes4 if _code in _macro4_defaults
-            ])
-            st.markdown(
-                f"""
-                <div style="padding:10px 12px 2px 12px; border:1px solid rgba(255,255,255,0.08); border-radius:8px; background:rgba(255,255,255,0.02); margin-bottom:10px;">
-                    <div style="font-size:13px; color:#CFCFCF; margin-bottom:6px;"><b>조합</b>: {_selected_label_summary4}</div>
-                    <div style="font-size:13px; color:#CFCFCF; margin-bottom:6px;"><b>리스크 기준</b>: {_combo_k4} / {max(1, len(_selected_codes4))}개 ON</div>
-                    <div style="font-size:12px; color:#AFAFAF;"><b>파라미터</b>: {_param_summary4 if _param_summary4 else '선택한 지표 없음'}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
 
             _macro4_cfgs = {}
             with st.expander("▸ 고급 설정: 지표별 EMA / Window / Start / End", expanded=False):
