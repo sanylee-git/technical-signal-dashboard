@@ -6424,8 +6424,27 @@ def main(page="signal"):
                 _default_k4 = min(_macro4_preset_cfg["combo_k"], max(1, len(_selected_codes4)))
                 _combo_k4 = st.slider("리스크 기준", min_value=1, max_value=max(1, len(_selected_codes4)), value=_default_k4, format="%d개 이상 ON", key='macro4_combo_k')
 
+            _selected_label_summary4 = " · ".join([
+                _MACRO2_SIGNAL_LABELS.get(_code, _code).replace("⓪ ", "").replace("① ", "").replace("② ", "").replace("③ ", "").replace("④ ", "").replace("⑥ ", "")
+                for _code in _selected_codes4
+            ]) or "선택 없음"
+            _param_summary4 = ", ".join([
+                f"{_MACRO2_SIGNAL_LABELS.get(_code, _code).split(' ', 1)[-1]} EMA{int(st.session_state.get(f'macro4_{_code}_ema', _macro4_defaults[_code]['ema']))}/W{int(st.session_state.get(f'macro4_{_code}_window', _macro4_defaults[_code]['window']))}/S{int(round(float(st.session_state.get(f'macro4_{_code}_start', _macro4_defaults[_code]['start'])) * 100))}/E{int(round(float(st.session_state.get(f'macro4_{_code}_end', _macro4_defaults[_code]['end'])) * 100))}"
+                for _code in _selected_codes4 if _code in _macro4_defaults
+            ])
+            st.markdown(
+                f"""
+                <div style="padding:10px 12px 2px 12px; border:1px solid rgba(255,255,255,0.08); border-radius:8px; background:rgba(255,255,255,0.02); margin-bottom:10px;">
+                    <div style="font-size:13px; color:#CFCFCF; margin-bottom:6px;"><b>조합</b>: {_selected_label_summary4}</div>
+                    <div style="font-size:13px; color:#CFCFCF; margin-bottom:6px;"><b>리스크 기준</b>: {_combo_k4} / {max(1, len(_selected_codes4))}개 ON</div>
+                    <div style="font-size:12px; color:#AFAFAF;"><b>파라미터</b>: {_param_summary4 if _param_summary4 else '선택한 지표 없음'}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
             _macro4_cfgs = {}
-            with st.expander("실험 설정", expanded=True):
+            with st.expander("▸ 고급 설정: 지표별 EMA / Window / Start / End", expanded=False):
                 for _code, _cfg in _macro4_defaults.items():
                     with st.expander(_cfg["label"], expanded=(_code in _selected_codes4)):
                         _s0, _s1, _s2, _s3 = st.columns(4)
