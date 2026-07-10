@@ -6423,7 +6423,6 @@ def main(page="signal"):
             with _m44:
                 _default_k4 = min(_macro4_preset_cfg["combo_k"], max(1, len(_selected_codes4)))
                 _combo_k4 = st.slider("리스크 기준", min_value=1, max_value=max(1, len(_selected_codes4)), value=_default_k4, format="%d개 이상 ON", key='macro4_combo_k')
-            _show_combo_debug = st.checkbox("Show Combo Debug", value=False, key="macro4_show_combo_debug")
 
             _macro4_cfgs = {}
             with st.expander("실험 설정", expanded=True):
@@ -6450,16 +6449,14 @@ def main(page="signal"):
             elif not _selected_codes4:
                 st.warning("조합에 사용할 지표를 최소 1개 이상 선택해 주세요.")
             else:
-                _combo_slug4 = _make_combo_slug(_benchmark_name4, _selected_codes4, _macro4_cfgs, _combo_k4)
                 with st.spinner("📡 조합 매크로 데이터 로딩 중..."):
-                    _macro4_combo_fig, _combo_event_df4 = make_macro_combo_dynamic_chart(
+                    _macro4_combo_fig = make_macro_combo_dynamic_chart(
                         years=_macro4_years,
                         spx_s=_spx_s4,
                         benchmark_name=_benchmark_name4,
                         selected_codes=_selected_codes4,
                         cfgs=_macro4_cfgs,
                         combo_k=_combo_k4,
-                        return_debug=True,
                     )
                     _macro4_charts = _build_macro2_dynamic_charts(_macro4_years, _spx_s4, _show_raw_macro4, _benchmark_name4, _macro4_cfgs)
 
@@ -6467,62 +6464,6 @@ def main(page="signal"):
                     st.plotly_chart(_macro4_combo_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_combo_{_benchmark_name4}_{_macro4_years}_{'_'.join(_selected_codes4)}_{_combo_k4}_{_macro_dynamic_cfg_signature(_macro4_cfgs, _selected_codes4)}")
                 else:
                     st.warning("조합 리스크 차트 데이터 로딩 실패 — 조합 지표/기간을 확인해 주세요.")
-
-                if _show_combo_debug and _macro4_combo_fig is not None and _combo_event_df4 is not None and not _combo_event_df4.empty:
-                    _combo_debug_full4, _combo_mismatch_top504, _combo_debug_summary4 = _build_combo_debug_tables(_combo_event_df4, _macro4_combo_fig)
-                    _d0, _d1 = st.columns([1.4, 1.1])
-                    with _d0:
-                        _debug_date4 = st.date_input("debug_date", value=pd.Timestamp("2025-04-21"), key="macro4_debug_date")
-                    with _d1:
-                        _debug_window4 = st.number_input("window", min_value=3, max_value=60, value=15, step=1, key="macro4_debug_window")
-                    _combo_local_debug4 = _build_combo_local_debug_table(
-                        _combo_event_df4,
-                        selected_codes=_selected_codes4,
-                        debug_date=_debug_date4,
-                        window=int(_debug_window4),
-                    )
-                    _combo_status4 = "PASS" if (
-                        _combo_debug_summary4.get("start_marker_mismatch_count", 0) == 0
-                        and _combo_debug_summary4.get("end_marker_mismatch_count", 0) == 0
-                        and _combo_debug_summary4.get("cycle_invariant_fail_count", 0) == 0
-                    ) else "FAIL"
-
-                    st.dataframe(pd.DataFrame([{
-                        "현재 선택된 조합명": _combo_event_df4["combo_label"].iloc[0],
-                        "k/n 기준": f"{int(_combo_event_df4['combo_k'].iloc[0])}/{int(_combo_event_df4['combo_n'].iloc[0])}",
-                        "각 지표 파라미터": _combo_event_df4["param_signature"].iloc[0],
-                        "visible_start_state": bool(_combo_event_df4["initial_state_at_visible_start"].iloc[0]),
-                        "computed_start_count": _combo_debug_summary4.get("computed_start_count", 0),
-                        "plotted_start_marker_count": _combo_debug_summary4.get("plotted_start_marker_count", 0),
-                        "start_marker_mismatch_count": _combo_debug_summary4.get("start_marker_mismatch_count", 0),
-                        "computed_end_count": _combo_debug_summary4.get("computed_end_count", 0),
-                        "plotted_end_marker_count": _combo_debug_summary4.get("plotted_end_marker_count", 0),
-                        "end_marker_mismatch_count": _combo_debug_summary4.get("end_marker_mismatch_count", 0),
-                        "start_transition_fail_count": _combo_debug_summary4.get("start_transition_fail_count", 0),
-                        "end_transition_fail_count": _combo_debug_summary4.get("end_transition_fail_count", 0),
-                        "event_order_fail_count": _combo_debug_summary4.get("event_order_fail_count", 0),
-                        "cycle_invariant_status": _combo_debug_summary4.get("cycle_invariant_status", "PASS"),
-                        "최종 판정": _combo_status4,
-                    }]), width="stretch", hide_index=True)
-
-                    st.markdown("**Marker Mismatch Table**")
-                    if _combo_mismatch_top504.empty:
-                        st.caption("불일치 없음")
-                    else:
-                        st.dataframe(_combo_mismatch_top504, width="stretch", hide_index=True)
-
-                    st.markdown("**Local Debug Table**")
-                    st.dataframe(_combo_local_debug4, width="stretch", hide_index=True)
-
-                    if st.button("Export Debug Files", key="macro4_export_debug_files", width="stretch"):
-                        _debug_dir = os.path.join(_DIR, "debug_outputs")
-                        os.makedirs(_debug_dir, exist_ok=True)
-                        _combo_debug_full4.to_parquet(os.path.join(_debug_dir, f"combo_marker_debug_full_{_combo_slug4}.parquet"), index=False)
-                        _combo_debug_full4.to_csv(os.path.join(_debug_dir, f"combo_marker_debug_full_{_combo_slug4}.csv"), index=False)
-                        _stamp4 = pd.Timestamp(_debug_date4).strftime("%Y%m%d")
-                        _combo_local_debug4.to_parquet(os.path.join(_debug_dir, f"combo_local_debug_{_combo_slug4}_{_stamp4}.parquet"), index=False)
-                        _combo_local_debug4.to_csv(os.path.join(_debug_dir, f"combo_local_debug_{_combo_slug4}_{_stamp4}.csv"), index=False)
-                        st.success(f"디버그 파일 저장 완료: {_debug_dir}")
 
                 for _idx, _fig in enumerate(_macro4_charts):
                     if _fig is not None:
