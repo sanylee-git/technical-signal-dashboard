@@ -4452,8 +4452,7 @@ def _build_macro_combo_event_df(
         return pd.DataFrame()
 
     ordered_codes = [code for code in list(selected_codes or []) if code in active_codes]
-    event_df = combo.copy()
-    event_df = event_df.reset_index().rename(columns={"index": "date"})
+    event_df = combo.copy().rename_axis("date").reset_index()
     event_df["date"] = pd.to_datetime(event_df["date"])
     event_df["prev_active_count"] = event_df["active_count"].shift(1).fillna(0).astype(int)
     event_df["combo_state_before"] = event_df["combo_risk_state"].shift(1).fillna(False).astype(bool)
