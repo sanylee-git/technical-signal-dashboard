@@ -94,7 +94,6 @@ MACRO_DATA_DIR = os.path.join(_DIR, "macro_data")
 CAPEX_FALLBACK_CSV = os.path.join(MACRO_DATA_DIR, "hyperscaler_capex_quarterly.csv")
 MEMORY_PRICE_CSV = os.path.join(MACRO_DATA_DIR, "memory_price_qoq.csv")
 MEMORY_PROFIT_CSV = os.path.join(MACRO_DATA_DIR, "memory_profit_quarterly.csv")
-DEBUG_OUTPUT_DIR = os.path.join(_DIR, "debug_outputs")
 MACRO_BENCHMARKS = {
     "S&P500": {"code": "^GSPC", "label": "S&P500", "kind": "us"},
     "Nasdaq": {"code": "^IXIC", "label": "Nasdaq", "kind": "us"},
@@ -4354,18 +4353,7 @@ def _get_macro2_signal_series(signal_code: str, years: int, benchmark_name: str 
     return pd.Series(dtype=float)
 
 
-def _macro2_debug_name(code: str) -> str:
-    return {
-        "0": "Index",
-        "1": "HY",
-        "2": "IG",
-        "3": "CreditStress",
-        "4": "VIX",
-        "6": "VIXSpread",
-    }.get(str(code), str(code))
-
-
-def _build_macro_combo_bundle(
+def make_macro_combo_dynamic_chart(
     years: int = 5,
     spx_s=None,
     benchmark_name: str = 'S&P500',
@@ -4384,8 +4372,7 @@ def _build_macro_combo_bundle(
     if not selected_codes:
         return None
 
-    signal_frames = {}
-    used_codes = []
+    frames = {}
     for code in selected_codes:
         series = _get_macro2_signal_series(code, years, benchmark_name=benchmark_name, spx_s=spx_s)
         if series is None or series.empty or code not in cfgs:
@@ -4399,30 +4386,13 @@ def _build_macro_combo_bundle(
         )
         if signal_df.empty:
             continue
-        debug_name = _macro2_debug_name(code)
-        signal_frames[code] = signal_df.rename(columns={
-            "down_flag": f"{debug_name}_flag",
-            "down_start_signal": f"{debug_name}_start_signal",
-            "down_end_signal": f"{debug_name}_end_signal",
-        })
-        used_codes.append(code)
+        frames[code] = signal_df[["down_flag"]].rename(columns={"down_flag": f"{code}_down_flag"})
 
-    if not signal_frames:
+    if not frames:
         return None
 
-    combo_parts = []
-    for code in used_codes:
-        debug_name = _macro2_debug_name(code)
-        combo_parts.append(
-            signal_frames[code][[
-                f"{debug_name}_flag",
-                f"{debug_name}_start_signal",
-                f"{debug_name}_end_signal",
-            ]]
-        )
-
-    combo = pd.concat(combo_parts, axis=1).sort_index().fillna(False)
-    flag_cols = [f"{_macro2_debug_name(code)}_flag" for code in used_codes]
+    combo = pd.concat(frames.values(), axis=1).sort_index().fillna(False)
+    flag_cols = [f"{code}_down_flag" for code in frames]
     combo["active_count"] = combo[flag_cols].sum(axis=1).astype(int)
     combo["combo_risk_state"] = False
     combo["combo_start_signal"] = False
@@ -4443,203 +4413,10 @@ def _build_macro_combo_bundle(
     spx_aligned = spx_s.reindex(combo.index).dropna()
     if spx_aligned.empty:
         return None
-
     combo = combo.reindex(spx_aligned.index).fillna(False)
     combo["active_count"] = combo["active_count"].astype(int)
-    combo["prev_active_count"] = combo["active_count"].shift(1).fillna(0).astype(int)
-    combo["combo_state_before"] = combo["combo_risk_state"].shift(1).fillna(False).astype(bool)
-    combo["combo_state_after"] = combo["combo_risk_state"].astype(bool)
 
-    ordered_debug_names = [_macro2_debug_name(code) for code in used_codes]
-
-    def _flags_for_row(row, suffix):
-        names = [name for name in ordered_debug_names if bool(row.get(f"{name}_{suffix}", False))]
-        return ", ".join(names)
-
-    combo["active_flags"] = combo.apply(lambda r: _flags_for_row(r, "flag"), axis=1)
-    combo["inactive_flags"] = combo.apply(
-        lambda r: ", ".join([name for name in ordered_debug_names if not bool(r.get(f"{name}_flag", False))]),
-        axis=1,
-    )
-    combo["prev_active_flags"] = combo["active_flags"].shift(1).fillna("")
-    combo["prev_inactive_flags"] = combo["inactive_flags"].shift(1).fillna("")
-
-    param_signature = " | ".join(
-        f"{_macro2_debug_name(code)}=EMA{int(cfgs[code]['ema'])}_W{int(cfgs[code]['window'])}_S{int(round(float(cfgs[code]['start']) * 100))}_E{int(round(float(cfgs[code]['end']) * 100))}"
-        for code in used_codes
-        if code in cfgs
-    )
-    combo_label = " + ".join(_MACRO2_SIGNAL_LABELS.get(code, code) for code in used_codes)
-
-    return {
-        "benchmark": benchmark,
-        "spx_aligned": spx_aligned,
-        "combo": combo,
-        "signal_frames": signal_frames,
-        "used_codes": used_codes,
-        "ordered_debug_names": ordered_debug_names,
-        "selected_labels": ", ".join(_MACRO2_SIGNAL_LABELS.get(code, code) for code in used_codes),
-        "combo_label": combo_label,
-        "param_signature": param_signature,
-        "combo_k": combo_k,
-        "combo_n": len(flag_cols),
-        "cfgs": cfgs,
-        "years": years,
-        "benchmark_name": benchmark_name,
-    }
-
-
-def _extract_plotted_marker_dates(fig: go.Figure):
-    plotted_start_dates = []
-    plotted_end_dates = []
-    for trace in fig.data:
-        if getattr(trace, "mode", None) != "markers":
-            continue
-        name = str(getattr(trace, "name", "") or "")
-        x_vals = [pd.Timestamp(x).normalize() for x in list(getattr(trace, "x", []) or [])]
-        if "Risk-off 시작" in name:
-            plotted_start_dates.extend(x_vals)
-        elif "Risk-off 종료" in name:
-            plotted_end_dates.extend(x_vals)
-    return sorted(set(plotted_start_dates)), sorted(set(plotted_end_dates))
-
-
-def _build_combo_marker_debug_tables(bundle, fig):
-    combo = bundle["combo"].copy()
-    plotted_start_dates, plotted_end_dates = _extract_plotted_marker_dates(fig)
-    computed_start_dates = sorted(pd.to_datetime(combo.index[combo["combo_start_signal"]]).normalize().unique())
-    computed_end_dates = sorted(pd.to_datetime(combo.index[combo["combo_end_signal"]]).normalize().unique())
-
-    all_event_dates = sorted(set(computed_start_dates) | set(computed_end_dates) | set(plotted_start_dates) | set(plotted_end_dates))
-    debug_rows = []
-    for date in all_event_dates:
-        date = pd.Timestamp(date).normalize()
-        row = combo.reindex([date]).iloc[0] if date in combo.index else None
-        computed_start = date in computed_start_dates
-        computed_end = date in computed_end_dates
-        plotted_start = date in plotted_start_dates
-        plotted_end = date in plotted_end_dates
-        expected_event = "computed_start" if computed_start else "computed_end" if computed_end else "none"
-        actual_marker_event = "plotted_start" if plotted_start else "plotted_end" if plotted_end else "none"
-
-        issue_reason = ""
-        if computed_start and not plotted_start:
-            issue_reason = "missing_start_marker"
-        elif computed_end and not plotted_end:
-            issue_reason = "missing_end_marker"
-        elif plotted_start and not computed_start:
-            issue_reason = "unexpected_start_marker"
-        elif plotted_end and not computed_end:
-            issue_reason = "unexpected_end_marker"
-        elif row is not None:
-            prev_ac = int(row["prev_active_count"])
-            ac = int(row["active_count"])
-            if computed_start and not (prev_ac < bundle["combo_k"] and ac >= bundle["combo_k"]):
-                issue_reason = "active_count_transition_mismatch"
-            elif computed_end and not (prev_ac >= bundle["combo_k"] and ac < bundle["combo_k"]):
-                issue_reason = "active_count_transition_mismatch"
-            elif computed_start and not (bool(row["combo_state_before"]) is False and bool(row["combo_state_after"]) is True):
-                issue_reason = "state_transition_mismatch"
-            elif computed_end and not (bool(row["combo_state_before"]) is True and bool(row["combo_state_after"]) is False):
-                issue_reason = "state_transition_mismatch"
-
-        debug_rows.append({
-            "date": date,
-            "event_type": "start" if (computed_start or plotted_start) else "end" if (computed_end or plotted_end) else "none",
-            "expected_event": expected_event,
-            "actual_marker_event": actual_marker_event,
-            "prev_active_count": int(row["prev_active_count"]) if row is not None else np.nan,
-            "active_count": int(row["active_count"]) if row is not None else np.nan,
-            "combo_state_before": bool(row["combo_state_before"]) if row is not None else False,
-            "combo_state_after": bool(row["combo_state_after"]) if row is not None else False,
-            "prev_active_flags": row["prev_active_flags"] if row is not None else "",
-            "active_flags": row["active_flags"] if row is not None else "",
-            "prev_inactive_flags": row["prev_inactive_flags"] if row is not None else "",
-            "inactive_flags": row["inactive_flags"] if row is not None else "",
-            "issue_reason": issue_reason,
-            "benchmark": bundle["benchmark_name"],
-            "selected_codes": ",".join(bundle["used_codes"]),
-            "combo_k": bundle["combo_k"],
-            "combo_n": bundle["combo_n"],
-            "param_signature": bundle["param_signature"],
-            "combo_label": bundle["combo_label"],
-        })
-
-    full_debug = pd.DataFrame(debug_rows)
-    mismatch_debug = full_debug[full_debug["issue_reason"] != ""].copy().head(50)
-    summary = {
-        "computed_start_count": len(computed_start_dates),
-        "plotted_start_marker_count": len(plotted_start_dates),
-        "start_marker_mismatch_count": int(((full_debug["expected_event"] == "computed_start") & (full_debug["actual_marker_event"] != "plotted_start")).sum() + ((full_debug["expected_event"] != "computed_start") & (full_debug["actual_marker_event"] == "plotted_start")).sum()),
-        "computed_end_count": len(computed_end_dates),
-        "plotted_end_marker_count": len(plotted_end_dates),
-        "end_marker_mismatch_count": int(((full_debug["expected_event"] == "computed_end") & (full_debug["actual_marker_event"] != "plotted_end")).sum() + ((full_debug["expected_event"] != "computed_end") & (full_debug["actual_marker_event"] == "plotted_end")).sum()),
-        "plotted_start_marker_dates": plotted_start_dates,
-        "plotted_end_marker_dates": plotted_end_dates,
-        "computed_start_dates": computed_start_dates,
-        "computed_end_dates": computed_end_dates,
-    }
-    return full_debug, mismatch_debug, summary
-
-
-def _build_combo_local_debug_table(bundle, debug_date, window):
-    combo = bundle["combo"].copy()
-    debug_ts = pd.Timestamp(debug_date)
-    idx_pos = combo.index.get_indexer([debug_ts], method='nearest')[0]
-    start_pos = max(0, idx_pos - int(window))
-    end_pos = min(len(combo), idx_pos + int(window) + 1)
-    local = combo.iloc[start_pos:end_pos].copy().reset_index().rename(columns={"index": "date"})
-    cols = ["date"]
-    for code in bundle["used_codes"]:
-        debug_name = _macro2_debug_name(code)
-        cols.extend([
-            f"{debug_name}_flag",
-            f"{debug_name}_start_signal",
-            f"{debug_name}_end_signal",
-        ])
-    cols.extend([
-        "prev_active_count",
-        "active_count",
-        "combo_risk_state",
-        "combo_start_signal",
-        "combo_end_signal",
-        "active_flags",
-        "inactive_flags",
-        "prev_active_flags",
-        "prev_inactive_flags",
-    ])
-    local = local[cols].copy()
-    local = local.rename(columns={"combo_risk_state": "combo_state"})
-    return local
-
-
-def make_macro_combo_dynamic_chart(
-    years: int = 5,
-    spx_s=None,
-    benchmark_name: str = 'S&P500',
-    selected_codes=None,
-    cfgs=None,
-    combo_k: int = 3,
-    return_debug: bool = False,
-):
-    bundle = _build_macro_combo_bundle(
-        years=years,
-        spx_s=spx_s,
-        benchmark_name=benchmark_name,
-        selected_codes=selected_codes,
-        cfgs=cfgs,
-        combo_k=combo_k,
-    )
-    if bundle is None:
-        return (None, None) if return_debug else None
-
-    benchmark = bundle["benchmark"]
-    spx_aligned = bundle["spx_aligned"]
-    combo = bundle["combo"]
-    selected_labels = bundle["selected_labels"]
-    combo_k = bundle["combo_k"]
-    combo_n = bundle["combo_n"]
-    ordered_debug_names = bundle["ordered_debug_names"]
+    selected_labels = ", ".join(_MACRO2_SIGNAL_LABELS.get(code, code) for code in selected_codes if code in frames)
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -4651,57 +4428,21 @@ def make_macro_combo_dynamic_chart(
     start_y = spx_aligned.loc[combo["combo_start_signal"]]
     end_y = spx_aligned.loc[combo["combo_end_signal"]]
     if not start_y.empty:
-        start_custom = np.array([
-            [
-                int(combo.at[idx, "active_count"]),
-                int(combo.at[idx, "prev_active_count"]),
-                combo.at[idx, "active_flags"],
-                combo.at[idx, "inactive_flags"],
-                "/".join(["1" if bool(combo.at[idx, f"{name}_flag"]) else "0" for name in ordered_debug_names]),
-            ]
-            for idx in start_y.index
-        ], dtype=object)
         fig.add_trace(go.Scatter(
-            x=start_y.index, y=start_y, name=f'Risk-off 시작 ({combo_k}/{combo_n})',
+            x=start_y.index, y=start_y, name=f'Risk-off 시작 ({combo_k}/{len(flag_cols)})',
             mode='markers',
             marker=dict(symbol='triangle-down', size=10, color='rgba(255,75,110,0.92)'),
-            customdata=start_custom,
-            hovertemplate=(
-                '<b>%{x|%Y-%m-%d}</b><br>'
-                f'event_type: start<br>'
-                f'active_count: %{{customdata[0]}} / prev: %{{customdata[1]}}<br>'
-                'active_flags: %{customdata[2]}<br>'
-                'inactive_flags: %{customdata[3]}<br>'
-                f'flags({"/".join(ordered_debug_names)}): %{{customdata[4]}}<extra></extra>'
-            ),
+            hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>Risk-off 시작: active_count >= {combo_k}<extra></extra>',
         ))
     if not end_y.empty:
-        end_custom = np.array([
-            [
-                int(combo.at[idx, "active_count"]),
-                int(combo.at[idx, "prev_active_count"]),
-                combo.at[idx, "active_flags"],
-                combo.at[idx, "inactive_flags"],
-                "/".join(["1" if bool(combo.at[idx, f"{name}_flag"]) else "0" for name in ordered_debug_names]),
-            ]
-            for idx in end_y.index
-        ], dtype=object)
         fig.add_trace(go.Scatter(
-            x=end_y.index, y=end_y, name=f'Risk-off 종료 (<{combo_k}/{combo_n})',
+            x=end_y.index, y=end_y, name=f'Risk-off 종료 (<{combo_k}/{len(flag_cols)})',
             mode='markers',
             marker=dict(symbol='triangle-up', size=10, color='rgba(75,255,179,0.92)'),
-            customdata=end_custom,
-            hovertemplate=(
-                '<b>%{x|%Y-%m-%d}</b><br>'
-                f'event_type: end<br>'
-                f'active_count: %{{customdata[0]}} / prev: %{{customdata[1]}}<br>'
-                'active_flags: %{customdata[2]}<br>'
-                'inactive_flags: %{customdata[3]}<br>'
-                f'flags({"/".join(ordered_debug_names)}): %{{customdata[4]}}<extra></extra>'
-            ),
+            hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>Risk-off 종료: active_count < {combo_k}<extra></extra>',
         ))
     fig.update_layout(
-        **_ml(f'⓪ 조합 Risk-off 사이클 ({benchmark["label"]}, {combo_k}/{combo_n})', height=300),
+        **_ml(f'⓪ 조합 Risk-off 사이클 ({benchmark["label"]}, {combo_k}/{len(flag_cols)})', height=300),
     )
     fig.add_annotation(
         xref='paper', yref='paper', x=0.01, y=0.98, showarrow=False,
@@ -4713,8 +4454,6 @@ def make_macro_combo_dynamic_chart(
         borderwidth=1,
         borderpad=4,
     )
-    if return_debug:
-        return fig, bundle
     return fig
 
 
@@ -6251,8 +5990,6 @@ def main(page="signal"):
                 _default_k4 = min(_macro4_preset_cfg["combo_k"], max(1, len(_selected_codes4)))
                 _combo_k4 = st.slider("Risk 기준", min_value=1, max_value=max(1, len(_selected_codes4)), value=_default_k4, format="%d개 이상 ON", key='macro4_combo_k')
 
-            _show_combo_debug = st.checkbox("Show Combo Debug", value=False, key='macro4_show_combo_debug')
-
             _macro4_cfgs = {}
             with st.expander("실험 설정", expanded=True):
                 for _code, _cfg in _macro4_defaults.items():
@@ -6279,70 +6016,13 @@ def main(page="signal"):
                 st.warning("조합에 사용할 지표를 최소 1개 이상 선택해 주세요.")
             else:
                 with st.spinner("📡 조합 매크로 데이터 로딩 중..."):
-                    _macro4_combo_fig, _macro4_combo_bundle = make_macro_combo_dynamic_chart(
-                        years=_macro4_years,
-                        spx_s=_spx_s4,
-                        benchmark_name=_benchmark_name4,
-                        selected_codes=_selected_codes4,
-                        cfgs=_macro4_cfgs,
-                        combo_k=_combo_k4,
-                        return_debug=True,
-                    )
+                    _macro4_combo_fig = make_macro_combo_dynamic_chart(years=_macro4_years, spx_s=_spx_s4, benchmark_name=_benchmark_name4, selected_codes=_selected_codes4, cfgs=_macro4_cfgs, combo_k=_combo_k4)
                     _macro4_charts = _build_macro2_dynamic_charts(_macro4_years, _spx_s4, _show_raw_macro4, _benchmark_name4, _macro4_cfgs)
 
                 if _macro4_combo_fig is not None:
                     st.plotly_chart(_macro4_combo_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_combo_{_benchmark_name4}_{_macro4_years}_{'_'.join(_selected_codes4)}_{_combo_k4}")
                 else:
                     st.warning("조합 Risk-off 차트 데이터 로딩 실패 — 조합 지표/기간을 확인해 주세요.")
-
-                if _show_combo_debug and _macro4_combo_fig is not None and _macro4_combo_bundle is not None:
-                    _combo_debug_full, _combo_mismatch_top50, _combo_debug_summary = _build_combo_marker_debug_tables(_macro4_combo_bundle, _macro4_combo_fig)
-                    _debug_date = st.date_input("debug_date", value=pd.Timestamp("2025-04-21"), key="macro4_debug_date")
-                    _debug_window = st.number_input("window", min_value=3, max_value=60, value=15, step=1, key="macro4_debug_window")
-                    _combo_local_debug = _build_combo_local_debug_table(_macro4_combo_bundle, _debug_date, _debug_window)
-
-                    _status = "PASS"
-                    if _combo_debug_summary["start_marker_mismatch_count"] > 0 or _combo_debug_summary["end_marker_mismatch_count"] > 0:
-                        _status = "FAIL"
-                    elif not _combo_mismatch_top50.empty and _combo_mismatch_top50["issue_reason"].eq("possible_cache_or_stale_render").any():
-                        _status = "POSSIBLE CACHE ISSUE"
-
-                    _param_lines = [
-                        f"{_macro2_debug_name(code)}: EMA{int(_macro4_cfgs[code]['ema'])}_W{int(_macro4_cfgs[code]['window'])}_S{int(round(float(_macro4_cfgs[code]['start']) * 100))}_E{int(round(float(_macro4_cfgs[code]['end']) * 100))}"
-                        for code in _macro4_combo_bundle["used_codes"]
-                    ]
-                    _debug_panel_df = pd.DataFrame([{
-                        "현재 선택된 조합명": _macro4_combo_bundle["combo_label"],
-                        "benchmark": _macro4_combo_bundle["benchmark_name"],
-                        "selected_codes": ", ".join(_macro4_combo_bundle["used_codes"]),
-                        "k/n 기준": f"{_macro4_combo_bundle['combo_k']}/{_macro4_combo_bundle['combo_n']}",
-                        "각 지표 파라미터": " | ".join(_param_lines),
-                        "computed_start_count": _combo_debug_summary["computed_start_count"],
-                        "plotted_start_marker_count": _combo_debug_summary["plotted_start_marker_count"],
-                        "start_marker_mismatch_count": _combo_debug_summary["start_marker_mismatch_count"],
-                        "computed_end_count": _combo_debug_summary["computed_end_count"],
-                        "plotted_end_marker_count": _combo_debug_summary["plotted_end_marker_count"],
-                        "end_marker_mismatch_count": _combo_debug_summary["end_marker_mismatch_count"],
-                        "최종 판단": _status,
-                    }])
-                    st.dataframe(_debug_panel_df, width="stretch", hide_index=True)
-                    st.markdown("**Marker Mismatch Table (Top 50)**")
-                    if _combo_mismatch_top50.empty:
-                        st.caption("mismatch 없음")
-                    else:
-                        st.dataframe(_combo_mismatch_top50, width="stretch", hide_index=True)
-
-                    st.markdown("**Local Debug Table**")
-                    st.dataframe(_combo_local_debug, width="stretch", hide_index=True)
-
-                    if st.button("Export Debug Files", key="macro4_export_debug_files", width="stretch"):
-                        os.makedirs(DEBUG_OUTPUT_DIR, exist_ok=True)
-                        _combo_debug_full.to_parquet(os.path.join(DEBUG_OUTPUT_DIR, "combo_marker_debug_full.parquet"), index=False)
-                        _combo_debug_full.to_csv(os.path.join(DEBUG_OUTPUT_DIR, "combo_marker_debug_full.csv"), index=False)
-                        _local_stamp = pd.Timestamp(_debug_date).strftime("%Y%m%d")
-                        _combo_local_debug.to_parquet(os.path.join(DEBUG_OUTPUT_DIR, f"combo_local_debug_{_local_stamp}.parquet"), index=False)
-                        _combo_local_debug.to_csv(os.path.join(DEBUG_OUTPUT_DIR, f"combo_local_debug_{_local_stamp}.csv"), index=False)
-                        st.success(f"디버그 파일 저장 완료: {DEBUG_OUTPUT_DIR}")
 
                 for _idx, _fig in enumerate(_macro4_charts):
                     if _fig is not None:
