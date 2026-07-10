@@ -4217,8 +4217,8 @@ _MACRO2_SIGNAL_LABELS = {
     "1": "① HY",
     "2": "② IG",
     "3": "③ 신용스트레스",
-    "4": "④ 옵션/변동성",
-    "6": "⑥ 변동성 스프레드",
+    "4": "④ VIX",
+    "6": "⑥ VIX 스프레드",
 }
 
 
@@ -4228,8 +4228,8 @@ def _get_macro2_dynamic_defaults():
         "1": {"label": "① HY", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
         "2": {"label": "② IG", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
         "3": {"label": "③ 신용스트레스", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
-        "4": {"label": "④ 옵션/변동성", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
-        "6": {"label": "⑥ 변동성 스프레드", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
+        "4": {"label": "④ VIX", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
+        "6": {"label": "⑥ VIX 스프레드", "ema": 20, "window": 126, "start": 0.40, "end": 0.20},
     }
 
 
@@ -4897,7 +4897,7 @@ def _make_inverted_spread_chart(
     trace_name: str,
     spx_s=None,
     benchmark_label='S&P500',
-    color='#FF8C69',
+    color='#D8C36A',
     height=300,
     suffix='%',
     show_raw=True,
@@ -4966,7 +4966,7 @@ def make_macro_hy_spread_chart(years: int = 5, spx_s=None, show_raw=True, downtu
         suffix = '%'
     return _make_inverted_spread_chart(
         hy, title, trace_name,
-        spx_s=spx_s, benchmark_label=benchmark['label'], color='#FF4B6E', suffix=suffix, show_raw=show_raw,
+        spx_s=spx_s, benchmark_label=benchmark['label'], color='#D8C36A', suffix=suffix, show_raw=show_raw,
         downturn_params=downturn_params, dynamic_mode=dynamic_mode, dynamic_window=dynamic_window,
         dynamic_start_quantile=dynamic_start_quantile, dynamic_end_quantile=dynamic_end_quantile, ema_span=ema_span,
     )
@@ -4990,7 +4990,7 @@ def make_macro_ig_spread_chart(years: int = 5, spx_s=None, show_raw=True, downtu
         suffix = '%'
     return _make_inverted_spread_chart(
         ig, title, trace_name,
-        spx_s=spx_s, benchmark_label=benchmark['label'], color='#4BFFB3', suffix=suffix, show_raw=show_raw,
+        spx_s=spx_s, benchmark_label=benchmark['label'], color='#D8C36A', suffix=suffix, show_raw=show_raw,
         downturn_params=downturn_params, dynamic_mode=dynamic_mode, dynamic_window=dynamic_window,
         dynamic_start_quantile=dynamic_start_quantile, dynamic_end_quantile=dynamic_end_quantile, ema_span=ema_span,
     )
@@ -5032,9 +5032,6 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True, do
     plot_s = (-stress).dropna()
     fig = go.Figure()
     fig.add_hline(y=0,  line=dict(color='rgba(255,255,255,0.2)', width=1))
-    if threshold_end_value is None:
-        fig.add_hline(y=1,  line=dict(color='rgba(75,255,179,0.25)',  dash='dot', width=1))
-        fig.add_hline(y=-1, line=dict(color='rgba(255,75,110,0.25)',  dash='dot', width=1))
     if show_raw:
         fig.add_trace(go.Scatter(x=plot_s.index, y=plot_s.clip(lower=0),
                                  fill='tozeroy', fillcolor='rgba(75,255,179,0.10)',
@@ -5043,7 +5040,7 @@ def make_macro_credit_stress_chart(years: int = 5, spx_s=None, show_raw=True, do
                                  fill='tozeroy', fillcolor='rgba(255,75,110,0.10)',
                                  line=dict(width=0), showlegend=False, hoverinfo='skip'))
         fig.add_trace(go.Scatter(x=plot_s.index, y=plot_s, name='신용 스트레스 (반전)',
-                                 line=dict(color='#787EE7', width=1.2),
+                                 line=dict(color='#D8C36A', width=1.2),
                                  opacity=0.28,
                                  hovertemplate='<b>%{x|%Y-%m-%d}</b>  %{y:.2f}<extra></extra>'))
     _add_spx_overlay(fig, plot_s, spx_s, yaxis='y2', label=benchmark['label'])
@@ -5093,30 +5090,24 @@ def make_macro_options_chart(years: int = 5, spx_s=None, show_raw=True, downturn
     benchmark = _get_macro_benchmark(benchmark_name)
     if benchmark['kind'] == 'kr':
         vix = _korean_volatility_series(years, benchmark_s=spx_s, window=20)
-        title = '④ 역사적 변동성 HV20 (반전, KOSPI)'
+        title = '④ VIX (한국 proxy: HV20, 반전)'
         trace_name = 'HV20 (반전)'
         line_label = '반전 HV20'
-        threshold_1 = -20
-        threshold_2 = -30
         corr_label = f'반전 HV20 vs {benchmark["label"]}'
     else:
         vix = _yf_close('^VIX', years)
-        title = '④ VIX 레벨 (반전)'
+        title = '④ VIX (반전)'
         trace_name = 'VIX 레벨 (반전)'
         line_label = '반전 VIX'
-        threshold_1 = -20
-        threshold_2 = -30
         corr_label = f'반전 VIX vs {benchmark["label"]}'
     if vix.empty:
         return None
     plot_s = (-vix).dropna()
     fig = go.Figure()
-    fig.add_hline(y=threshold_1, line=dict(color='rgba(255,255,255,0.12)', dash='dot', width=1))
-    fig.add_hline(y=threshold_2, line=dict(color='rgba(255,75,110,0.30)', dash='dot', width=1))
     if show_raw:
         fig.add_trace(go.Scatter(
             x=plot_s.index, y=plot_s, name=trace_name,
-            line=dict(color='#FF4B6E', width=1.2),
+            line=dict(color='#D8C36A', width=1.2),
             opacity=0.28,
             hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b>  {line_label} %{{y:.1f}}<extra></extra>',
         ))
@@ -5154,7 +5145,7 @@ def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True, downt
     benchmark = _get_macro_benchmark(benchmark_name)
     if benchmark['kind'] == 'kr':
         spread = _korean_vol_term_spread_series(years, benchmark_s=spx_s)
-        title = '⑥ HV20-HV60 스프레드 (반전, KOSPI)'
+        title = '⑥ VIX 스프레드 (한국 proxy, 반전)'
         trace_name = 'HV20-HV60 스프레드'
     else:
         vix   = _yf_close('^VIX',   years)
@@ -5162,7 +5153,7 @@ def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True, downt
         if vix.empty or vix3m.empty:
             return None
         spread = (vix - vix3m.reindex(vix.index)).dropna()
-        title = '⑥ VIX-VIX3M 스프레드 (반전)'
+        title = '⑥ VIX 스프레드 (반전)'
         trace_name = 'VIX-VIX3M 스프레드'
     if not threshold_mode and not dynamic_mode:
         return _make_inverted_spread_chart(
@@ -5180,7 +5171,7 @@ def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True, downt
     if show_raw:
         fig.add_trace(go.Scatter(
             x=plot_s.index, y=plot_s, name=f'{trace_name} (반전)',
-            line=dict(color='#FF8C69', width=1.2),
+            line=dict(color='#D8C36A', width=1.2),
             opacity=0.28,
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  반전값 %{y:.2f}<extra></extra>',
         ))
@@ -6348,17 +6339,17 @@ def main(page="signal"):
             <style>
             .macro2-divider {
                 border-top: 1px solid rgba(255,255,255,0.08);
-                margin: 24px 0 20px 0;
+                margin: 30px 0 24px 0;
             }
             .macro2-control-label {
                 font-size: 13px;
                 color: #D0D0D0;
                 font-weight: 500;
                 line-height: 1.2;
-                margin-bottom: 0.35rem;
+                margin-bottom: 0.7rem;
             }
             .macro2-control-spacer {
-                height: 0.15rem;
+                height: 0.55rem;
             }
             div[data-testid="stSelectbox"] label p,
             div[data-testid="stMultiSelect"] label p,
@@ -6439,6 +6430,7 @@ def main(page="signal"):
                 st.markdown('<div class="macro2-control-label">기간</div>', unsafe_allow_html=True)
             with _l42:
                 st.markdown('<div class="macro2-control-label">원본선 표시</div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
 
             _m39, _m40, _m41, _m42 = st.columns([1.6, 1.2, 2.4, 1.0], vertical_alignment="bottom")
             with _m39:
@@ -6479,6 +6471,7 @@ def main(page="signal"):
                 st.markdown('<div class="macro2-control-label">조합 지표</div>', unsafe_allow_html=True)
             with _l44:
                 st.markdown('<div class="macro2-control-label">리스크 기준</div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
 
             _m43, _m44 = st.columns([4.4, 1.6], vertical_alignment="bottom")
             with _m43:
