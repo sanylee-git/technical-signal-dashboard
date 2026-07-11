@@ -5688,14 +5688,14 @@ def make_macro_ai_capex_chart(years: int = 5, spx_s=None):
         'Google / Alphabet': 'rgba(75,255,179,0.58)',
         'Microsoft': 'rgba(122,175,212,0.52)',
         'Meta': 'rgba(255,140,105,0.56)',
-        'Amazon': 'rgba(200,200,80,0.50)',
+        'Amazon': 'rgba(120,220,255,0.58)',
         'Total CAPEX': '#EDEDED',
     }
     company_dash_map = {
         'Google / Alphabet': 'solid',
         'Microsoft': 'dot',
-        'Meta': 'solid',
-        'Amazon': 'dash',
+        'Meta': 'dash',
+        'Amazon': 'solid',
     }
     for col in [c for c in capex_df.columns if c != 'Total CAPEX']:
         if capex_df[col].dropna().empty:
