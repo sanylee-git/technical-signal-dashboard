@@ -1474,23 +1474,23 @@ def make_detail_chart(ohlcv, name, period_days,
     # 동적 플래그/확정 (Row2)
     if len(dyn_buy_flag_idx) > 0:
         fig.add_trace(go.Scatter(x=dyn_buy_flag_idx, y=rsi[dyn_buy_flag_idx], mode='markers',
-            marker=dict(symbol='triangle-up', color='#4F88C6', size=8,
+            marker=dict(symbol='triangle-up', color='#4F88C6', size=10,
                         line=dict(color='rgba(79,136,198,0.42)', width=1)),
             showlegend=False), row=2, col=1)
     if len(dyn_sell_flag_idx) > 0:
         fig.add_trace(go.Scatter(x=dyn_sell_flag_idx, y=rsi[dyn_sell_flag_idx], mode='markers',
-            marker=dict(symbol='triangle-down', color='#E08A3A', size=8,
+            marker=dict(symbol='triangle-down', color='#E08A3A', size=10,
                         line=dict(color='rgba(224,138,58,0.42)', width=1)),
             showlegend=False), row=2, col=1)
 
     # 동적+BB 확정 ★ (Row2: 초록=매수, 빨강=매도)
     if len(dyn_buy_idx) > 0:
         fig.add_trace(go.Scatter(x=dyn_buy_idx, y=rsi[dyn_buy_idx], mode='markers',
-            marker=dict(symbol='star', color='#22C55E', size=9),
+            marker=dict(symbol='star', color='#22C55E', size=11),
             showlegend=False), row=2, col=1)
     if len(dyn_sell_idx) > 0:
         fig.add_trace(go.Scatter(x=dyn_sell_idx, y=rsi[dyn_sell_idx], mode='markers',
-            marker=dict(symbol='star', color='#FF4B6E', size=9),
+            marker=dict(symbol='star', color='#FF4B6E', size=11),
             showlegend=False), row=2, col=1)
 
     # ══════════════════════════════════════════
