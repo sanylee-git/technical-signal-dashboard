@@ -1342,10 +1342,6 @@ def make_detail_chart(ohlcv, name, period_days,
     dyn_buy_idx  = disp[dyn_buy[disp].values]
     dyn_sell_idx = disp[dyn_sell[disp].values]
 
-    # 고정 밴드 RSI 파쿠르 확정
-    band_buy_idx  = disp[band_buy[disp].values]
-    band_sell_idx = disp[band_sell[disp].values]
-
     # 동적 플래그는 상태가 여러 봉 지속될 수 있으므로 "플래그 진입 시점"만 마커로 표시
     dyn_buy_flag_start = dyn_of & ~dyn_of.shift(1, fill_value=False)
     dyn_sell_flag_start = dyn_oh & ~dyn_oh.shift(1, fill_value=False)
@@ -1405,18 +1401,16 @@ def make_detail_chart(ohlcv, name, period_days,
 
     # 동적+BB 확정 ★ / 밴드+BB 확정 ● — 시그널 없어도 레전드 항목은 항상 표시
     for _idx, _color, _outline, _sym, _sz, _label in [
-        (dyn_buy_flag_idx,  '#7AAFD4', 'rgba(122,175,212,0.30)', 'triangle-up',   9, "▲ 매수 플래그"),
-        (dyn_sell_flag_idx, '#D47A9F', 'rgba(212,122,159,0.30)', 'triangle-down', 9, "▼ 매도 플래그"),
+        (dyn_buy_flag_idx,  '#4F88C6', 'rgba(79,136,198,0.42)', 'triangle-up',   9, "▲ 매수 플래그"),
+        (dyn_sell_flag_idx, '#B85A7A', 'rgba(184,90,122,0.42)', 'triangle-down', 9, "▼ 매도 플래그"),
         (dyn_buy_idx,  '#4BFFB3', 'rgba(75,255,179,0.4)',  'star',        10, "★ 동적+BB 매수"),
         (dyn_sell_idx, '#FF4B6E', 'rgba(255,75,110,0.4)',  'star',        10, "★ 동적+BB 매도"),
-        (band_buy_idx, '#4BFFB3', '#4BFFB3',               'circle-open', 12, "● 밴드+BB 매수"),
-        (band_sell_idx,'#FF4B6E', '#FF4B6E',               'circle-open', 12, "● 밴드+BB 매도"),
     ]:
         _x = _idx if len(_idx) > 0 else []
         _y = close[_idx] if len(_idx) > 0 else []
         fig.add_trace(go.Scatter(x=_x, y=_y, mode='markers',
             marker=dict(symbol=_sym, color=_color, size=_sz,
-                        line=dict(color=_outline, width=1 if _sym in {'star', 'triangle-up', 'triangle-down'} else 2.5)),
+                        line=dict(color=_outline, width=1)),
             name=_label, hoverinfo='skip'), row=1, col=1)
 
     # ══════════════════════════════════════════
@@ -1472,18 +1466,6 @@ def make_detail_chart(ohlcv, name, period_days,
 
     fig.add_trace(go.Scatter(x=disp, y=rsi[disp],
         line=dict(color="#787EE7", width=1.5), showlegend=False), row=3, col=1)
-
-    # 밴드+BB 확정 ● (Row3: 초록=매수, 빨강=매도)
-    if len(band_buy_idx) > 0:
-        fig.add_trace(go.Scatter(x=band_buy_idx, y=rsi[band_buy_idx], mode='markers',
-            marker=dict(symbol='circle-open', color='#4BFFB3', size=12,
-                        line=dict(color='#4BFFB3', width=2.5)),
-            name="● 밴드+BB 매수", showlegend=False), row=3, col=1)
-    if len(band_sell_idx) > 0:
-        fig.add_trace(go.Scatter(x=band_sell_idx, y=rsi[band_sell_idx], mode='markers',
-            marker=dict(symbol='circle-open', color='#FF4B6E', size=12,
-                        line=dict(color='#FF4B6E', width=2.5)),
-            name="● 밴드+BB 매도", showlegend=False), row=3, col=1)
 
     # ── 레이아웃
     fig.update_layout(
