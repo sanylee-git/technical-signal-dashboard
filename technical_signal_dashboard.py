@@ -4755,6 +4755,75 @@ def _build_combo_local_debug_table(combo_event_df: pd.DataFrame, selected_codes,
     return out.loc[start_idx:end_idx - 1, cols].copy()
 
 
+def _macro_status_circle(on: bool, color_on: str = "#4BFFB3", color_off: str = "rgba(255,255,255,0.18)") -> str:
+    color = color_on if bool(on) else color_off
+    return (
+        f'<span style="display:inline-block;width:10px;height:10px;'
+        f'border-radius:50%;background:{color};vertical-align:middle;"></span>'
+    )
+
+
+def _macro_date_text(value) -> str:
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "-"
+    try:
+        return pd.Timestamp(value).strftime("%Y-%m-%d")
+    except Exception:
+        return str(value)
+
+
+def _build_macro_combo_status_panel(
+    benchmark_name: str,
+    years: int,
+    spx_s: pd.Series,
+    selected_codes,
+    combo_event_df: pd.DataFrame,
+    sync_bucket: str | None = None,
+):
+    selected_codes = list(selected_codes or [])
+    if combo_event_df is None or combo_event_df.empty:
+        return "", pd.DataFrame()
+
+    latest_row = combo_event_df.sort_values("date").iloc[-1]
+    combo_state = bool(latest_row.get("combo_risk_state", False))
+    active_count = int(latest_row.get("active_count", 0))
+    combo_n = int(latest_row.get("combo_n", len(selected_codes)))
+    basis_date = _macro_date_text(latest_row.get("date"))
+    status_text = "리스크 사이클 ON" if combo_state else "리스크 사이클 OFF"
+    status_color = "#FF8C69" if combo_state else "#4BFFB3"
+
+    summary_html = (
+        '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;'
+        'padding:8px 0 10px 0;color:#CFCFCF;font-size:13px;">'
+        f'<span><b>기준일</b> {basis_date}</span>'
+        f'<span><b>현재 플래그</b> {active_count} / {combo_n} ON</span>'
+        f'<span><b>상태</b> <span style="color:{status_color};font-weight:700;">{status_text}</span></span>'
+        '</div>'
+    )
+
+    rows = []
+    for code, label in _MACRO2_SIGNAL_LABELS.items():
+        series = _get_macro2_signal_series(
+            code,
+            years,
+            benchmark_name=benchmark_name,
+            spx_s=spx_s,
+            sync_bucket=sync_bucket,
+        )
+        latest_date = series.index.max() if series is not None and not series.empty else None
+        flag_col = f"{_macro2_debug_name(code)}_flag"
+        is_selected = code in selected_codes
+        is_on = bool(latest_row.get(flag_col, False)) if flag_col in latest_row.index else False
+        rows.append({
+            "지표": label,
+            "선택": _macro_status_circle(is_selected, color_on="#7C7CF7"),
+            "플래그": _macro_status_circle(is_on, color_on="#4BFFB3"),
+            "최신날짜": _macro_date_text(latest_date),
+        })
+
+    return summary_html, pd.DataFrame(rows)
+
+
 def make_macro_combo_dynamic_chart(
     years: int = 5,
     spx_s=None,
@@ -6530,7 +6599,7 @@ def main(page="signal"):
                 st.warning("조합에 사용할 지표를 최소 1개 이상 선택해 주세요.")
             else:
                 with st.spinner("📡 조합 매크로 데이터 로딩 중..."):
-                    _macro4_combo_fig = make_macro_combo_dynamic_chart(
+                    _macro4_combo_fig, _macro4_combo_event_df = make_macro_combo_dynamic_chart(
                         years=_macro4_years,
                         spx_s=_spx_s4,
                         benchmark_name=_benchmark_name4,
@@ -6538,10 +6607,29 @@ def main(page="signal"):
                         cfgs=_macro4_cfgs,
                         combo_k=_combo_k4,
                         sync_bucket=_macro4_sync_bucket,
+                        return_debug=True,
                     )
                     _macro4_charts = _build_macro2_dynamic_charts(_macro4_years, _spx_s4, _show_raw_macro4, _benchmark_name4, _macro4_cfgs, sync_bucket=_macro4_sync_bucket)
 
                 if _macro4_combo_fig is not None:
+                    _macro4_status_html, _macro4_status_df = _build_macro_combo_status_panel(
+                        benchmark_name=_benchmark_name4,
+                        years=_macro4_years,
+                        spx_s=_spx_s4,
+                        selected_codes=_selected_codes4,
+                        combo_event_df=_macro4_combo_event_df,
+                        sync_bucket=_macro4_sync_bucket,
+                    )
+                    if _macro4_status_html:
+                        st.markdown(_macro4_status_html, unsafe_allow_html=True)
+                    if not _macro4_status_df.empty:
+                        st.markdown(
+                            '<div style="margin:2px 0 12px 0;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);'
+                            'border-radius:8px;background:rgba(255,255,255,0.02);">',
+                            unsafe_allow_html=True,
+                        )
+                        st.dataframe(_macro4_status_df, width="stretch", hide_index=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
                     st.plotly_chart(_macro4_combo_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_combo_{_benchmark_name4}_{_macro4_years}_{'_'.join(_selected_codes4)}_{_combo_k4}_{_macro_dynamic_cfg_signature(_macro4_cfgs, _selected_codes4)}")
                 else:
                     st.warning("조합 리스크 차트 데이터 로딩 실패 — 조합 지표/기간을 확인해 주세요.")
