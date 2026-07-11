@@ -4950,7 +4950,7 @@ def make_macro_combo_dynamic_chart(
         fig.add_trace(go.Scatter(
             x=start_y.index, y=start_y, name='__COMBO_START_MARKER__',
             mode='markers',
-            marker=dict(symbol='triangle-down', size=10, color='rgba(255,75,110,0.92)'),
+            marker=dict(symbol='triangle-down', size=10, color='rgba(210,55,55,0.95)'),
             legendgroup='__COMBO_START_MARKER__',
             showlegend=False,
             customdata=np.column_stack([
@@ -4973,7 +4973,7 @@ def make_macro_combo_dynamic_chart(
         fig.add_trace(go.Scatter(
             x=[None], y=[None], name=f'리스크 시작 ({combo_k}/{len(flag_cols)})',
             mode='markers',
-            marker=dict(symbol='triangle-down', size=10, color='rgba(255,75,110,0.92)'),
+            marker=dict(symbol='triangle-down', size=10, color='rgba(210,55,55,0.95)'),
             hoverinfo='skip',
             legendgroup='__COMBO_START_MARKER__',
         ))
@@ -4982,7 +4982,7 @@ def make_macro_combo_dynamic_chart(
         fig.add_trace(go.Scatter(
             x=end_y.index, y=end_y, name='__COMBO_END_MARKER__',
             mode='markers',
-            marker=dict(symbol='triangle-up', size=10, color='rgba(75,255,179,0.92)'),
+            marker=dict(symbol='triangle-up', size=10, color='rgba(80,160,255,0.92)'),
             legendgroup='__COMBO_END_MARKER__',
             showlegend=False,
             customdata=np.column_stack([
@@ -5005,7 +5005,7 @@ def make_macro_combo_dynamic_chart(
         fig.add_trace(go.Scatter(
             x=[None], y=[None], name=f'리스크 종료 (<{combo_k}/{len(flag_cols)})',
             mode='markers',
-            marker=dict(symbol='triangle-up', size=10, color='rgba(75,255,179,0.92)'),
+            marker=dict(symbol='triangle-up', size=10, color='rgba(80,160,255,0.92)'),
             hoverinfo='skip',
             legendgroup='__COMBO_END_MARKER__',
         ))
@@ -6476,7 +6476,10 @@ def main(page="signal"):
 
     def render_macro4_combo_section(container):
         with container:
-            st.caption("상단 조합 차트는 선택한 지표들의 리스크 상태를 합성하고, 아래 6개 차트는 매크로지표2와 동일한 개별 실험 차트입니다.")
+            st.markdown(
+                '<div class="macro2-helper-text">선택한 지표의 리스크 사이클 상태를 조합해 신호를 표시합니다.</div>',
+                unsafe_allow_html=True,
+            )
             _macro4_sync_bucket = _macro_sync_bucket(60)
             st.markdown("""
             <style>
@@ -6484,27 +6487,96 @@ def main(page="signal"):
                 border-top: 1px solid rgba(255,255,255,0.08);
                 margin: 30px 0 24px 0;
             }
+            .macro2-helper-text {
+                font-size: 11.5px;
+                line-height: 1.45;
+                color: rgba(255,255,255,0.56);
+                margin: 2px 0 14px 0;
+            }
+            .macro2-summary-card {
+                background: #141416;
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 10px;
+                padding: 12px 14px 11px 14px;
+                margin: 2px 0 12px 0;
+            }
+            .macro2-summary-line {
+                font-size: 13.5px;
+                line-height: 1.45;
+                color: #EDEDED;
+                font-weight: 600;
+                margin-bottom: 7px;
+            }
+            .macro2-summary-accent {
+                color: #8E84F3;
+            }
+            .macro2-summary-subline {
+                font-size: 12px;
+                line-height: 1.45;
+                color: #8A8A8A;
+                margin-bottom: 9px;
+            }
+            .macro2-summary-table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+            .macro2-summary-table th {
+                font-size: 11.5px;
+                font-weight: 600;
+                color: #8A8A8A;
+                text-align: left;
+                padding: 5px 8px 6px 0;
+                border-bottom: 1px solid rgba(255,255,255,0.06);
+            }
+            .macro2-summary-table td {
+                font-size: 12.5px;
+                color: #E6E6E6;
+                padding: 6px 8px 0 0;
+                vertical-align: top;
+            }
             .macro2-control-label {
-                font-size: 13px;
-                color: #D0D0D0;
-                font-weight: 500;
+                font-size: 11.5px;
+                color: rgba(255,255,255,0.72);
+                font-weight: 600;
                 line-height: 1.2;
-                margin-bottom: 0.9rem;
+                margin-bottom: 0.7rem;
             }
             .macro2-control-spacer {
-                height: 0.8rem;
+                height: 0.62rem;
             }
-            div[data-testid="stSelectbox"] label p,
-            div[data-testid="stMultiSelect"] label p,
-            div[data-testid="stSlider"] label p,
-            div[data-testid="stCheckbox"] label p,
-            div[data-testid="stExpander"] summary p,
-            div[data-testid="stExpander"] summary {
-                font-size: 13px !important;
-                color: #D0D0D0 !important;
+            .st-key-macro4_preset div[data-baseweb="select"] > div,
+            .st-key-macro4_benchmark div[data-baseweb="select"] > div,
+            .st-key-macro4_selected_codes div[data-baseweb="select"] > div,
+            .st-key-macro4_years div[data-baseweb="slider"] + div,
+            .st-key-macro4_combo_k div[data-baseweb="slider"] + div,
+            .st-key-macro4_show_raw label,
+            .st-key-macro4_show_raw span,
+            .st-key-macro4_show_raw p {
+                font-size: 13.5px !important;
+                color: rgba(255,255,255,0.92) !important;
             }
-            div[data-testid="stExpander"] summary {
-                font-weight: 500 !important;
+            .st-key-macro4_preset div[data-baseweb="select"] > div,
+            .st-key-macro4_benchmark div[data-baseweb="select"] > div,
+            .st-key-macro4_selected_codes div[data-baseweb="select"] > div {
+                min-height: 2.55rem;
+                border-color: rgba(95,86,214,0.72) !important;
+                background: rgba(52,44,112,0.22) !important;
+                box-shadow: none !important;
+            }
+            .st-key-macro4_selected_codes [data-baseweb="tag"] {
+                background: rgba(92,79,214,0.96) !important;
+                color: #F6F4FF !important;
+            }
+            .st-key-macro4_show_raw [data-baseweb="checkbox"] > div {
+                border-color: rgba(95,86,214,0.78) !important;
+            }
+            .st-key-macro4_preset,
+            .st-key-macro4_benchmark,
+            .st-key-macro4_years,
+            .st-key-macro4_show_raw,
+            .st-key-macro4_selected_codes,
+            .st-key-macro4_combo_k {
+                margin-top: 0 !important;
             }
             </style>
             """, unsafe_allow_html=True)
@@ -6637,6 +6709,39 @@ def main(page="signal"):
                         with _s3:
                             _end = st.select_slider("리스크 종료 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["end"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro4_{_code}_end')
                         _macro4_cfgs[_code] = {"ema": int(_ema), "window": int(_window), "start": float(_start), "end": float(_end)}
+
+            _selected_labels4 = [_MACRO2_SIGNAL_LABELS.get(_code, _code) for _code in _selected_codes4]
+            _selected_label_text4 = " · ".join(_selected_labels4) if _selected_labels4 else "선택 없음"
+            _summary_rows4 = []
+            for _code in _selected_codes4:
+                _cfg = _macro4_cfgs.get(_code)
+                if not _cfg:
+                    continue
+                _summary_rows4.append(
+                    "<tr>"
+                    f"<td>{_MACRO2_SIGNAL_LABELS.get(_code, _code)}</td>"
+                    f"<td>{int(_cfg['ema'])}</td>"
+                    f"<td>{int(_cfg['window'])}</td>"
+                    f"<td>{int(round(float(_cfg['start']) * 100))}%</td>"
+                    f"<td>{int(round(float(_cfg['end']) * 100))}%</td>"
+                    "</tr>"
+                )
+            _summary_table_html4 = (
+                "<table class='macro2-summary-table'>"
+                "<thead><tr><th>지표</th><th>EMA</th><th>Window</th><th>Start</th><th>End</th></tr></thead>"
+                f"<tbody>{''.join(_summary_rows4)}</tbody></table>"
+            )
+            st.markdown(
+                (
+                    "<div class='macro2-summary-card'>"
+                    f"<div class='macro2-summary-line'><span class='macro2-summary-accent'>{_macro4_presets[_macro4_preset]['label']}</span> · "
+                    f"{_benchmark_name4} · {_yr_opts4[_macro4_years]} · {_combo_k4}/{max(1, len(_selected_codes4))} ON</div>"
+                    f"<div class='macro2-summary-subline'>지표: {_selected_label_text4}</div>"
+                    f"{_summary_table_html4}"
+                    "</div>"
+                ),
+                unsafe_allow_html=True,
+            )
 
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
             with st.spinner("📡 기준 지수 데이터 로딩 중..."):
