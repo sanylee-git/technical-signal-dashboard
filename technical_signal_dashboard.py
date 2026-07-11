@@ -4822,7 +4822,7 @@ def _build_macro_combo_status_panel(
 
     summary_html = (
         '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;'
-        'padding:8px 0 18px 0;color:#CFCFCF;font-size:13px;">'
+        'padding:0 0 18px 0;color:#CFCFCF;font-size:13px;">'
         f'<span><b>기준일</b> {basis_date}</span>'
         f'<span><b>현재 플래그</b> {active_count} / {combo_n} ON ({active_flags_text})</span>'
         f'<span><b>상태</b> <span style="color:{status_color};font-weight:700;">{status_text}</span></span>'
@@ -6485,7 +6485,7 @@ def main(page="signal"):
             <style>
             .macro2-divider {
                 border-top: 1px solid rgba(255,255,255,0.08);
-                margin: 30px 0 24px 0;
+                margin: 24px 0 18px 0;
             }
             .macro2-helper-text {
                 font-size: 11.5px;
@@ -6501,7 +6501,7 @@ def main(page="signal"):
                 margin-bottom: 0.7rem;
             }
             .macro2-control-spacer {
-                height: 8px;
+                height: 18px;
             }
             .st-key-macro4_preset div[data-baseweb="select"] > div,
             .st-key-macro4_benchmark div[data-baseweb="select"] > div,
@@ -6705,9 +6705,10 @@ def main(page="signal"):
                     if _macro4_status_html:
                         st.markdown(_macro4_status_html, unsafe_allow_html=True)
                     if _macro4_status_table_html:
-                        st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
+                        st.markdown('<div style="height:18px;"></div>', unsafe_allow_html=True)
                         with st.expander("지표별 상태 보기", expanded=False):
                             st.markdown(_macro4_status_table_html, unsafe_allow_html=True)
+                    st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
                     st.plotly_chart(_macro4_combo_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_combo_{_benchmark_name4}_{_macro4_years}_{'_'.join(_selected_codes4)}_{_combo_k4}_{_macro_dynamic_cfg_signature(_macro4_cfgs, _selected_codes4)}")
                 else:
                     st.warning("조합 리스크 차트 데이터 로딩 실패 — 조합 지표/기간을 확인해 주세요.")
