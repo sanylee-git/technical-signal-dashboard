@@ -6493,47 +6493,6 @@ def main(page="signal"):
                 color: rgba(255,255,255,0.56);
                 margin: 2px 0 14px 0;
             }
-            .macro2-summary-card {
-                background: #141416;
-                border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 10px;
-                padding: 12px 14px 11px 14px;
-                margin: 2px 0 12px 0;
-            }
-            .macro2-summary-line {
-                font-size: 13.5px;
-                line-height: 1.45;
-                color: #EDEDED;
-                font-weight: 600;
-                margin-bottom: 7px;
-            }
-            .macro2-summary-accent {
-                color: #8E84F3;
-            }
-            .macro2-summary-subline {
-                font-size: 12px;
-                line-height: 1.45;
-                color: #8A8A8A;
-                margin-bottom: 9px;
-            }
-            .macro2-summary-table {
-                width: 100%;
-                border-collapse: collapse;
-            }
-            .macro2-summary-table th {
-                font-size: 11.5px;
-                font-weight: 600;
-                color: #8A8A8A;
-                text-align: left;
-                padding: 5px 8px 6px 0;
-                border-bottom: 1px solid rgba(255,255,255,0.06);
-            }
-            .macro2-summary-table td {
-                font-size: 12.5px;
-                color: #E6E6E6;
-                padding: 6px 8px 0 0;
-                vertical-align: top;
-            }
             .macro2-control-label {
                 font-size: 11.5px;
                 color: rgba(255,255,255,0.72);
@@ -6542,7 +6501,7 @@ def main(page="signal"):
                 margin-bottom: 0.7rem;
             }
             .macro2-control-spacer {
-                height: 0.62rem;
+                height: 1rem;
             }
             .st-key-macro4_preset div[data-baseweb="select"] > div,
             .st-key-macro4_benchmark div[data-baseweb="select"] > div,
@@ -6709,39 +6668,6 @@ def main(page="signal"):
                         with _s3:
                             _end = st.select_slider("리스크 종료 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["end"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro4_{_code}_end')
                         _macro4_cfgs[_code] = {"ema": int(_ema), "window": int(_window), "start": float(_start), "end": float(_end)}
-
-            _selected_labels4 = [_MACRO2_SIGNAL_LABELS.get(_code, _code) for _code in _selected_codes4]
-            _selected_label_text4 = " · ".join(_selected_labels4) if _selected_labels4 else "선택 없음"
-            _summary_rows4 = []
-            for _code in _selected_codes4:
-                _cfg = _macro4_cfgs.get(_code)
-                if not _cfg:
-                    continue
-                _summary_rows4.append(
-                    "<tr>"
-                    f"<td>{_MACRO2_SIGNAL_LABELS.get(_code, _code)}</td>"
-                    f"<td>{int(_cfg['ema'])}</td>"
-                    f"<td>{int(_cfg['window'])}</td>"
-                    f"<td>{int(round(float(_cfg['start']) * 100))}%</td>"
-                    f"<td>{int(round(float(_cfg['end']) * 100))}%</td>"
-                    "</tr>"
-                )
-            _summary_table_html4 = (
-                "<table class='macro2-summary-table'>"
-                "<thead><tr><th>지표</th><th>EMA</th><th>Window</th><th>Start</th><th>End</th></tr></thead>"
-                f"<tbody>{''.join(_summary_rows4)}</tbody></table>"
-            )
-            st.markdown(
-                (
-                    "<div class='macro2-summary-card'>"
-                    f"<div class='macro2-summary-line'><span class='macro2-summary-accent'>{_macro4_presets[_macro4_preset]['label']}</span> · "
-                    f"{_benchmark_name4} · {_yr_opts4[_macro4_years]} · {_combo_k4}/{max(1, len(_selected_codes4))} ON</div>"
-                    f"<div class='macro2-summary-subline'>지표: {_selected_label_text4}</div>"
-                    f"{_summary_table_html4}"
-                    "</div>"
-                ),
-                unsafe_allow_html=True,
-            )
 
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
             with st.spinner("📡 기준 지수 데이터 로딩 중..."):
