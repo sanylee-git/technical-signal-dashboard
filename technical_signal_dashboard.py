@@ -345,6 +345,41 @@ PERIOD_OPTIONS = {
     "10년":    2520,
 }
 
+US_WATCHLIST = [
+    # ── 지수 (이름 오름차순: ASCII → 가나다)
+    {"code": "^GSPC",  "name": "S&P 500 (^GSPC)"},
+    {"code": "^IXIC",  "name": "나스닥 (^IXIC)"},
+    {"code": "^DJI",   "name": "다우존스 (^DJI)"},
+    # ── 원자재
+    {"code": "HG=F",   "name": "구리 현물 (Copper Futures)"},
+    {"code": "GC=F",   "name": "금 현물 (Gold Futures)"},
+    {"code": "SI=F",   "name": "은 현물 (Silver Futures)"},
+    # ── 비트코인
+    {"code": "BTC-USD", "name": "비트코인 (BTC-USD)"},
+    # ── 이더리움
+    {"code": "ETH-USD", "name": "이더리움 (ETH-USD)"},
+    # ── 주식 본주: 개별종목 (이름 오름차순: ASCII → 가나다)
+    {"code": "GOOGL",  "name": "구글 알파벳 (GOOGL)"},
+    {"code": "AMZN",   "name": "아마존 (AMZN)"},
+    # ── 주식 본주: ETF 1배 (코드 오름차순)
+    {"code": "AIPO",   "name": "AIPO AI·IPO ETF"},
+    {"code": "BLOK",   "name": "BLOK 블록체인 ETF"},
+    {"code": "GRID",   "name": "GRID 스마트그리드 ETF"},
+    {"code": "QTUM",   "name": "QTUM 퀀텀컴퓨팅/AI ETF"},
+    {"code": "SOXX",   "name": "SOXX 반도체 ETF"},
+    {"code": "TAN",    "name": "TAN 태양광 ETF"},
+    {"code": "UFO",    "name": "UFO 우주항공 ETF"},
+    # ── 2배 레버리지 (코드 오름차순)
+    {"code": "AMZU",   "name": "AMZU 아마존 2X"},
+    {"code": "GGLL",   "name": "GGLL 구글 2X"},
+    {"code": "UGL",    "name": "UGL 금 2X"},
+    {"code": "USD",    "name": "USD 반도체 2X (ProShares)"},
+    # ── 3배 레버리지 (코드 오름차순)
+    {"code": "SOXL",   "name": "SOXL 반도체 3X"},
+    {"code": "TECL",   "name": "TECL 테크 3X"},
+    {"code": "TQQQ",   "name": "TQQQ 나스닥 3X"},
+]
+
 
 # ============================================================
 # 다크 테마 CSS (기존 대시보드와 동일)
@@ -6040,7 +6075,7 @@ def main(page="signal"):
                 st.session_state.scan_kr_name = _matched_kr['name']
                 st.session_state.scan_kr_prev_name = _matched_kr['name']
         elif _scan_market_param == "us":
-            _matched_us = next((t for t in _US_WATCHLIST if t['code'] == _scan_code_param), None)
+            _matched_us = next((t for t in US_WATCHLIST if t['code'] == _scan_code_param), None)
             if _matched_us is not None:
                 st.session_state.scan_active = 'us'
                 st.session_state.scan_us_name = _matched_us['name']
@@ -7028,44 +7063,8 @@ def main(page="signal"):
             rsi_sell_center= 80
             rsi_band       = 5
 
-            # US 워치리스트 (신호 계산에 필요해 tickers_tuple보다 먼저 정의)
-            _US_WATCHLIST = [
-                # ── 지수 (이름 오름차순: ASCII → 가나다)
-                {"code": "^GSPC",  "name": "S&P 500 (^GSPC)"},
-                {"code": "^IXIC",  "name": "나스닥 (^IXIC)"},
-                {"code": "^DJI",   "name": "다우존스 (^DJI)"},
-                # ── 원자재
-                {"code": "HG=F",   "name": "구리 현물 (Copper Futures)"},
-                {"code": "GC=F",   "name": "금 현물 (Gold Futures)"},
-                {"code": "SI=F",   "name": "은 현물 (Silver Futures)"},
-                # ── 비트코인
-                {"code": "BTC-USD", "name": "비트코인 (BTC-USD)"},
-                # ── 이더리움
-                {"code": "ETH-USD", "name": "이더리움 (ETH-USD)"},
-                # ── 주식 본주: 개별종목 (이름 오름차순: ASCII → 가나다)
-                {"code": "GOOGL",  "name": "구글 알파벳 (GOOGL)"},
-                {"code": "AMZN",   "name": "아마존 (AMZN)"},
-                # ── 주식 본주: ETF 1배 (코드 오름차순)
-                {"code": "AIPO",   "name": "AIPO AI·IPO ETF"},
-                {"code": "BLOK",   "name": "BLOK 블록체인 ETF"},
-                {"code": "GRID",   "name": "GRID 스마트그리드 ETF"},
-                {"code": "QTUM",   "name": "QTUM 퀀텀컴퓨팅/AI ETF"},
-                {"code": "SOXX",   "name": "SOXX 반도체 ETF"},
-                {"code": "TAN",    "name": "TAN 태양광 ETF"},
-                {"code": "UFO",    "name": "UFO 우주항공 ETF"},
-                # ── 2배 레버리지 (코드 오름차순)
-                {"code": "AMZU",   "name": "AMZU 아마존 2X"},
-                {"code": "GGLL",   "name": "GGLL 구글 2X"},
-                {"code": "UGL",    "name": "UGL 금 2X"},
-                {"code": "USD",    "name": "USD 반도체 2X (ProShares)"},
-                # ── 3배 레버리지 (코드 오름차순)
-                {"code": "SOXL",   "name": "SOXL 반도체 3X"},
-                {"code": "TECL",   "name": "TECL 테크 3X"},
-                {"code": "TQQQ",   "name": "TQQQ 나스닥 3X"},
-            ]
-
             tickers_tuple    = tuple(f['code'] for f in favorites)
-            us_tickers_tuple = tuple(t['code'] for t in _US_WATCHLIST)
+            us_tickers_tuple = tuple(t['code'] for t in US_WATCHLIST)
 
             with st.spinner("📡 데이터 로딩..."):
                 if chart_mode == "분봉":
@@ -7080,7 +7079,7 @@ def main(page="signal"):
             # 데이터 로딩 실패 종목 안내 (해당 종목만 빈 값으로 표시, 앱은 계속 동작)
             _missing_kr = [f['name'] for f in favorites
                            if f['code'] not in closes.columns or closes[f['code']].dropna().empty]
-            _missing_us = [t['name'] for t in _US_WATCHLIST
+            _missing_us = [t['name'] for t in US_WATCHLIST
                            if t['code'] not in us_closes.columns or us_closes[t['code']].dropna().empty]
             _missing_all = _missing_kr + _missing_us
             if _missing_all:
@@ -7145,7 +7144,7 @@ def main(page="signal"):
 
             # US 신호 계산
             us_signal_rows = []
-            for _item in _US_WATCHLIST:
+            for _item in US_WATCHLIST:
                 _code = _item['code']
                 _row = {
                     'code': _code, 'name': _item['name'],
@@ -7253,7 +7252,7 @@ def main(page="signal"):
             col_kr, col_us = st.columns(2)
 
             kr_names = [f['name'] for f in favorites]
-            us_names = [t['name'] for t in _US_WATCHLIST]
+            us_names = [t['name'] for t in US_WATCHLIST]
 
             _kr_divider_prefix = "────────"
 
@@ -7377,7 +7376,7 @@ def main(page="signal"):
                 selected_code = _sel_item['code']
             else:
                 _us_name = st.session_state.get('scan_us_name', us_names[0])
-                _sel_item = next((t for t in _US_WATCHLIST if t['name'] == _us_name), _US_WATCHLIST[0])
+                _sel_item = next((t for t in US_WATCHLIST if t['name'] == _us_name), US_WATCHLIST[0])
                 selected_name = _sel_item['name']
                 selected_code = _sel_item['code']
 
