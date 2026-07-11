@@ -5552,25 +5552,25 @@ def make_macro_rate_levels_chart(years: int = 5, spx_s=None, benchmark_name='S&P
     if not dgs10.empty:
         fig.add_trace(go.Scatter(
             x=dgs10.index, y=dgs10, name='10Y 명목',
-            line=dict(color='rgba(200,200,200,0.72)', width=1.2),
+            line=dict(color='rgba(200,200,200,0.58)', width=0.95),
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  10Y 명목 %{y:.2f}%<extra></extra>',
         ))
     if not dfii10.empty:
         fig.add_trace(go.Scatter(
             x=dfii10.index, y=dfii10, name='10Y 실질',
-            line=dict(color='rgba(255,180,120,0.78)', width=1.15),
+            line=dict(color='rgba(255,180,120,0.62)', width=0.95),
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  10Y 실질 %{y:.2f}%<extra></extra>',
         ))
     if not dgs2.empty:
         fig.add_trace(go.Scatter(
             x=dgs2.index, y=dgs2, name='2Y',
-            line=dict(color='rgba(120,220,255,0.76)', width=1.1),
+            line=dict(color='rgba(120,220,255,0.56)', width=0.9, dash='dot'),
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  2Y %{y:.2f}%<extra></extra>',
         ))
     if not dtb3.empty:
         fig.add_trace(go.Scatter(
             x=dtb3.index, y=dtb3, name='3M',
-            line=dict(color='rgba(120,126,231,0.74)', width=1.1),
+            line=dict(color='rgba(120,126,231,0.54)', width=0.9, dash='dot'),
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  3M %{y:.2f}%<extra></extra>',
         ))
 
@@ -5611,7 +5611,12 @@ def make_macro_yield_spread_chart(years: int = 5, spx_s=None, benchmark_name='S&
 
     t3m = bundle["spread_10y3m"]
     t2y = bundle["spread_10y2y"]
-    if t3m.empty and t2y.empty:
+    dgs10 = bundle["dgs10"]
+    dfii10 = bundle["dfii10"]
+    breakeven10 = pd.Series(dtype=float)
+    if not dgs10.empty and not dfii10.empty:
+        breakeven10 = (dgs10 - dfii10.reindex(dgs10.index).interpolate()).dropna()
+    if t3m.empty and t2y.empty and breakeven10.empty:
         return None
 
     fig = go.Figure()
@@ -5619,19 +5624,25 @@ def make_macro_yield_spread_chart(years: int = 5, spx_s=None, benchmark_name='S&
     if not t3m.empty:
         fig.add_trace(go.Scatter(
             x=t3m.index, y=t3m, name='10Y-3M 스프레드',
-            line=dict(color='#4BFFB3', width=1.5),
+            line=dict(color='rgba(75,255,179,0.62)', width=0.95, dash='dot'),
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  10Y-3M %{y:.2f}%<extra></extra>',
         ))
     if not t2y.empty:
         fig.add_trace(go.Scatter(
             x=t2y.index, y=t2y, name='10Y-2Y 스프레드',
-            line=dict(color='rgba(120,220,255,0.78)', width=1.25),
+            line=dict(color='rgba(120,220,255,0.60)', width=0.95, dash='dot'),
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  10Y-2Y %{y:.2f}%<extra></extra>',
         ))
-    main_s = t3m if not t3m.empty else t2y
+    if not breakeven10.empty:
+        fig.add_trace(go.Scatter(
+            x=breakeven10.index, y=breakeven10, name='10Y 명목-실질',
+            line=dict(color='rgba(255,180,120,0.66)', width=1.0),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b>  10Y 명목-실질 %{y:.2f}%<extra></extra>',
+        ))
+    main_s = t3m if not t3m.empty else t2y if not t2y.empty else breakeven10
     _add_spx_overlay(fig, main_s, spx_s, yaxis='y2', label=benchmark['label'])
     fig.update_layout(
-        **_ml('⑦ 10Y-3M · 10Y-2Y 금리 스프레드', height=300),
+        **_ml('⑦ 10Y-3M · 10Y-2Y · 10Y 명목-실질', height=300),
         yaxis2=_visible_price_yaxis('y', 'right'),
     )
     fig.layout.yaxis.ticksuffix = '%'
