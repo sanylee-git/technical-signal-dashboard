@@ -6194,7 +6194,7 @@ def main(page="signal"):
         _default_period_map = {
             "분봉": "3일",
             "일봉": "3개월",
-            "주봉": "1년",
+            "주봉": "2년",
             "월봉": "10년",
         }
         _default_period = _default_period_map.get(chart_mode, "3개월")
