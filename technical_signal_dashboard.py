@@ -5181,6 +5181,239 @@ def make_macro_combo_dynamic_chart(
     return fig
 
 
+def _build_macro_meta_combo_event_df(
+    combo_a_event_df: pd.DataFrame,
+    combo_b_event_df: pd.DataFrame,
+    combo_a_label: str,
+    combo_b_label: str,
+    benchmark_name: str,
+    exit_mode: str = "AND_EXIT",
+) -> pd.DataFrame:
+    if combo_a_event_df is None or combo_a_event_df.empty or combo_b_event_df is None or combo_b_event_df.empty:
+        return pd.DataFrame()
+
+    a = combo_a_event_df.copy()
+    b = combo_b_event_df.copy()
+    a["date"] = pd.to_datetime(a["date"])
+    b["date"] = pd.to_datetime(b["date"])
+    a = a.sort_values("date").set_index("date")
+    b = b.sort_values("date").set_index("date")
+
+    idx = a.index.union(b.index).sort_values()
+    out = pd.DataFrame(index=idx)
+    out["a_state"] = a["combo_risk_state"].reindex(idx).fillna(False).astype(bool)
+    out["b_state"] = b["combo_risk_state"].reindex(idx).fillna(False).astype(bool)
+    out["a_start_signal"] = a["combo_start_signal"].reindex(idx).fillna(False).astype(bool)
+    out["a_end_signal"] = a["combo_end_signal"].reindex(idx).fillna(False).astype(bool)
+    out["b_start_signal"] = b["combo_start_signal"].reindex(idx).fillna(False).astype(bool)
+    out["b_end_signal"] = b["combo_end_signal"].reindex(idx).fillna(False).astype(bool)
+
+    flag_cols = sorted(
+        set([c for c in a.columns if c.endswith("_flag")]).union([c for c in b.columns if c.endswith("_flag")])
+    )
+    for col in flag_cols:
+        a_flag = a[col].reindex(idx).fillna(False).astype(bool) if col in a.columns else pd.Series(False, index=idx)
+        b_flag = b[col].reindex(idx).fillna(False).astype(bool) if col in b.columns else pd.Series(False, index=idx)
+        out[col] = (a_flag | b_flag).astype(bool)
+
+    meta_in_cycle = False
+    active_counts = []
+    states = []
+    starts = []
+    ends = []
+    for row in out.itertuples():
+        a_state = bool(row.a_state)
+        b_state = bool(row.b_state)
+        start_hit = a_state and b_state
+        hold_hit = (a_state or b_state) if exit_mode == "AND_EXIT" else (a_state and b_state)
+
+        start_signal = False
+        end_signal = False
+        if not meta_in_cycle and start_hit:
+            meta_in_cycle = True
+            start_signal = True
+        elif meta_in_cycle and not hold_hit:
+            meta_in_cycle = False
+            end_signal = True
+
+        active_counts.append(int(a_state) + int(b_state))
+        states.append(meta_in_cycle)
+        starts.append(start_signal)
+        ends.append(end_signal)
+
+    out["active_count"] = active_counts
+    out["combo_risk_state"] = pd.Series(states, index=idx, dtype=bool)
+    out["combo_start_signal"] = pd.Series(starts, index=idx, dtype=bool)
+    out["combo_end_signal"] = pd.Series(ends, index=idx, dtype=bool)
+    out["prev_active_count"] = out["active_count"].shift(1).fillna(0).astype(int)
+    out["combo_state_before"] = out["combo_risk_state"].shift(1).fillna(False).astype(bool)
+
+    def _meta_active_flags(row) -> str:
+        names = []
+        if bool(row["a_state"]):
+            names.append(combo_a_label)
+        if bool(row["b_state"]):
+            names.append(combo_b_label)
+        return ", ".join(names)
+
+    def _meta_inactive_flags(row) -> str:
+        names = []
+        if not bool(row["a_state"]):
+            names.append(combo_a_label)
+        if not bool(row["b_state"]):
+            names.append(combo_b_label)
+        return ", ".join(names)
+
+    def _meta_flag_state_string(row) -> str:
+        return f"{int(bool(row['a_state']))}/{int(bool(row['b_state']))}"
+
+    out["active_flags"] = out.apply(_meta_active_flags, axis=1)
+    out["inactive_flags"] = out.apply(_meta_inactive_flags, axis=1)
+    out["prev_active_flags"] = out["active_flags"].shift(1).fillna("")
+    out["prev_inactive_flags"] = out["inactive_flags"].shift(1).fillna("")
+    out["flag_state_string"] = out.apply(_meta_flag_state_string, axis=1)
+    out["selected_codes"] = "META_A,META_B"
+    out["selected_labels"] = f"{combo_a_label} + {combo_b_label}"
+    out["benchmark_name"] = benchmark_name
+    out["combo_k"] = 2
+    out["combo_n"] = 2
+    out["initial_state_at_visible_start"] = bool(out["combo_risk_state"].iloc[0]) if not out.empty else False
+    out["combo_slug"] = re.sub(r"[^A-Za-z0-9._-]+", "-", f"{benchmark_name}_{combo_a_label}_{combo_b_label}_{exit_mode}").lower()
+    out["param_signature"] = f"{combo_a_label} + {combo_b_label} ({exit_mode})"
+    out["combo_label"] = f"{combo_a_label} + {combo_b_label}"
+
+    return out.rename_axis("date").reset_index()
+
+
+def make_macro_meta_combo_dynamic_chart(
+    spx_s: pd.Series,
+    benchmark_name: str,
+    combo_a_event_df: pd.DataFrame,
+    combo_b_event_df: pd.DataFrame,
+    combo_a_label: str,
+    combo_b_label: str,
+    exit_mode: str = "AND_EXIT",
+    return_debug: bool = False,
+):
+    if spx_s is None or spx_s.empty:
+        return (None, pd.DataFrame()) if return_debug else None
+
+    benchmark = _get_macro_benchmark(benchmark_name)
+    meta_event_df = _build_macro_meta_combo_event_df(
+        combo_a_event_df=combo_a_event_df,
+        combo_b_event_df=combo_b_event_df,
+        combo_a_label=combo_a_label,
+        combo_b_label=combo_b_label,
+        benchmark_name=benchmark_name,
+        exit_mode=exit_mode,
+    )
+    if meta_event_df.empty:
+        return (None, pd.DataFrame()) if return_debug else None
+
+    meta_event_df = meta_event_df.sort_values("date").copy()
+    spx_aligned = spx_s.reindex(pd.to_datetime(meta_event_df["date"])).dropna()
+    if spx_aligned.empty:
+        return (None, pd.DataFrame()) if return_debug else None
+    meta_event_df = meta_event_df.set_index("date").reindex(spx_aligned.index).reset_index()
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=spx_aligned.index, y=spx_aligned, name=benchmark["label"],
+        line=dict(color='rgba(182,182,182,0.88)', width=1.55),
+        hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>{benchmark["label"]} %{{y:,.1f}}<extra></extra>',
+    ))
+
+    start_rows = meta_event_df.loc[meta_event_df["combo_start_signal"]].copy()
+    end_rows = meta_event_df.loc[meta_event_df["combo_end_signal"]].copy()
+    start_y = spx_aligned.reindex(pd.to_datetime(start_rows["date"])) if not start_rows.empty else pd.Series(dtype=float)
+    end_y = spx_aligned.reindex(pd.to_datetime(end_rows["date"])) if not end_rows.empty else pd.Series(dtype=float)
+
+    if not start_rows.empty and not start_y.empty:
+        start_rows = start_rows.set_index("date").reindex(start_y.index)
+        fig.add_trace(go.Scatter(
+            x=start_y.index, y=start_y, name='__COMBO_START_MARKER__',
+            mode='markers',
+            marker=dict(symbol='triangle-down', size=10, color='rgba(210,55,55,0.95)'),
+            legendgroup='__COMBO_START_MARKER__',
+            showlegend=False,
+            customdata=np.column_stack([
+                start_rows["prev_active_count"].astype(int),
+                start_rows["active_count"].astype(int),
+                start_rows["active_flags"].fillna(""),
+                start_rows["inactive_flags"].fillna(""),
+                start_rows["flag_state_string"].fillna(""),
+            ]),
+            hovertemplate=(
+                '<b>%{x|%Y-%m-%d}</b><br>'
+                'event_type: START<br>'
+                'prev_active_count: %{customdata[0]}<br>'
+                'active_count: %{customdata[1]}<br>'
+                'active_flags: %{customdata[2]}<br>'
+                'inactive_flags: %{customdata[3]}<br>'
+                'flag_state: %{customdata[4]}<extra></extra>'
+            ),
+        ))
+        fig.add_trace(go.Scatter(
+            x=[None], y=[None], name='리스크 시작 (A&B)',
+            mode='markers',
+            marker=dict(symbol='triangle-down', size=10, color='rgba(210,55,55,0.95)'),
+            hoverinfo='skip',
+            legendgroup='__COMBO_START_MARKER__',
+        ))
+
+    if not end_rows.empty and not end_y.empty:
+        end_rows = end_rows.set_index("date").reindex(end_y.index)
+        fig.add_trace(go.Scatter(
+            x=end_y.index, y=end_y, name='__COMBO_END_MARKER__',
+            mode='markers',
+            marker=dict(symbol='triangle-up', size=10, color='rgba(80,160,255,0.92)'),
+            legendgroup='__COMBO_END_MARKER__',
+            showlegend=False,
+            customdata=np.column_stack([
+                end_rows["prev_active_count"].astype(int),
+                end_rows["active_count"].astype(int),
+                end_rows["active_flags"].fillna(""),
+                end_rows["inactive_flags"].fillna(""),
+                end_rows["flag_state_string"].fillna(""),
+            ]),
+            hovertemplate=(
+                '<b>%{x|%Y-%m-%d}</b><br>'
+                'event_type: END<br>'
+                'prev_active_count: %{customdata[0]}<br>'
+                'active_count: %{customdata[1]}<br>'
+                'active_flags: %{customdata[2]}<br>'
+                'inactive_flags: %{customdata[3]}<br>'
+                'flag_state: %{customdata[4]}<extra></extra>'
+            ),
+        ))
+        fig.add_trace(go.Scatter(
+            x=[None], y=[None], name='리스크 종료 (A,B OFF)',
+            mode='markers',
+            marker=dict(symbol='triangle-up', size=10, color='rgba(80,160,255,0.92)'),
+            hoverinfo='skip',
+            legendgroup='__COMBO_END_MARKER__',
+        ))
+
+    fig.update_layout(
+        **_ml(f'⓪ 메타 리스크 사이클 ({benchmark["label"]}, Nasdaq Meta)', height=300),
+    )
+    if len(spx_aligned.index) >= 2:
+        fig.update_xaxes(range=[spx_aligned.index.min(), spx_aligned.index.max()])
+    fig.add_annotation(
+        xref='paper', yref='paper', x=0.01, y=0.98, showarrow=False,
+        text=f'<b>메타조합</b>: {combo_a_label} + {combo_b_label}',
+        font=dict(size=11, color='#C8C8C8'),
+        align='left',
+        bgcolor='rgba(0,0,0,0.18)',
+        bordercolor='rgba(255,255,255,0.08)',
+        borderwidth=1,
+        borderpad=4,
+    )
+    if return_debug:
+        return fig, meta_event_df
+    return fig
+
+
 def _make_inverted_spread_chart(
     s: pd.Series,
     title: str,
@@ -6837,6 +7070,47 @@ def main(page="signal"):
 
             _macro4_defaults = _get_macro2_dynamic_defaults()
             _macro4_presets = {
+                "nasdaq_meta": {
+                    "label": "나스닥 전용 메타조합",
+                    "benchmark": "Nasdaq",
+                    "selected_codes": ["0", "1", "2", "3", "4", "6"],
+                    "combo_k": 2,
+                    "cfgs": {
+                        "0": {"ema": 10, "window": 252, "start": 0.80, "end": 0.50},
+                        "1": {"ema": 20, "window": 126, "start": 0.60, "end": 0.50},
+                        "2": {"ema": 30, "window": 63, "start": 0.20, "end": 0.10},
+                        "3": {"ema": 20, "window": 252, "start": 0.20, "end": 0.10},
+                        "4": {"ema": 10, "window": 63, "start": 0.60, "end": 0.30},
+                        "6": {"ema": 30, "window": 63, "start": 0.60, "end": 0.10},
+                    },
+                    "meta": {
+                        "exit_mode": "AND_EXIT",
+                        "combo_a": {
+                            "label": "A: ⓪ 지수 + ② IG + ③ 신용스트레스 + ④ VIX",
+                            "selected_codes": ["0", "2", "3", "4"],
+                            "combo_k": 3,
+                            "cfgs": {
+                                "0": {"ema": 10, "window": 252, "start": 0.80, "end": 0.50},
+                                "2": {"ema": 30, "window": 63, "start": 0.20, "end": 0.10},
+                                "3": {"ema": 20, "window": 252, "start": 0.20, "end": 0.10},
+                                "4": {"ema": 10, "window": 63, "start": 0.60, "end": 0.30},
+                            },
+                        },
+                        "combo_b": {
+                            "label": "B: ⓪ 지수 + ① HY + ② IG + ③ 신용스트레스 + ④ VIX + ⑥ VIX 스프레드",
+                            "selected_codes": ["0", "1", "2", "3", "4", "6"],
+                            "combo_k": 5,
+                            "cfgs": {
+                                "0": {"ema": 30, "window": 252, "start": 0.80, "end": 0.70},
+                                "1": {"ema": 20, "window": 126, "start": 0.60, "end": 0.50},
+                                "2": {"ema": 20, "window": 126, "start": 0.80, "end": 0.10},
+                                "3": {"ema": 30, "window": 63, "start": 0.60, "end": 0.30},
+                                "4": {"ema": 10, "window": 63, "start": 0.20, "end": 0.10},
+                                "6": {"ema": 30, "window": 63, "start": 0.60, "end": 0.10},
+                            },
+                        },
+                    },
+                },
                 "nasdaq": {
                     "label": "나스닥 전용 조합",
                     "benchmark": "Nasdaq",
@@ -6924,9 +7198,10 @@ def main(page="signal"):
                 st.session_state["macro4_preset_applied"] = _macro4_preset
 
             _macro4_preset_cfg = _macro4_presets[_macro4_preset]
+            _macro4_is_meta = bool(_macro4_preset_cfg.get("meta"))
             _macro4_selected_default = list(_macro4_preset_cfg["selected_codes"])
             with _m40:
-                _benchmark_name4 = st.selectbox("기준지수", options=["S&P500", "Nasdaq"], index=0, label_visibility='collapsed', key='macro4_benchmark')
+                _benchmark_name4 = st.selectbox("기준지수", options=["S&P500", "Nasdaq"], index=0, label_visibility='collapsed', key='macro4_benchmark', disabled=_macro4_is_meta)
             with _m41:
                 _yr_opts4 = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
                 _macro4_years = st.select_slider("기간", options=list(_yr_opts4.keys()), value=3, format_func=lambda x: _yr_opts4[x], label_visibility='collapsed', key='macro4_years')
@@ -6944,25 +7219,29 @@ def main(page="signal"):
 
             _m43, _m44 = st.columns([4.4, 1.6], vertical_alignment="bottom")
             with _m43:
-                _selected_codes4 = st.multiselect("조합 지표", options=list(_MACRO2_SIGNAL_LABELS.keys()), default=_macro4_selected_default, format_func=lambda x: _MACRO2_SIGNAL_LABELS.get(x, x), key='macro4_selected_codes', label_visibility='collapsed')
+                _selected_codes4 = st.multiselect("조합 지표", options=list(_MACRO2_SIGNAL_LABELS.keys()), default=_macro4_selected_default, format_func=lambda x: _MACRO2_SIGNAL_LABELS.get(x, x), key='macro4_selected_codes', label_visibility='collapsed', disabled=_macro4_is_meta)
             with _m44:
                 _default_k4 = min(_macro4_preset_cfg["combo_k"], max(1, len(_selected_codes4)))
-                _combo_k4 = st.slider("리스크 기준", min_value=1, max_value=max(1, len(_selected_codes4)), value=_default_k4, format="%d개 이상 ON", key='macro4_combo_k', label_visibility='collapsed')
+                _combo_k4 = st.slider("리스크 기준", min_value=1, max_value=max(1, len(_selected_codes4)), value=_default_k4, format="%d개 이상 ON", key='macro4_combo_k', label_visibility='collapsed', disabled=_macro4_is_meta)
 
             _macro4_cfgs = {}
-            with st.expander("▸ 고급 설정: 지표별 EMA / Window / Start / End", expanded=False):
-                for _code, _cfg in _macro4_defaults.items():
-                    with st.expander(_cfg["label"], expanded=(_code in _selected_codes4)):
-                        _s0, _s1, _s2, _s3 = st.columns(4)
-                        with _s0:
-                            _ema = st.selectbox("EMA", [10, 20, 30], index=[10, 20, 30].index(_cfg["ema"]), key=f'macro4_{_code}_ema')
-                        with _s1:
-                            _window = st.selectbox("Rolling Window", [63, 126, 252, 504], index=[63, 126, 252, 504].index(_cfg["window"]), key=f'macro4_{_code}_window')
-                        with _s2:
-                            _start = st.select_slider("리스크 시작 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["start"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro4_{_code}_start')
-                        with _s3:
-                            _end = st.select_slider("리스크 종료 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["end"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro4_{_code}_end')
-                        _macro4_cfgs[_code] = {"ema": int(_ema), "window": int(_window), "start": float(_start), "end": float(_end)}
+            if _macro4_is_meta:
+                _macro4_cfgs = {k: dict(v) for k, v in _macro4_preset_cfg["cfgs"].items()}
+                st.caption("메타조합 프리셋은 백테스트 선정값으로 고정되어 있습니다. 아래에는 메타 차트와 하위 조합 A/B 차트를 함께 표시합니다.")
+            else:
+                with st.expander("▸ 고급 설정: 지표별 EMA / Window / Start / End", expanded=False):
+                    for _code, _cfg in _macro4_defaults.items():
+                        with st.expander(_cfg["label"], expanded=(_code in _selected_codes4)):
+                            _s0, _s1, _s2, _s3 = st.columns(4)
+                            with _s0:
+                                _ema = st.selectbox("EMA", [10, 20, 30], index=[10, 20, 30].index(_cfg["ema"]), key=f'macro4_{_code}_ema')
+                            with _s1:
+                                _window = st.selectbox("Rolling Window", [63, 126, 252, 504], index=[63, 126, 252, 504].index(_cfg["window"]), key=f'macro4_{_code}_window')
+                            with _s2:
+                                _start = st.select_slider("리스크 시작 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["start"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro4_{_code}_start')
+                            with _s3:
+                                _end = st.select_slider("리스크 종료 분위수", options=[x / 100 for x in range(0, 101, 5)], value=_cfg["end"], format_func=lambda x: f"{int(x * 100)}%", key=f'macro4_{_code}_end')
+                            _macro4_cfgs[_code] = {"ema": int(_ema), "window": int(_window), "start": float(_start), "end": float(_end)}
 
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
             with st.spinner("📡 기준 지수 데이터 로딩 중..."):
@@ -6976,16 +7255,54 @@ def main(page="signal"):
                 st.warning("조합에 사용할 지표를 최소 1개 이상 선택해 주세요.")
             else:
                 with st.spinner("📡 조합 매크로 데이터 로딩 중..."):
-                    _macro4_combo_fig, _macro4_combo_event_df = make_macro_combo_dynamic_chart(
-                        years=_macro4_years,
-                        spx_s=_spx_s4,
-                        benchmark_name=_benchmark_name4,
-                        selected_codes=_selected_codes4,
-                        cfgs=_macro4_cfgs,
-                        combo_k=_combo_k4,
-                        sync_bucket=_macro4_sync_bucket,
-                        return_debug=True,
-                    )
+                    _macro4_meta_combo_fig = None
+                    _macro4_combo_a_fig = None
+                    _macro4_combo_b_fig = None
+                    if _macro4_is_meta:
+                        _meta_cfg = _macro4_preset_cfg["meta"]
+                        _combo_a_cfg = _meta_cfg["combo_a"]
+                        _combo_b_cfg = _meta_cfg["combo_b"]
+                        _macro4_combo_a_fig, _macro4_combo_a_event_df = make_macro_combo_dynamic_chart(
+                            years=_macro4_years,
+                            spx_s=_spx_s4,
+                            benchmark_name=_benchmark_name4,
+                            selected_codes=_combo_a_cfg["selected_codes"],
+                            cfgs=_combo_a_cfg["cfgs"],
+                            combo_k=_combo_a_cfg["combo_k"],
+                            sync_bucket=_macro4_sync_bucket,
+                            return_debug=True,
+                        )
+                        _macro4_combo_b_fig, _macro4_combo_b_event_df = make_macro_combo_dynamic_chart(
+                            years=_macro4_years,
+                            spx_s=_spx_s4,
+                            benchmark_name=_benchmark_name4,
+                            selected_codes=_combo_b_cfg["selected_codes"],
+                            cfgs=_combo_b_cfg["cfgs"],
+                            combo_k=_combo_b_cfg["combo_k"],
+                            sync_bucket=_macro4_sync_bucket,
+                            return_debug=True,
+                        )
+                        _macro4_combo_fig, _macro4_combo_event_df = make_macro_meta_combo_dynamic_chart(
+                            spx_s=_spx_s4,
+                            benchmark_name=_benchmark_name4,
+                            combo_a_event_df=_macro4_combo_a_event_df,
+                            combo_b_event_df=_macro4_combo_b_event_df,
+                            combo_a_label=_combo_a_cfg["label"],
+                            combo_b_label=_combo_b_cfg["label"],
+                            exit_mode=_meta_cfg.get("exit_mode", "AND_EXIT"),
+                            return_debug=True,
+                        )
+                    else:
+                        _macro4_combo_fig, _macro4_combo_event_df = make_macro_combo_dynamic_chart(
+                            years=_macro4_years,
+                            spx_s=_spx_s4,
+                            benchmark_name=_benchmark_name4,
+                            selected_codes=_selected_codes4,
+                            cfgs=_macro4_cfgs,
+                            combo_k=_combo_k4,
+                            sync_bucket=_macro4_sync_bucket,
+                            return_debug=True,
+                        )
                     _macro4_charts = _build_macro2_dynamic_charts(_macro4_years, _spx_s4, _show_raw_macro4, _benchmark_name4, _macro4_cfgs, sync_bucket=_macro4_sync_bucket)
 
                 if _macro4_combo_fig is not None:
@@ -7004,14 +7321,32 @@ def main(page="signal"):
                         with st.expander("지표별 상태 보기", expanded=False):
                             st.markdown(_macro4_status_table_html, unsafe_allow_html=True)
                     st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
-                    st.plotly_chart(_macro4_combo_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_combo_{_benchmark_name4}_{_macro4_years}_{'_'.join(_selected_codes4)}_{_combo_k4}_{_macro_dynamic_cfg_signature(_macro4_cfgs, _selected_codes4)}")
+                    st.plotly_chart(_macro4_combo_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_combo_{_macro4_preset}_{_benchmark_name4}_{_macro4_years}_{'_'.join(_selected_codes4)}_{_combo_k4}_{_macro_dynamic_cfg_signature(_macro4_cfgs, _selected_codes4)}")
+                    if _macro4_is_meta:
+                        st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
+                        with st.expander("조합 1-A 차트", expanded=True):
+                            if _macro4_combo_a_fig is not None:
+                                st.plotly_chart(
+                                    _macro4_combo_a_fig,
+                                    width="stretch",
+                                    config={"displayModeBar": False},
+                                    key=f"macro4_combo_a_{_benchmark_name4}_{_macro4_years}",
+                                )
+                        with st.expander("조합 1-B 차트", expanded=True):
+                            if _macro4_combo_b_fig is not None:
+                                st.plotly_chart(
+                                    _macro4_combo_b_fig,
+                                    width="stretch",
+                                    config={"displayModeBar": False},
+                                    key=f"macro4_combo_b_{_benchmark_name4}_{_macro4_years}",
+                                )
                 else:
                     st.warning("조합 리스크 차트 데이터 로딩 실패 — 조합 지표/기간을 확인해 주세요.")
 
                 _macro4_chart_codes = ["0", "1", "2", "3", "4", "6"]
                 for _idx, (_code, _fig) in enumerate(zip(_macro4_chart_codes, _macro4_charts)):
                     _label = _MACRO2_SIGNAL_LABELS.get(_code, _code)
-                    with st.expander(_label, expanded=(_code in _selected_codes4)):
+                    with st.expander(_label, expanded=((_code in _selected_codes4) and not _macro4_is_meta)):
                         if _fig is not None:
                             st.plotly_chart(
                                 _fig,
