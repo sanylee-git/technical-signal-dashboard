@@ -6485,7 +6485,7 @@ def main(page="signal"):
             <style>
             .macro2-divider {
                 border-top: 1px solid rgba(255,255,255,0.08);
-                margin: 24px 0 18px 0;
+                margin: 24px 0;
             }
             .macro2-helper-text {
                 font-size: 11.5px;
