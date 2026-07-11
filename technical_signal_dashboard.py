@@ -3450,6 +3450,26 @@ def _ml(title: str, height: int = 300, **kw) -> dict:
     return base
 
 
+def _tune_macro_main_chart(fig: go.Figure | None):
+    """매크로 메인 페이지 전용 차트 타이포/여백 미세 조정."""
+    if fig is None:
+        return None
+    fig.update_layout(
+        title=dict(font=dict(size=14, color='#B5B5B5'), x=0, y=0.985),
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.08,
+            xanchor='right',
+            x=1,
+            font=dict(size=10),
+            bgcolor='rgba(0,0,0,0)',
+        ),
+        margin=dict(l=50, r=20, t=56, b=36),
+    )
+    return fig
+
+
 def _hidden_yaxis(overlaying='y', side='right') -> dict:
     """숨겨진 오버레이 y축 (눈금 없음)."""
     return dict(overlaying=overlaying, side=side, showgrid=False,
@@ -5281,11 +5301,11 @@ def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True, downt
                                 dynamic_mode: bool = False, dynamic_window: int = 126,
                                 dynamic_start_quantile: float = 0.4, dynamic_end_quantile: float = 0.2,
                                 sync_bucket: str | None = None):
-    """⑥ VIX-VIX3M 스프레드: 반전 표시 + EMA 하락 경고."""
+    """⑤ VIX-VIX3M 스프레드: 반전 표시 + EMA 하락 경고."""
     benchmark = _get_macro_benchmark(benchmark_name)
     if benchmark['kind'] == 'kr':
         spread = _korean_vol_term_spread_series(years, benchmark_s=spx_s, sync_bucket=sync_bucket)
-        title = '⑥ VIX 스프레드 (한국 proxy, 반전)'
+        title = '⑤ VIX 스프레드 (한국 proxy, 반전)'
         trace_name = 'HV20-HV60 스프레드'
     else:
         vix   = _yf_close('^VIX',   years, sync_bucket=sync_bucket)
@@ -5293,7 +5313,7 @@ def make_macro_vix_spread_chart(years: int = 5, spx_s=None, show_raw=True, downt
         if vix.empty or vix3m.empty:
             return None
         spread = (vix - vix3m.reindex(vix.index)).dropna()
-        title = '⑥ VIX 스프레드 (반전)'
+        title = '⑤ VIX 스프레드 (반전)'
         trace_name = 'VIX-VIX3M 스프레드'
     if not threshold_mode and not dynamic_mode:
         return _make_inverted_spread_chart(
@@ -5444,50 +5464,25 @@ def make_macro_liquidity_chart(years: int = 5, spx_s=None, benchmark_name='S&P50
     return fig
 
 
-def make_macro_yield_curve_chart(years: int = 5, spx_s=None, benchmark_name='S&P500'):
-    """⑨ 장단기 금리차: T10Y3M(10Y-3M)
-    1순위: FRED 사전계산 시리즈 (T10Y3M, T10Y2Y) — 더 안정적
-    2순위: 구성 금리 직접 차감 (DGS10 - DTB3 / DGS2) — fallback
-    """
+def _get_macro_yield_bundle(years: int, benchmark_name='S&P500') -> dict:
     benchmark = _get_macro_benchmark(benchmark_name)
     if benchmark['kind'] == 'kr':
         spread, bond_3y, bond_10y = _korean_yield_curve_proxy_bundle(years)
-        if spread.empty and bond_3y.empty and bond_10y.empty:
-            return None
-        fig = go.Figure()
-        fig.add_hline(y=0, line=dict(color='rgba(255,255,255,0.20)', width=1))
-        if not spread.empty:
-            fig.add_trace(go.Scatter(
-                x=spread.index, y=spread, name='3Y-10Y 상대강도',
-                line=dict(color='#4BFFB3', width=1.5),
-                hovertemplate='<b>%{x|%Y-%m-%d}</b>  상대강도 %{y:.2f}<extra></extra>',
-            ))
-        if not bond_10y.empty:
-            fig.add_trace(go.Scatter(
-                x=bond_10y.index, y=bond_10y, name='국고채10년 ETF',
-                line=dict(color='rgba(200,200,200,0.55)', width=1.0, dash='dot'),
-                hovertemplate='<b>%{x|%Y-%m-%d}</b>  10년 ETF %{y:.2f}<extra></extra>',
-                yaxis='y3',
-            ))
-        if not bond_3y.empty:
-            fig.add_trace(go.Scatter(
-                x=bond_3y.index, y=bond_3y, name='국고채3년 ETF',
-                line=dict(color='rgba(120,220,255,0.60)', width=1.0, dash='dot'),
-                hovertemplate='<b>%{x|%Y-%m-%d}</b>  3년 ETF %{y:.2f}<extra></extra>',
-                yaxis='y3',
-            ))
-        main_s = spread if not spread.empty else bond_3y if not bond_3y.empty else bond_10y
-        _add_spx_overlay(fig, main_s, spx_s, yaxis='y2', label=benchmark['label'])
-        fig.update_layout(
-            **_ml('⑦ 국고채 3Y-10Y 상대강도 (ETF proxy)', height=300),
-            yaxis2=_visible_price_yaxis('y', 'right'),
-            yaxis3=_hidden_yaxis('y', 'left'),
-        )
-        if not spread.empty:
-            _add_corr_annotation(fig, spread, spx_s, label=f'vs {benchmark["label"]}')
-        return fig
+        return {
+            "benchmark": benchmark,
+            "kind": "kr",
+            "spread_10y3m": spread,
+            "spread_10y2y": pd.Series(dtype=float),
+            "bond_3y": bond_3y,
+            "bond_10y": bond_10y,
+            "dgs10": pd.Series(dtype=float),
+            "dfii10": pd.Series(dtype=float),
+            "dgs2": pd.Series(dtype=float),
+            "dtb3": pd.Series(dtype=float),
+        }
 
     t3m = _fred('T10Y3M', years)
+    t2y = _fred('T10Y2Y', years)
     dgs10 = _fred('DGS10', years)
     dfii10 = _fred('DFII10', years)
     dgs2 = _fred('DGS2', years)
@@ -5496,53 +5491,157 @@ def make_macro_yield_curve_chart(years: int = 5, spx_s=None, benchmark_name='S&P
     if t3m.empty:
         if not dgs10.empty and not dtb3.empty:
             t3m = (dgs10 - dtb3.reindex(dgs10.index).interpolate()).dropna()
-    if t3m.empty and dgs10.empty and dfii10.empty and dgs2.empty and dtb3.empty:
+    if t2y.empty:
+        if not dgs10.empty and not dgs2.empty:
+            t2y = (dgs10 - dgs2.reindex(dgs10.index).interpolate()).dropna()
+    return {
+        "benchmark": benchmark,
+        "kind": "us",
+        "spread_10y3m": t3m,
+        "spread_10y2y": t2y,
+        "bond_3y": pd.Series(dtype=float),
+        "bond_10y": pd.Series(dtype=float),
+        "dgs10": dgs10,
+        "dfii10": dfii10,
+        "dgs2": dgs2,
+        "dtb3": dtb3,
+    }
+
+
+def make_macro_rate_levels_chart(years: int = 5, spx_s=None, benchmark_name='S&P500'):
+    """⑥ 대표 금리 레벨 차트."""
+    bundle = _get_macro_yield_bundle(years, benchmark_name)
+    benchmark = bundle["benchmark"]
+
+    if bundle["kind"] == "kr":
+        bond_3y = bundle["bond_3y"]
+        bond_10y = bundle["bond_10y"]
+        if bond_3y.empty and bond_10y.empty:
+            return None
+
+        fig = go.Figure()
+        if not bond_10y.empty:
+            fig.add_trace(go.Scatter(
+                x=bond_10y.index, y=bond_10y, name='국고채10년 ETF',
+                line=dict(color='rgba(200,200,200,0.72)', width=1.25),
+                hovertemplate='<b>%{x|%Y-%m-%d}</b>  10년 ETF %{y:.2f}<extra></extra>',
+            ))
+        if not bond_3y.empty:
+            fig.add_trace(go.Scatter(
+                x=bond_3y.index, y=bond_3y, name='국고채3년 ETF',
+                line=dict(color='rgba(120,220,255,0.72)', width=1.2),
+                hovertemplate='<b>%{x|%Y-%m-%d}</b>  3년 ETF %{y:.2f}<extra></extra>',
+            ))
+        main_s = bond_10y if not bond_10y.empty else bond_3y
+        _add_spx_overlay(fig, main_s, spx_s, yaxis='y2', label=benchmark['label'])
+        fig.update_layout(
+            **_ml('⑥ 국고채 10년 · 3년 ETF proxy', height=300),
+            yaxis2=_visible_price_yaxis('y', 'right'),
+        )
+        _add_corr_annotation(fig, main_s, spx_s, label=f'vs {benchmark["label"]}')
+        return fig
+
+    dgs10 = bundle["dgs10"]
+    dfii10 = bundle["dfii10"]
+    dgs2 = bundle["dgs2"]
+    dtb3 = bundle["dtb3"]
+    if dgs10.empty and dfii10.empty and dgs2.empty and dtb3.empty:
         return None
 
     fig = go.Figure()
-    fig.add_hline(y=0, line=dict(color='rgba(255,255,255,0.20)', width=1))
-
-    if not t3m.empty:
-        fig.add_trace(go.Scatter(
-            x=t3m.index, y=t3m, name='10Y-3M 스프레드',
-            line=dict(color='#4BFFB3', width=1.5),
-            hovertemplate='<b>%{x|%Y-%m-%d}</b>  스프레드 %{y:.2f}%<extra></extra>',
-        ))
     if not dgs10.empty:
         fig.add_trace(go.Scatter(
             x=dgs10.index, y=dgs10, name='10Y 명목',
-            line=dict(color='rgba(200,200,200,0.55)', width=1.0, dash='dot'),
+            line=dict(color='rgba(200,200,200,0.72)', width=1.2),
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  10Y 명목 %{y:.2f}%<extra></extra>',
         ))
     if not dfii10.empty:
         fig.add_trace(go.Scatter(
             x=dfii10.index, y=dfii10, name='10Y 실질',
-            line=dict(color='rgba(255,180,120,0.65)', width=1.0, dash='dot'),
+            line=dict(color='rgba(255,180,120,0.78)', width=1.15),
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  10Y 실질 %{y:.2f}%<extra></extra>',
         ))
     if not dgs2.empty:
         fig.add_trace(go.Scatter(
             x=dgs2.index, y=dgs2, name='2Y',
-            line=dict(color='rgba(120,220,255,0.60)', width=1.0, dash='dot'),
+            line=dict(color='rgba(120,220,255,0.76)', width=1.1),
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  2Y %{y:.2f}%<extra></extra>',
         ))
     if not dtb3.empty:
         fig.add_trace(go.Scatter(
             x=dtb3.index, y=dtb3, name='3M',
-            line=dict(color='rgba(120,126,231,0.55)', width=1.0, dash='dot'),
+            line=dict(color='rgba(120,126,231,0.74)', width=1.1),
             hovertemplate='<b>%{x|%Y-%m-%d}</b>  3M %{y:.2f}%<extra></extra>',
         ))
 
-    main_s = t3m if not t3m.empty else dgs10 if not dgs10.empty else dfii10 if not dfii10.empty else dgs2 if not dgs2.empty else dtb3
+    main_s = dgs10 if not dgs10.empty else dfii10 if not dfii10.empty else dgs2 if not dgs2.empty else dtb3
     _add_spx_overlay(fig, main_s, spx_s, yaxis='y2', label=benchmark['label'])
     fig.update_layout(
-        **_ml('⑦ 10Y-3M 금리차 + 10Y 명목·실질 · 2Y · 3M', height=300),
+        **_ml('⑥ 10Y 명목·실질 · 2Y · 3M', height=300),
         yaxis2=_visible_price_yaxis('y', 'right'),
     )
     fig.layout.yaxis.ticksuffix = '%'
-    if not t3m.empty:
-        _add_corr_annotation(fig, t3m, spx_s, label=f'vs {benchmark["label"]}')
+    _add_corr_annotation(fig, main_s, spx_s, label=f'vs {benchmark["label"]}')
     return fig
+
+
+def make_macro_yield_spread_chart(years: int = 5, spx_s=None, benchmark_name='S&P500'):
+    """⑦ 대표 금리 스프레드 차트."""
+    bundle = _get_macro_yield_bundle(years, benchmark_name)
+    benchmark = bundle["benchmark"]
+
+    if bundle["kind"] == "kr":
+        spread = bundle["spread_10y3m"]
+        if spread.empty:
+            return None
+        fig = go.Figure()
+        fig.add_hline(y=0, line=dict(color='rgba(255,255,255,0.20)', width=1))
+        fig.add_trace(go.Scatter(
+            x=spread.index, y=spread, name='3Y-10Y 상대강도',
+            line=dict(color='#4BFFB3', width=1.5),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b>  상대강도 %{y:.2f}<extra></extra>',
+        ))
+        _add_spx_overlay(fig, spread, spx_s, yaxis='y2', label=benchmark['label'])
+        fig.update_layout(
+            **_ml('⑦ 국고채 3Y-10Y 상대강도 (ETF proxy)', height=300),
+            yaxis2=_visible_price_yaxis('y', 'right'),
+        )
+        _add_corr_annotation(fig, spread, spx_s, label=f'vs {benchmark["label"]}')
+        return fig
+
+    t3m = bundle["spread_10y3m"]
+    t2y = bundle["spread_10y2y"]
+    if t3m.empty and t2y.empty:
+        return None
+
+    fig = go.Figure()
+    fig.add_hline(y=0, line=dict(color='rgba(255,255,255,0.20)', width=1))
+    if not t3m.empty:
+        fig.add_trace(go.Scatter(
+            x=t3m.index, y=t3m, name='10Y-3M 스프레드',
+            line=dict(color='#4BFFB3', width=1.5),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b>  10Y-3M %{y:.2f}%<extra></extra>',
+        ))
+    if not t2y.empty:
+        fig.add_trace(go.Scatter(
+            x=t2y.index, y=t2y, name='10Y-2Y 스프레드',
+            line=dict(color='rgba(120,220,255,0.78)', width=1.25),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b>  10Y-2Y %{y:.2f}%<extra></extra>',
+        ))
+    main_s = t3m if not t3m.empty else t2y
+    _add_spx_overlay(fig, main_s, spx_s, yaxis='y2', label=benchmark['label'])
+    fig.update_layout(
+        **_ml('⑦ 10Y-3M · 10Y-2Y 금리 스프레드', height=300),
+        yaxis2=_visible_price_yaxis('y', 'right'),
+    )
+    fig.layout.yaxis.ticksuffix = '%'
+    _add_corr_annotation(fig, main_s, spx_s, label=f'vs {benchmark["label"]}')
+    return fig
+
+
+def make_macro_yield_curve_chart(years: int = 5, spx_s=None, benchmark_name='S&P500'):
+    """하위 호환용: 금리 스프레드 차트."""
+    return make_macro_yield_spread_chart(years=years, spx_s=spx_s, benchmark_name=benchmark_name)
 
 
 def make_macro_ai_capex_chart(years: int = 5, spx_s=None):
@@ -6729,36 +6828,94 @@ def main(page="signal"):
 
     def render_market_macro_main_section(container):
         with container:
-            st.caption("FRED + yfinance 기반 매크로 지표 (일 1회 캐시). 나스닥은 미국 매크로 세트를 그대로 쓰고, 코스피는 변동성·텀스프레드·신용계열을 한국형 프록시로 대체합니다.")
+            st.markdown("""
+            <style>
+            .macro-main-helper-text {
+                font-size: 11.5px;
+                line-height: 1.45;
+                color: rgba(255,255,255,0.56);
+                margin: 2px 0 14px 0;
+            }
+            .macro-main-divider {
+                border-top: 1px solid rgba(255,255,255,0.08);
+                margin: 24px 0;
+            }
+            .macro-main-control-label {
+                font-size: 11.5px;
+                color: rgba(255,255,255,0.72);
+                font-weight: 600;
+                line-height: 1.2;
+                margin-bottom: 0.7rem;
+            }
+            .macro-main-control-spacer {
+                height: 18px;
+            }
+            .st-key-macro_main_benchmark div[data-baseweb="select"] > div,
+            .st-key-macro_main_show_spx label,
+            .st-key-macro_main_show_spx span,
+            .st-key-macro_main_show_spx p,
+            .st-key-macro_main_show_raw label,
+            .st-key-macro_main_show_raw span,
+            .st-key-macro_main_show_raw p,
+            .st-key-macro_main_years div[data-baseweb="slider"] + div {
+                font-size: 13.5px !important;
+                color: rgba(255,255,255,0.92) !important;
+            }
+            .st-key-macro_main_benchmark div[data-baseweb="select"] > div {
+                min-height: 2.55rem;
+                border-color: rgba(95,86,214,0.56) !important;
+                background: rgba(52,44,112,0.18) !important;
+                box-shadow: none !important;
+            }
+            .st-key-macro_main_show_spx [data-baseweb="checkbox"] > div,
+            .st-key-macro_main_show_raw [data-baseweb="checkbox"] > div {
+                border-color: rgba(95,86,214,0.68) !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
 
-            _c0, _c1, _c2, _c3, _c4 = st.columns([1.3, 2.7, 1, 1, 1.4])
+            st.markdown('<div class="macro-main-helper-text">FRED + yfinance 기반 매크로 지표입니다. 나스닥은 미국 세트를 그대로 쓰고, 코스피는 변동성·텀스프레드·신용계열을 한국형 프록시로 대체합니다.</div>', unsafe_allow_html=True)
+
+            st.markdown('<div class="macro-main-divider"></div>', unsafe_allow_html=True)
+            _l0, _l1, _l2, _l3 = st.columns([1.35, 2.85, 1.0, 1.0], vertical_alignment="bottom")
+            with _l0:
+                st.markdown('<div class="macro-main-control-label">기준지수</div>', unsafe_allow_html=True)
+            with _l1:
+                st.markdown('<div class="macro-main-control-label">기간</div>', unsafe_allow_html=True)
+            with _l2:
+                st.markdown('<div class="macro-main-control-label">지수 오버레이</div>', unsafe_allow_html=True)
+            with _l3:
+                st.markdown('<div class="macro-main-control-label">원본선 표시</div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro-main-control-spacer"></div>', unsafe_allow_html=True)
+
+            _c0, _c1, _c2, _c3 = st.columns([1.35, 2.85, 1.0, 1.0], vertical_alignment="bottom")
             with _c0:
-                _benchmark_name = st.selectbox("기준지수", options=["S&P500", "Nasdaq", "KOSPI"], index=0, label_visibility='collapsed')
+                _benchmark_name = st.selectbox("기준지수", options=["S&P500", "Nasdaq", "KOSPI"], index=0, label_visibility='collapsed', key='macro_main_benchmark')
             with _c1:
                 _yr_opts = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
-                _macro_years = st.select_slider("기간", options=list(_yr_opts.keys()), value=3, format_func=lambda x: _yr_opts[x], label_visibility='collapsed')
+                _macro_years = st.select_slider("기간", options=list(_yr_opts.keys()), value=3, format_func=lambda x: _yr_opts[x], label_visibility='collapsed', key='macro_main_years')
             with _c2:
-                _show_spx = st.checkbox("S&P500 오버레이", value=True)
+                _show_spx = st.checkbox("S&P500 오버레이", value=True, key='macro_main_show_spx', label_visibility='collapsed')
             with _c3:
-                _show_raw_macro = st.checkbox("원본선 표시", value=False)
-            with _c4:
-                _combo_modes = st.multiselect("⑤ 신호", options=["Watch", "Risk"], default=["Watch"], label_visibility='collapsed')
+                _show_raw_macro = st.checkbox("원본선 표시", value=False, key='macro_main_show_raw', label_visibility='collapsed')
 
+            st.markdown('<div class="macro-main-divider"></div>', unsafe_allow_html=True)
             with st.expander("고급 설정", expanded=False):
                 _gp1, _gp2, _gp3, _gp4, _gp5 = st.columns(5)
                 with _gp1:
-                    _ema_span = st.selectbox("EMA", [10, 20], index=1)
+                    _ema_span = st.selectbox("EMA", [10, 20], index=1, key='macro_main_ema')
                 with _gp2:
-                    _std_window = st.selectbox("rolling std N", [10, 20, 40], index=2)
+                    _std_window = st.selectbox("rolling std N", [10, 20, 40], index=2, key='macro_main_std_window')
                 with _gp3:
-                    _ema_compare_days = st.selectbox("EMA 비교 M일", [5, 10, 20], index=1)
+                    _ema_compare_days = st.selectbox("EMA 비교 M일", [5, 10, 20], index=1, key='macro_main_ema_compare_days')
                 with _gp4:
-                    _start_count = st.selectbox("하락 시작", [3, 4], index=1, format_func=lambda x: f"{x}/5")
+                    _start_count = st.selectbox("하락 시작", [3, 4], index=1, format_func=lambda x: f"{x}/5", key='macro_main_start_count')
                 with _gp5:
-                    _end_count = st.selectbox("하락 종료", [3, 4], index=0, format_func=lambda x: f"{x}/5")
+                    _end_count = st.selectbox("하락 종료", [3, 4], index=0, format_func=lambda x: f"{x}/5", key='macro_main_end_count')
 
             _downturn_params = {'ema_span': _ema_span, 'std_window': _std_window, 'ema_compare_days': _ema_compare_days, 'start_count': _start_count, 'end_count': _end_count}
 
+            st.markdown('<div class="macro-main-divider"></div>', unsafe_allow_html=True)
             with st.spinner("📡 기준 지수 데이터 로딩 중..."):
                 _benchmark_cfg = _get_macro_benchmark(_benchmark_name)
                 _spx_s = _yf_close(_benchmark_cfg['code'], _macro_years) if _show_spx else None
@@ -6770,9 +6927,9 @@ def main(page="signal"):
                     make_macro_ig_spread_chart(_macro_years, _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),
                     make_macro_credit_stress_chart(_macro_years, _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),
                     make_macro_options_chart(_macro_years, _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),
-                    make_macro_combo_downturn_chart(_macro_years, _spx_s, _combo_modes, _downturn_params, _benchmark_name),
                     make_macro_vix_spread_chart(_macro_years, _spx_s, _show_raw_macro, _downturn_params, _benchmark_name),
-                    make_macro_yield_curve_chart(_macro_years, _spx_s, _benchmark_name),
+                    make_macro_rate_levels_chart(_macro_years, _spx_s, _benchmark_name),
+                    make_macro_yield_spread_chart(_macro_years, _spx_s, _benchmark_name),
                     make_macro_pmi_chart(_macro_years, _spx_s, _benchmark_name),
                     make_macro_liquidity_chart(_macro_years, _spx_s, _benchmark_name),
                     make_macro_ai_capex_chart(_macro_years, _spx_s),
@@ -6782,10 +6939,12 @@ def main(page="signal"):
             for i, ch in enumerate(_macro_charts):
                 if ch is not None:
                     with _mc[i % 2]:
-                        st.plotly_chart(ch, width="stretch", config={"displayModeBar": False}, key=f"macro_main_chart_{i}_{_benchmark_name}_{_macro_years}_{int(_show_spx)}_{int(_show_raw_macro)}")
+                        _chart = _tune_macro_main_chart(ch)
+                        st.plotly_chart(_chart, width="stretch", config={"displayModeBar": False}, key=f"macro_main_chart_{i}_{_benchmark_name}_{_macro_years}_{int(_show_spx)}_{int(_show_raw_macro)}")
+                        st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
                 else:
                     with _mc[i % 2]:
-                        _labels = ['⓪ S&P500', '① HY 스프레드', '② IG 스프레드', '③ 크레딧 스트레스', '④ VIX', '⑤ 종합 하락 사이클', '⑥ VIX 스프레드', '⑦ 금리차', '⑧ 경기 모멘텀', '⑨ 유동성', '⑩ AI CAPEX']
+                        _labels = ['⓪ 지수 리스크 사이클', '① HY 스프레드', '② IG 스프레드', '③ 크레딧 스트레스', '④ VIX', '⑤ VIX 스프레드', '⑥ 금리 레벨', '⑦ 금리 스프레드', '⑧ 경기 모멘텀', '⑨ 유동성', '⑩ AI CAPEX']
                         st.warning(f"{_labels[i]} 데이터 로딩 실패 — FRED 일시 불가. 잠시 후 재시도해 주세요.")
 
     # ═══════════════════════════════════════════════════════════
