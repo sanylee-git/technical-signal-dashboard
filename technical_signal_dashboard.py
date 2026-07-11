@@ -5677,6 +5677,7 @@ def make_macro_ai_capex_chart(years: int = 5, spx_s=None):
 
     fig = make_subplots(
         rows=2, cols=1,
+        specs=[[{"secondary_y": True}], [{}]],
         shared_xaxes=True,
         row_heights=[0.65, 0.35],
         vertical_spacing=0.06,
@@ -5696,23 +5697,27 @@ def make_macro_ai_capex_chart(years: int = 5, spx_s=None):
         fig.add_trace(go.Scatter(
             x=capex_df.index, y=capex_df[col], name=col, customdata=_quarter_labels,
             line=dict(color=line_map.get(col, '#888'), width=1.4),
+            connectgaps=True,
             hovertemplate='<b>%{customdata}</b><br>%{y:.1f} bn USD<extra></extra>',
-        ), row=1, col=1)
+        ), row=1, col=1, secondary_y=False)
 
     fig.add_trace(go.Scatter(
         x=total.index, y=total, name='4개사 합산 CAPEX', customdata=_quarter_labels,
         line=dict(color=line_map['Total CAPEX'], width=2.0),
+        connectgaps=True,
         hovertemplate='<b>%{customdata}</b><br>합산 %{y:.1f} bn USD<extra></extra>',
-    ), row=1, col=1)
+    ), row=1, col=1, secondary_y=True)
 
     fig.add_trace(go.Scatter(
         x=qoq.index, y=qoq, name='합산 QoQ%', customdata=_quarter_labels,
         line=dict(color='rgba(75,255,179,0.70)', width=1.4, dash='dot'),
+        connectgaps=True,
         hovertemplate='<b>%{customdata}</b><br>QoQ %{y:.1f}%<extra></extra>',
     ), row=2, col=1)
     fig.add_trace(go.Scatter(
         x=yoy.index, y=yoy, name='합산 YoY%', customdata=_quarter_labels,
         line=dict(color='rgba(255,140,105,0.75)', width=1.4, dash='dash'),
+        connectgaps=True,
         hovertemplate='<b>%{customdata}</b><br>YoY %{y:.1f}%<extra></extra>',
     ), row=2, col=1)
 
@@ -5726,7 +5731,16 @@ def make_macro_ai_capex_chart(years: int = 5, spx_s=None):
         hovermode='x unified',
     )
     fig.update_xaxes(gridcolor='rgba(255,255,255,0.04)', tickfont=dict(size=9))
-    fig.update_yaxes(gridcolor='rgba(255,255,255,0.04)', tickfont=dict(size=9), zeroline=False)
+    fig.update_yaxes(gridcolor='rgba(255,255,255,0.04)', tickfont=dict(size=9), zeroline=False, row=1, col=1, secondary_y=False)
+    fig.update_yaxes(gridcolor='rgba(255,255,255,0.04)', tickfont=dict(size=9), zeroline=False, row=1, col=1, secondary_y=True)
+    fig.update_yaxes(gridcolor='rgba(255,255,255,0.04)', tickfont=dict(size=9), zeroline=False, row=2, col=1)
+    fig.add_annotation(
+        text='Source: Yahoo Finance quarterly cash flow + local CSV fallback',
+        x=1.0, y=1.13, xref='paper', yref='paper',
+        xanchor='right', yanchor='bottom',
+        showarrow=False,
+        font=dict(size=9, color='#666'),
+    )
     for ann in fig.layout.annotations:
         ann.font.size = 9
         ann.font.color = '#666'
