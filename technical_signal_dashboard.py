@@ -1587,6 +1587,83 @@ def signal_badges_html(dyn_buy, dyn_sell, band_buy, band_sell,
     return " ".join(parts)
 
 
+def _empty_signal_row(code, name):
+    return {
+        'code': code, 'name': name,
+        'close': None, 'pct_change': None, 'rsi': None,
+        'bb_upper_touch': False, 'bb_lower_touch': False,
+        'dyn_buy_signal': False, 'dyn_sell_signal': False,
+        'band_buy_signal': False, 'band_sell_signal': False,
+        'dyn_buy_flag': False, 'dyn_sell_flag': False,
+        'band_buy_flag': False, 'band_sell_flag': False,
+        'dyn_holding': False, 'band_holding': False,
+    }
+
+
+def _build_signal_rows_for_items(items, closes, highs, lows,
+                                 bb_window, bb_std, rsi_period,
+                                 rsi_buy_center, rsi_sell_center,
+                                 rsi_band, rsi_lookback, persist,
+                                 phase2_rsi):
+    rows = []
+    for item in items:
+        code = item['code']
+        row = _empty_signal_row(code, item['name'])
+        if code in closes.columns:
+            series = closes[code].dropna()
+            _h = highs[code] if not highs.empty and code in highs.columns else None
+            _l = lows[code]  if not lows.empty  and code in lows.columns  else None
+            sig = get_current_signals(
+                series, high=_h, low=_l,
+                bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
+                rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
+                rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
+                phase2_rsi=phase2_rsi,
+            )
+            if sig:
+                row.update(sig)
+            elif len(series) >= 2:
+                last = float(series.iloc[-1])
+                prev = float(series.iloc[-2])
+                row['close'] = last
+                row['pct_change'] = (last / prev - 1) * 100 if prev else 0.0
+        rows.append(row)
+    return rows
+
+
+def _tf_signal_badges_html(tf_signals: dict, current_chart_mode=None):
+    if not tf_signals:
+        return '<span style="color:#333;font-size:12px;">─</span>'
+
+    ordered_labels = ["일봉", "주봉", "월봉"]
+    if current_chart_mode in ordered_labels:
+        ordered_labels = [current_chart_mode] + [x for x in ordered_labels if x != current_chart_mode]
+
+    parts = []
+    for label in ordered_labels:
+        sig = tf_signals.get(label)
+        if not sig:
+            continue
+        if sig.get('dyn_buy_signal'):
+            badge = _badge("★ 매수", "#4BFFB3", "#0a2b1e", "rgba(75,255,179,0.3)")
+        elif sig.get('dyn_buy_flag'):
+            badge = _badge("▲ 플래그", "#7AAFD4", "#0a1520", "rgba(120,175,212,0.2)")
+        elif sig.get('dyn_holding'):
+            badge = _badge("보유", "#C8C850", "#1c1c08", "rgba(200,200,80,0.3)")
+        elif sig.get('dyn_sell_signal'):
+            badge = _badge("★ 매도", "#FF4B6E", "#2d0d1a", "rgba(255,75,110,0.25)")
+        elif sig.get('dyn_sell_flag'):
+            badge = _badge("▼ 플래그", "#E08A3A", "#221207", "rgba(224,138,58,0.2)")
+        else:
+            badge = _badge("─", "#666", "#111113", "rgba(255,255,255,0.06)")
+        parts.append(
+            f'<div style="display:flex;align-items:center;gap:6px;margin:2px 0;">'
+            f'<span style="display:inline-block;min-width:22px;font-size:10px;color:#777;font-weight:600;">{label}</span>'
+            f'{badge}</div>'
+        )
+    return "".join(parts) if parts else '<span style="color:#333;font-size:12px;">─</span>'
+
+
 def render_signal_table(signal_rows, market=None, current_chart_mode=None, current_intra_interval=None):
     from urllib.parse import quote_plus
 
@@ -1633,6 +1710,7 @@ def render_signal_table(signal_rows, market=None, current_chart_mode=None, curre
             dyn_buy_flag, dyn_sell_flag, band_buy_flag, band_sell_flag,
             dyn_holding=dyn_holding, band_holding=band_holding,
         )
+        tf_badges = _tf_signal_badges_html(row.get('tf_signals'), current_chart_mode=current_chart_mode)
 
         _name_html = row['name']
         if market in {"kr", "us"}:
@@ -1660,6 +1738,7 @@ def render_signal_table(signal_rows, market=None, current_chart_mode=None, curre
             <td style="padding:2px 14px;font-size:13px;color:{pct_color};text-align:right;font-variant-numeric:tabular-nums;">{pct_str}</td>
             <td style="padding:2px 14px;font-size:13px;color:{rsi_color};text-align:right;font-variant-numeric:tabular-nums;">{rsi_str}</td>
             <td style="padding:2px 14px;">{badges}</td>
+            <td style="padding:4px 14px;">{tf_badges}</td>
         </tr>""")
 
     return f"""
@@ -1673,6 +1752,7 @@ def render_signal_table(signal_rows, market=None, current_chart_mode=None, curre
                 <th style="padding:8px 14px;font-size:10px;color:#555;font-weight:600;text-align:right;text-transform:uppercase;letter-spacing:0.8px;">등락률</th>
                 <th style="padding:8px 14px;font-size:10px;color:#555;font-weight:600;text-align:right;text-transform:uppercase;letter-spacing:0.8px;">RSI</th>
                 <th style="padding:8px 14px;font-size:10px;color:#555;font-weight:600;text-align:left;text-transform:uppercase;letter-spacing:0.8px;">신호</th>
+                <th style="padding:8px 14px;font-size:10px;color:#555;font-weight:600;text-align:left;text-transform:uppercase;letter-spacing:0.8px;">일/주/월</th>
             </tr>
         </thead>
         <tbody>{''.join(rows_html)}</tbody>
@@ -7132,40 +7212,14 @@ def main(page="signal"):
                     + " — 해당 종목은 빈 값으로 표시됩니다. 잠시 후 새로고침하면 자동으로 다시 시도됩니다."
                 )
 
-            # 신호 계산
-            signal_rows = []
-            for fav in favorites:
-                code = fav['code']
-                row = {
-                    'code': code, 'name': fav['name'],
-                    'close': None, 'pct_change': None, 'rsi': None,
-                    'bb_upper_touch': False, 'bb_lower_touch': False,
-                    'dyn_buy_signal': False, 'dyn_sell_signal': False,
-                    'band_buy_signal': False, 'band_sell_signal': False,
-                    'dyn_buy_flag': False, 'dyn_sell_flag': False,
-                    'band_buy_flag': False, 'band_sell_flag': False,
-                    'dyn_holding': False, 'band_holding': False,
-                }
-                if code in closes.columns:
-                    series = closes[code].dropna()
-                    _h = highs[code] if not highs.empty and code in highs.columns else None
-                    _l = lows[code]  if not lows.empty  and code in lows.columns  else None
-                    sig = get_current_signals(
-                        series, high=_h, low=_l,
-                        bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
-                        rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
-                        rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
-                        phase2_rsi=phase2_rsi,
-                    )
-                    if sig:
-                        row.update(sig)
-                    elif len(series) >= 2:
-                        # 신호 계산 불가(데이터 부족)이어도 가격·등락률은 표시
-                        last = float(series.iloc[-1])
-                        prev = float(series.iloc[-2])
-                        row['close'] = last
-                        row['pct_change'] = (last / prev - 1) * 100 if prev else 0.0
-                signal_rows.append(row)
+            # 현재 차트모드 기준 신호 계산 (요약 카드/상세 차트 기준 유지)
+            signal_rows = _build_signal_rows_for_items(
+                favorites, closes, highs, lows,
+                bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
+                rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
+                rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
+                phase2_rsi=phase2_rsi,
+            )
 
             # 확정 신호 > 보유 중 > 플래그 > 없음 순 정렬
             def sort_key(r):
@@ -7185,40 +7239,45 @@ def main(page="signal"):
 
             signal_rows.sort(key=sort_key)
 
-            # US 신호 계산
-            us_signal_rows = []
-            for _item in US_WATCHLIST:
-                _code = _item['code']
-                _row = {
-                    'code': _code, 'name': _item['name'],
-                    'close': None, 'pct_change': None, 'rsi': None,
-                    'bb_upper_touch': False, 'bb_lower_touch': False,
-                    'dyn_buy_signal': False, 'dyn_sell_signal': False,
-                    'band_buy_signal': False, 'band_sell_signal': False,
-                    'dyn_buy_flag': False, 'dyn_sell_flag': False,
-                    'band_buy_flag': False, 'band_sell_flag': False,
-                    'dyn_holding': False, 'band_holding': False,
-                }
-                if _code in us_closes.columns:
-                    _series = us_closes[_code].dropna()
-                    _h = us_highs[_code] if not us_highs.empty and _code in us_highs.columns else None
-                    _l = us_lows[_code]  if not us_lows.empty  and _code in us_lows.columns  else None
-                    _sig = get_current_signals(
-                        _series, high=_h, low=_l,
+            # US 현재 차트모드 기준 신호 계산
+            us_signal_rows = _build_signal_rows_for_items(
+                US_WATCHLIST, us_closes, us_highs, us_lows,
+                bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
+                rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
+                rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
+                phase2_rsi=phase2_rsi,
+            )
+            us_signal_rows.sort(key=sort_key)
+
+            # 펼침 테이블용 멀티 타임프레임 신호 (일봉 3개월 / 주봉 2년 / 월봉 10년)
+            _tf_specs = [
+                ("일봉", "1d", 63),
+                ("주봉", "1wk", 504),
+                ("월봉", "1mo", 2520),
+            ]
+
+            def _attach_multitimeframe_signals(items, rows, tickers, is_us=False):
+                tf_maps = {}
+                for _tf_label, _tf_interval, _tf_days in _tf_specs:
+                    _tf_start = str(today - timedelta(days=_tf_days + 400))
+                    _tf_closes, _tf_highs, _tf_lows = fetch_ohlcv_batch(tickers, _tf_start, data_end, _tf_interval)
+                    _tf_rows = _build_signal_rows_for_items(
+                        items, _tf_closes, _tf_highs, _tf_lows,
                         bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
                         rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
                         rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
                         phase2_rsi=phase2_rsi,
                     )
-                    if _sig:
-                        _row.update(_sig)
-                    elif len(_series) >= 2:
-                        _last = float(_series.iloc[-1])
-                        _prev = float(_series.iloc[-2])
-                        _row['close'] = _last
-                        _row['pct_change'] = (_last / _prev - 1) * 100 if _prev else 0.0
-                us_signal_rows.append(_row)
-            us_signal_rows.sort(key=sort_key)
+                    tf_maps[_tf_label] = {r['code']: r for r in _tf_rows}
+                for _row in rows:
+                    _row['tf_signals'] = {
+                        _tf_label: tf_maps.get(_tf_label, {}).get(_row['code'], _empty_signal_row(_row['code'], _row['name']))
+                        for _tf_label, _, _ in _tf_specs
+                    }
+
+            with st.spinner("📡 일/주/월 보조 신호 계산 중..."):
+                _attach_multitimeframe_signals(favorites, signal_rows, tickers_tuple)
+                _attach_multitimeframe_signals(US_WATCHLIST, us_signal_rows, us_tickers_tuple, is_us=True)
 
             # 신호 요약 카운트 — 한국
             n_dyn_buy_flag  = sum(1 for r in signal_rows if r.get('dyn_buy_flag')  and not r.get('dyn_buy_signal'))
