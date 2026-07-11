@@ -1436,6 +1436,18 @@ def make_detail_chart(ohlcv, name, period_days,
     fig.add_hline(y=50, line_color="rgba(255,255,255,0.08)", line_width=0.7,
                   line_dash="dot", row=2, col=1)
 
+    # 동적 플래그/확정 (Row2)
+    if len(dyn_buy_flag_idx) > 0:
+        fig.add_trace(go.Scatter(x=dyn_buy_flag_idx, y=rsi[dyn_buy_flag_idx], mode='markers',
+            marker=dict(symbol='triangle-up', color='#4F88C6', size=8,
+                        line=dict(color='rgba(79,136,198,0.42)', width=1)),
+            showlegend=False), row=2, col=1)
+    if len(dyn_sell_flag_idx) > 0:
+        fig.add_trace(go.Scatter(x=dyn_sell_flag_idx, y=rsi[dyn_sell_flag_idx], mode='markers',
+            marker=dict(symbol='triangle-down', color='#E08A3A', size=8,
+                        line=dict(color='rgba(224,138,58,0.42)', width=1)),
+            showlegend=False), row=2, col=1)
+
     # 동적+BB 확정 ★ (Row2: 초록=매수, 빨강=매도)
     if len(dyn_buy_idx) > 0:
         fig.add_trace(go.Scatter(x=dyn_buy_idx, y=rsi[dyn_buy_idx], mode='markers',
@@ -6145,7 +6157,7 @@ def main(page="signal"):
         persist = st.select_slider(
             "persist",
             options=[1, 2, 3],
-            value=1,
+            value=2,
             label_visibility="collapsed",
         )
 
@@ -7498,7 +7510,7 @@ def main(page="signal"):
                 - 동적 RSI 기준이므로 종목별/구간별로 임계값이 자동 조정됩니다.
 
                 > 이 신호는 참고 지표이며, 실제 매매 결정은 추가 분석 후 본인 판단으로 하세요.
-                """)
+                """, unsafe_allow_html=True)
 
         # ═══════════════════════════════════════════════════════════
         # TAB 2 — 시장 내부지표
