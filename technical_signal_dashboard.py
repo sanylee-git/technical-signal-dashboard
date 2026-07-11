@@ -6070,6 +6070,20 @@ def main(page="signal"):
         }
         </style>
         """, unsafe_allow_html=True)
+    elif page in ("signal", "all"):
+        st.markdown("""
+        <style>
+        .main .block-container,
+        [data-testid="stMainBlockContainer"] {
+            max-width: 1400px !important;
+            width: 100% !important;
+            padding-left: 2rem !important;
+            padding-right: 2rem !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
 
     # 항상 파일에서 읽음 → 외부 수정·추가 즉시 반영, 삭제도 정확히 유지됨
     st.session_state.favorites = load_favorites()
