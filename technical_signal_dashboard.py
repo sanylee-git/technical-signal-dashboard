@@ -5685,18 +5685,24 @@ def make_macro_ai_capex_chart(years: int = 5, spx_s=None):
     )
 
     line_map = {
-        'Google / Alphabet': '#4BFFB3',
-        'Microsoft': '#7AAFD4',
-        'Meta': '#FF8C69',
-        'Amazon': '#C8C850',
+        'Google / Alphabet': 'rgba(75,255,179,0.58)',
+        'Microsoft': 'rgba(122,175,212,0.52)',
+        'Meta': 'rgba(255,140,105,0.56)',
+        'Amazon': 'rgba(200,200,80,0.50)',
         'Total CAPEX': '#EDEDED',
+    }
+    company_dash_map = {
+        'Google / Alphabet': 'solid',
+        'Microsoft': 'dot',
+        'Meta': 'solid',
+        'Amazon': 'dash',
     }
     for col in [c for c in capex_df.columns if c != 'Total CAPEX']:
         if capex_df[col].dropna().empty:
             continue
         fig.add_trace(go.Scatter(
             x=capex_df.index, y=capex_df[col], name=col, customdata=_quarter_labels,
-            line=dict(color=line_map.get(col, '#888'), width=1.4),
+            line=dict(color=line_map.get(col, 'rgba(136,136,136,0.50)'), width=1.05, dash=company_dash_map.get(col, 'solid')),
             connectgaps=True,
             hovertemplate='<b>%{customdata}</b><br>%{y:.1f} bn USD<extra></extra>',
         ), row=1, col=1, secondary_y=False)
@@ -5710,13 +5716,13 @@ def make_macro_ai_capex_chart(years: int = 5, spx_s=None):
 
     fig.add_trace(go.Scatter(
         x=qoq.index, y=qoq, name='합산 QoQ%', customdata=_quarter_labels,
-        line=dict(color='rgba(75,255,179,0.70)', width=1.4, dash='dot'),
+        line=dict(color='rgba(75,255,179,0.78)', width=1.35),
         connectgaps=True,
         hovertemplate='<b>%{customdata}</b><br>QoQ %{y:.1f}%<extra></extra>',
     ), row=2, col=1)
     fig.add_trace(go.Scatter(
         x=yoy.index, y=yoy, name='합산 YoY%', customdata=_quarter_labels,
-        line=dict(color='rgba(255,140,105,0.75)', width=1.4, dash='dash'),
+        line=dict(color='rgba(255,140,105,0.82)', width=1.35),
         connectgaps=True,
         hovertemplate='<b>%{customdata}</b><br>YoY %{y:.1f}%<extra></extra>',
     ), row=2, col=1)
