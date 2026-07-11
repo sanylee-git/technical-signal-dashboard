@@ -1587,7 +1587,9 @@ def signal_badges_html(dyn_buy, dyn_sell, band_buy, band_sell,
     return " ".join(parts)
 
 
-def render_signal_table(signal_rows, market=None):
+def render_signal_table(signal_rows, market=None, current_chart_mode=None, current_intra_interval=None):
+    from urllib.parse import quote_plus
+
     rows_html = []
     for row in signal_rows:
         dyn_buy       = row.get('dyn_buy_signal',  False)
@@ -1634,7 +1636,15 @@ def render_signal_table(signal_rows, market=None):
 
         _name_html = row['name']
         if market in {"kr", "us"}:
-            _scan_href = f"?scan_market={market}&scan_code={row['code']}"
+            _params = [
+                ("scan_market", market),
+                ("scan_code", row["code"]),
+            ]
+            if current_chart_mode:
+                _params.append(("chart_mode", current_chart_mode))
+                if current_chart_mode == "분봉" and current_intra_interval:
+                    _params.append(("intra_interval", current_intra_interval))
+            _scan_href = "?" + "&".join(f"{k}={quote_plus(str(v))}" for k, v in _params)
             _name_html = (
                 f'<a href="{_scan_href}" style="color:#EDEDED;text-decoration:none;display:block;">'
                 f'{star}{row["name"]}'
@@ -6067,7 +6077,15 @@ def main(page="signal"):
 
     _scan_market_param = st.query_params.get("scan_market")
     _scan_code_param = st.query_params.get("scan_code")
-    if _scan_market_param and _scan_code_param:
+    _chart_mode_param = st.query_params.get("chart_mode")
+    _intra_interval_param = st.query_params.get("intra_interval")
+    _scan_nav_sig = "|".join([
+        str(_scan_market_param or ""),
+        str(_scan_code_param or ""),
+        str(_chart_mode_param or ""),
+        str(_intra_interval_param or ""),
+    ])
+    if _scan_market_param and _scan_code_param and st.session_state.get("_last_scan_nav_sig") != _scan_nav_sig:
         if _scan_market_param == "kr":
             _matched_kr = next((f for f in favorites if f['code'] == _scan_code_param), None)
             if _matched_kr is not None:
@@ -6080,6 +6098,11 @@ def main(page="signal"):
                 st.session_state.scan_active = 'us'
                 st.session_state.scan_us_name = _matched_us['name']
                 st.session_state.scan_us_prev_name = _matched_us['name']
+        if _chart_mode_param in {"일봉", "주봉", "월봉", "분봉"}:
+            st.session_state["chart_mode"] = _chart_mode_param
+        if _intra_interval_param in {"5분", "15분", "30분", "60분"}:
+            st.session_state["intra_interval"] = _intra_interval_param
+        st.session_state["_last_scan_nav_sig"] = _scan_nav_sig
 
     if page in ("market_macro", "macro2", "macro3"):
         st.markdown("""
@@ -7243,10 +7266,26 @@ def main(page="signal"):
 
             # ① 전체 종목 현황 — 한국 / 미국 분리 (접힘)
             with st.expander(f"📋 🇰🇷 한국 즐겨찾기 현황 ({len(signal_rows)}개)", expanded=False):
-                st.markdown(render_signal_table(signal_rows, market='kr'), unsafe_allow_html=True)
+                st.markdown(
+                    render_signal_table(
+                        signal_rows,
+                        market='kr',
+                        current_chart_mode=chart_mode,
+                        current_intra_interval=intra_interval_label,
+                    ),
+                    unsafe_allow_html=True,
+                )
 
             with st.expander(f"📋 🇺🇸 미국 지수/ETF 현황 ({len(us_signal_rows)}개)", expanded=False):
-                st.markdown(render_signal_table(us_signal_rows, market='us'), unsafe_allow_html=True)
+                st.markdown(
+                    render_signal_table(
+                        us_signal_rows,
+                        market='us',
+                        current_chart_mode=chart_mode,
+                        current_intra_interval=intra_interval_label,
+                    ),
+                    unsafe_allow_html=True,
+                )
 
             # ② 종목 선택 — 한국 / 미국 좌우 분리
             col_kr, col_us = st.columns(2)
