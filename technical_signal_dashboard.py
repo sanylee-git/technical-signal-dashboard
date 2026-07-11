@@ -1384,7 +1384,7 @@ def make_detail_chart(ohlcv, name, period_days,
         name=name, line=dict(color="#EDEDED", width=1.5),
         hovertemplate="종가: %{y:,.0f}<extra></extra>"), row=1, col=1)
     fig.add_trace(go.Scatter(x=disp, y=dyn_holding_disp,
-        name="★ 보유 중", line=dict(color="#C8C850", width=2.2),
+        name="★ 보유 중", line=dict(color="#C8C850", width=1.5),
         connectgaps=False, hoverinfo='skip'), row=1, col=1)
     fig.add_trace(go.Scatter(x=disp, y=sma[disp],
         line=dict(color="rgba(120,126,231,0.4)", width=1, dash='dot'),
@@ -1401,10 +1401,10 @@ def make_detail_chart(ohlcv, name, period_days,
 
     # 동적+BB 확정 ★ / 밴드+BB 확정 ● — 시그널 없어도 레전드 항목은 항상 표시
     for _idx, _color, _outline, _sym, _sz, _label in [
-        (dyn_buy_flag_idx,  '#4F88C6', 'rgba(79,136,198,0.42)', 'triangle-up',   9, "▲ 매수 플래그"),
-        (dyn_sell_flag_idx, '#B85A7A', 'rgba(184,90,122,0.42)', 'triangle-down', 9, "▼ 매도 플래그"),
-        (dyn_buy_idx,  '#4BFFB3', 'rgba(75,255,179,0.4)',  'star',        10, "★ 동적+BB 매수"),
-        (dyn_sell_idx, '#FF4B6E', 'rgba(255,75,110,0.4)',  'star',        10, "★ 동적+BB 매도"),
+        (dyn_buy_flag_idx,  '#4F88C6', 'rgba(79,136,198,0.42)', 'triangle-up',   10, "▲ 매수 플래그"),
+        (dyn_sell_flag_idx, '#E08A3A', 'rgba(224,138,58,0.42)', 'triangle-down', 10, "▼ 매도 플래그"),
+        (dyn_buy_idx,  '#22C55E', 'rgba(34,197,94,0.42)',  'star',        11, "★ 동적+BB 매수"),
+        (dyn_sell_idx, '#FF4B6E', 'rgba(255,75,110,0.4)',  'star',        11, "★ 동적+BB 매도"),
     ]:
         _x = _idx if len(_idx) > 0 else []
         _y = close[_idx] if len(_idx) > 0 else []
@@ -1439,11 +1439,11 @@ def make_detail_chart(ohlcv, name, period_days,
     # 동적+BB 확정 ★ (Row2: 초록=매수, 빨강=매도)
     if len(dyn_buy_idx) > 0:
         fig.add_trace(go.Scatter(x=dyn_buy_idx, y=rsi[dyn_buy_idx], mode='markers',
-            marker=dict(symbol='star', color='#4BFFB3', size=8),
+            marker=dict(symbol='star', color='#22C55E', size=9),
             showlegend=False), row=2, col=1)
     if len(dyn_sell_idx) > 0:
         fig.add_trace(go.Scatter(x=dyn_sell_idx, y=rsi[dyn_sell_idx], mode='markers',
-            marker=dict(symbol='star', color='#FF4B6E', size=8),
+            marker=dict(symbol='star', color='#FF4B6E', size=9),
             showlegend=False), row=2, col=1)
 
     # ══════════════════════════════════════════
