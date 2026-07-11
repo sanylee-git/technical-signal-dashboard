@@ -5028,6 +5028,113 @@ def _build_macro_combo_status_panel(
     return summary_html, table_html
 
 
+def _build_macro_meta_combo_status_panel(
+    benchmark_name: str,
+    years: int,
+    spx_s: pd.Series,
+    meta_event_df: pd.DataFrame,
+    combo_a_event_df: pd.DataFrame,
+    combo_b_event_df: pd.DataFrame,
+    combo_a_cfg: dict,
+    combo_b_cfg: dict,
+    sync_bucket: str | None = None,
+):
+    if meta_event_df is None or meta_event_df.empty:
+        return "", ""
+
+    latest_meta = meta_event_df.sort_values("date").iloc[-1]
+    combo_state = bool(latest_meta.get("combo_risk_state", False))
+    basis_date = _macro_date_text(latest_meta.get("date"))
+    status_text = "리스크 사이클 ON" if combo_state else "리스크 사이클 OFF"
+    status_color = "#FF8C69" if combo_state else "#4BFFB3"
+    a_on = bool(latest_meta.get("a_state", False))
+    b_on = bool(latest_meta.get("b_state", False))
+    active_count = int(a_on) + int(b_on)
+    active_names = []
+    if a_on:
+        active_names.append("조합 A")
+    if b_on:
+        active_names.append("조합 B")
+    active_flags_text = ", ".join(active_names) if active_names else "없음"
+
+    combo_a_latest = combo_a_event_df.sort_values("date").iloc[-1] if combo_a_event_df is not None and not combo_a_event_df.empty else pd.Series(dtype=object)
+    combo_b_latest = combo_b_event_df.sort_values("date").iloc[-1] if combo_b_event_df is not None and not combo_b_event_df.empty else pd.Series(dtype=object)
+
+    def _build_entries(combo_label: str, combo_latest, combo_cfg: dict):
+        entries = [{
+            "label": combo_label,
+            "flag": bool(combo_latest.get("combo_risk_state", False)),
+            "latest_date": _macro_date_text(combo_latest.get("date")),
+        }]
+        for code in combo_cfg["selected_codes"]:
+            signal_series = _get_macro2_signal_series(
+                code,
+                years,
+                benchmark_name=benchmark_name,
+                spx_s=spx_s,
+                sync_bucket=sync_bucket,
+            )
+            latest_date = signal_series.index.max() if signal_series is not None and not signal_series.empty else None
+            flag_col = f"{_macro2_debug_name(code)}_flag"
+            entries.append({
+                "label": _MACRO2_SIGNAL_LABELS.get(code, code),
+                "flag": bool(combo_latest.get(flag_col, False)),
+                "latest_date": _macro_date_text(latest_date),
+            })
+        return entries
+
+    left_entries = _build_entries("조합 A", combo_a_latest, combo_a_cfg)
+    right_entries = _build_entries("조합 B", combo_b_latest, combo_b_cfg)
+    row_count = max(len(left_entries), len(right_entries))
+
+    def _entry_cells(entry):
+        if not entry:
+            return (
+                "<td style='padding:6px 8px;'></td>"
+                "<td style='padding:6px 8px;'></td>"
+                "<td style='padding:6px 8px;'></td>"
+            )
+        return (
+            f"<td style='padding:6px 8px;color:#D6D6D6;'>{entry['label']}</td>"
+            f"<td style='padding:6px 8px;text-align:center;'>{_macro_status_circle(entry['flag'], color_on='#4BFFB3')}</td>"
+            f"<td style='padding:6px 8px;color:#AFAFAF;'>{entry['latest_date']}</td>"
+        )
+
+    rows_html = []
+    for idx in range(row_count):
+        left = left_entries[idx] if idx < len(left_entries) else None
+        right = right_entries[idx] if idx < len(right_entries) else None
+        rows_html.append(f"<tr>{_entry_cells(left)}<td style='width:14px;'></td>{_entry_cells(right)}</tr>")
+
+    summary_html = (
+        '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;'
+        'padding:0 0 18px 0;color:#CFCFCF;font-size:13px;">'
+        f'<span><b>기준일</b> {basis_date}</span>'
+        f'<span><b>현재 플래그</b> {active_count} / 2 ON ({active_flags_text})</span>'
+        f'<span><b>상태</b> <span style="color:{status_color};font-weight:700;">{status_text}</span></span>'
+        '</div>'
+    )
+
+    table_html = (
+        "<table style='width:100%;border-collapse:collapse;font-size:11px;line-height:1.25;'>"
+        "<thead>"
+        "<tr>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>조합 A</th>"
+        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>플래그</th>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>최신날짜</th>"
+        "<th style='width:14px;border-bottom:1px solid rgba(255,255,255,0.08);'></th>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>조합 B</th>"
+        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>플래그</th>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>최신날짜</th>"
+        "</tr>"
+        "</thead>"
+        f"<tbody>{''.join(rows_html)}</tbody>"
+        "</table>"
+    )
+
+    return summary_html, table_html
+
+
 def make_macro_combo_dynamic_chart(
     years: int = 5,
     spx_s=None,
@@ -5395,7 +5502,7 @@ def make_macro_meta_combo_dynamic_chart(
         ))
 
     fig.update_layout(
-        **_ml(f'⓪ 메타 리스크 사이클 ({benchmark["label"]}, Nasdaq Meta)', height=300),
+        **_ml(f'⓪ 메타 리스크 사이클 ({benchmark["label"]}, Meta)', height=300),
     )
     if len(spx_aligned.index) >= 2:
         fig.update_xaxes(range=[spx_aligned.index.min(), spx_aligned.index.max()])
@@ -7111,6 +7218,83 @@ def main(page="signal"):
                         },
                     },
                 },
+                "snp_meta_1": {
+                    "label": "S&P 메타조합 1",
+                    "benchmark": "S&P500",
+                    "selected_codes": ["0", "1", "2", "3", "4", "6"],
+                    "combo_k": 2,
+                    "cfgs": {
+                        "0": {"ema": 20, "window": 252, "start": 0.80, "end": 0.70},
+                        "1": {"ema": 20, "window": 126, "start": 0.60, "end": 0.50},
+                        "2": {"ema": 30, "window": 63, "start": 0.80, "end": 0.10},
+                        "3": {"ema": 10, "window": 126, "start": 0.20, "end": 0.10},
+                        "4": {"ema": 10, "window": 63, "start": 0.20, "end": 0.10},
+                        "6": {"ema": 20, "window": 126, "start": 0.60, "end": 0.10},
+                    },
+                    "meta": {
+                        "exit_mode": "AND_EXIT",
+                        "combo_a": {
+                            "label": "A: ⓪ 지수 + ① HY + ② IG + ④ VIX + ⑥ VIX 스프레드",
+                            "selected_codes": ["0", "1", "2", "4", "6"],
+                            "combo_k": 3,
+                            "cfgs": {
+                                "0": {"ema": 20, "window": 252, "start": 0.80, "end": 0.70},
+                                "1": {"ema": 20, "window": 126, "start": 0.60, "end": 0.50},
+                                "2": {"ema": 30, "window": 63, "start": 0.80, "end": 0.10},
+                                "4": {"ema": 10, "window": 63, "start": 0.20, "end": 0.10},
+                                "6": {"ema": 20, "window": 126, "start": 0.60, "end": 0.10},
+                            },
+                        },
+                        "combo_b": {
+                            "label": "B: ⓪ 지수 + ① HY + ③ 신용스트레스 + ⑥ VIX 스프레드",
+                            "selected_codes": ["0", "1", "3", "6"],
+                            "combo_k": 3,
+                            "cfgs": {
+                                "0": {"ema": 20, "window": 252, "start": 0.80, "end": 0.70},
+                                "1": {"ema": 20, "window": 126, "start": 0.60, "end": 0.50},
+                                "3": {"ema": 10, "window": 126, "start": 0.20, "end": 0.10},
+                                "6": {"ema": 30, "window": 63, "start": 0.60, "end": 0.10},
+                            },
+                        },
+                    },
+                },
+                "snp_meta_2": {
+                    "label": "S&P 메타조합 2",
+                    "benchmark": "S&P500",
+                    "selected_codes": ["0", "1", "3", "4", "6"],
+                    "combo_k": 2,
+                    "cfgs": {
+                        "0": {"ema": 20, "window": 252, "start": 0.80, "end": 0.70},
+                        "1": {"ema": 20, "window": 126, "start": 0.60, "end": 0.50},
+                        "3": {"ema": 30, "window": 63, "start": 0.60, "end": 0.10},
+                        "4": {"ema": 10, "window": 252, "start": 0.40, "end": 0.30},
+                        "6": {"ema": 30, "window": 63, "start": 0.60, "end": 0.10},
+                    },
+                    "meta": {
+                        "exit_mode": "AND_EXIT",
+                        "combo_a": {
+                            "label": "A: ⓪ 지수 + ③ 신용스트레스 + ④ VIX",
+                            "selected_codes": ["0", "3", "4"],
+                            "combo_k": 3,
+                            "cfgs": {
+                                "0": {"ema": 20, "window": 252, "start": 0.80, "end": 0.70},
+                                "3": {"ema": 30, "window": 63, "start": 0.60, "end": 0.10},
+                                "4": {"ema": 10, "window": 252, "start": 0.40, "end": 0.30},
+                            },
+                        },
+                        "combo_b": {
+                            "label": "B: ⓪ 지수 + ① HY + ③ 신용스트레스 + ⑥ VIX 스프레드",
+                            "selected_codes": ["0", "1", "3", "6"],
+                            "combo_k": 3,
+                            "cfgs": {
+                                "0": {"ema": 20, "window": 252, "start": 0.80, "end": 0.70},
+                                "1": {"ema": 20, "window": 126, "start": 0.60, "end": 0.50},
+                                "3": {"ema": 10, "window": 126, "start": 0.20, "end": 0.10},
+                                "6": {"ema": 30, "window": 63, "start": 0.60, "end": 0.10},
+                            },
+                        },
+                    },
+                },
                 "nasdaq": {
                     "label": "나스닥 전용 조합",
                     "benchmark": "Nasdaq",
@@ -7306,14 +7490,27 @@ def main(page="signal"):
                     _macro4_charts = _build_macro2_dynamic_charts(_macro4_years, _spx_s4, _show_raw_macro4, _benchmark_name4, _macro4_cfgs, sync_bucket=_macro4_sync_bucket)
 
                 if _macro4_combo_fig is not None:
-                    _macro4_status_html, _macro4_status_table_html = _build_macro_combo_status_panel(
-                        benchmark_name=_benchmark_name4,
-                        years=_macro4_years,
-                        spx_s=_spx_s4,
-                        selected_codes=_selected_codes4,
-                        combo_event_df=_macro4_combo_event_df,
-                        sync_bucket=_macro4_sync_bucket,
-                    )
+                    if _macro4_is_meta:
+                        _macro4_status_html, _macro4_status_table_html = _build_macro_meta_combo_status_panel(
+                            benchmark_name=_benchmark_name4,
+                            years=_macro4_years,
+                            spx_s=_spx_s4,
+                            meta_event_df=_macro4_combo_event_df,
+                            combo_a_event_df=_macro4_combo_a_event_df,
+                            combo_b_event_df=_macro4_combo_b_event_df,
+                            combo_a_cfg=_combo_a_cfg,
+                            combo_b_cfg=_combo_b_cfg,
+                            sync_bucket=_macro4_sync_bucket,
+                        )
+                    else:
+                        _macro4_status_html, _macro4_status_table_html = _build_macro_combo_status_panel(
+                            benchmark_name=_benchmark_name4,
+                            years=_macro4_years,
+                            spx_s=_spx_s4,
+                            selected_codes=_selected_codes4,
+                            combo_event_df=_macro4_combo_event_df,
+                            sync_bucket=_macro4_sync_bucket,
+                        )
                     if _macro4_status_html:
                         st.markdown(_macro4_status_html, unsafe_allow_html=True)
                     if _macro4_status_table_html:
