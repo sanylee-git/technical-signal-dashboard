@@ -4782,7 +4782,7 @@ def _build_macro_combo_status_panel(
 ):
     selected_codes = list(selected_codes or [])
     if combo_event_df is None or combo_event_df.empty:
-        return "", pd.DataFrame()
+        return "", ""
 
     latest_row = combo_event_df.sort_values("date").iloc[-1]
     combo_state = bool(latest_row.get("combo_risk_state", False))
@@ -4791,17 +4791,18 @@ def _build_macro_combo_status_panel(
     basis_date = _macro_date_text(latest_row.get("date"))
     status_text = "리스크 사이클 ON" if combo_state else "리스크 사이클 OFF"
     status_color = "#FF8C69" if combo_state else "#4BFFB3"
+    active_flags_text = str(latest_row.get("active_flags", "") or "").strip() or "없음"
 
     summary_html = (
         '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;'
         'padding:8px 0 10px 0;color:#CFCFCF;font-size:13px;">'
         f'<span><b>기준일</b> {basis_date}</span>'
-        f'<span><b>현재 플래그</b> {active_count} / {combo_n} ON</span>'
+        f'<span><b>현재 플래그</b> {active_count} / {combo_n} ON ({active_flags_text})</span>'
         f'<span><b>상태</b> <span style="color:{status_color};font-weight:700;">{status_text}</span></span>'
         '</div>'
     )
 
-    rows = []
+    rows_html = []
     for code, label in _MACRO2_SIGNAL_LABELS.items():
         series = _get_macro2_signal_series(
             code,
@@ -4814,14 +4815,30 @@ def _build_macro_combo_status_panel(
         flag_col = f"{_macro2_debug_name(code)}_flag"
         is_selected = code in selected_codes
         is_on = bool(latest_row.get(flag_col, False)) if flag_col in latest_row.index else False
-        rows.append({
-            "지표": label,
-            "선택": _macro_status_circle(is_selected, color_on="#7C7CF7"),
-            "플래그": _macro_status_circle(is_on, color_on="#4BFFB3"),
-            "최신날짜": _macro_date_text(latest_date),
-        })
+        rows_html.append(
+            "<tr>"
+            f"<td style='padding:6px 8px;color:#D6D6D6;'>{label}</td>"
+            f"<td style='padding:6px 8px;text-align:center;'>{_macro_status_circle(is_selected, color_on='#7C7CF7')}</td>"
+            f"<td style='padding:6px 8px;text-align:center;'>{_macro_status_circle(is_on, color_on='#4BFFB3')}</td>"
+            f"<td style='padding:6px 8px;color:#AFAFAF;'>{_macro_date_text(latest_date)}</td>"
+            "</tr>"
+        )
 
-    return summary_html, pd.DataFrame(rows)
+    table_html = (
+        "<table style='width:100%;border-collapse:collapse;font-size:11px;line-height:1.25;'>"
+        "<thead>"
+        "<tr>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>지표</th>"
+        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>선택</th>"
+        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>플래그</th>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>최신날짜</th>"
+        "</tr>"
+        "</thead>"
+        f"<tbody>{''.join(rows_html)}</tbody>"
+        "</table>"
+    )
+
+    return summary_html, table_html
 
 
 def make_macro_combo_dynamic_chart(
@@ -6612,7 +6629,7 @@ def main(page="signal"):
                     _macro4_charts = _build_macro2_dynamic_charts(_macro4_years, _spx_s4, _show_raw_macro4, _benchmark_name4, _macro4_cfgs, sync_bucket=_macro4_sync_bucket)
 
                 if _macro4_combo_fig is not None:
-                    _macro4_status_html, _macro4_status_df = _build_macro_combo_status_panel(
+                    _macro4_status_html, _macro4_status_table_html = _build_macro_combo_status_panel(
                         benchmark_name=_benchmark_name4,
                         years=_macro4_years,
                         spx_s=_spx_s4,
@@ -6622,14 +6639,15 @@ def main(page="signal"):
                     )
                     if _macro4_status_html:
                         st.markdown(_macro4_status_html, unsafe_allow_html=True)
-                    if not _macro4_status_df.empty:
-                        st.markdown(
-                            '<div style="margin:2px 0 12px 0;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);'
-                            'border-radius:8px;background:rgba(255,255,255,0.02);">',
-                            unsafe_allow_html=True,
-                        )
-                        st.dataframe(_macro4_status_df, width="stretch", hide_index=True)
-                        st.markdown('</div>', unsafe_allow_html=True)
+                    if _macro4_status_table_html:
+                        with st.expander("지표별 상태 보기", expanded=False):
+                            st.markdown(
+                                '<div style="margin:2px 0 4px 0;padding:8px 10px;border:1px solid rgba(255,255,255,0.08);'
+                                'border-radius:8px;background:rgba(255,255,255,0.02);">',
+                                unsafe_allow_html=True,
+                            )
+                            st.markdown(_macro4_status_table_html, unsafe_allow_html=True)
+                            st.markdown('</div>', unsafe_allow_html=True)
                     st.plotly_chart(_macro4_combo_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_combo_{_benchmark_name4}_{_macro4_years}_{'_'.join(_selected_codes4)}_{_combo_k4}_{_macro_dynamic_cfg_signature(_macro4_cfgs, _selected_codes4)}")
                 else:
                     st.warning("조합 리스크 차트 데이터 로딩 실패 — 조합 지표/기간을 확인해 주세요.")
