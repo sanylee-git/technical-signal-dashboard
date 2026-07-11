@@ -1631,37 +1631,20 @@ def _build_signal_rows_for_items(items, closes, highs, lows,
     return rows
 
 
-def _tf_signal_badges_html(tf_signals: dict, current_chart_mode=None):
-    if not tf_signals:
-        return '<span style="color:#333;font-size:12px;">─</span>'
-
-    ordered_labels = ["일봉", "주봉", "월봉"]
-    if current_chart_mode in ordered_labels:
-        ordered_labels = [current_chart_mode] + [x for x in ordered_labels if x != current_chart_mode]
-
-    parts = []
-    for label in ordered_labels:
-        sig = tf_signals.get(label)
-        if not sig:
-            continue
-        if sig.get('dyn_buy_signal'):
-            badge = _badge("★ 매수", "#4BFFB3", "#0a2b1e", "rgba(75,255,179,0.3)")
-        elif sig.get('dyn_buy_flag'):
-            badge = _badge("▲ 플래그", "#7AAFD4", "#0a1520", "rgba(120,175,212,0.2)")
-        elif sig.get('dyn_holding'):
-            badge = _badge("보유", "#C8C850", "#1c1c08", "rgba(200,200,80,0.3)")
-        elif sig.get('dyn_sell_signal'):
-            badge = _badge("★ 매도", "#FF4B6E", "#2d0d1a", "rgba(255,75,110,0.25)")
-        elif sig.get('dyn_sell_flag'):
-            badge = _badge("▼ 플래그", "#E08A3A", "#221207", "rgba(224,138,58,0.2)")
-        else:
-            badge = _badge("─", "#666", "#111113", "rgba(255,255,255,0.06)")
-        parts.append(
-            f'<div style="display:flex;align-items:center;gap:6px;margin:2px 0;">'
-            f'<span style="display:inline-block;min-width:22px;font-size:10px;color:#777;font-weight:600;">{label}</span>'
-            f'{badge}</div>'
-        )
-    return "".join(parts) if parts else '<span style="color:#333;font-size:12px;">─</span>'
+def _single_tf_badge_html(sig: dict | None):
+    if not sig:
+        return _badge("─", "#666", "#111113", "rgba(255,255,255,0.06)")
+    if sig.get('dyn_buy_signal'):
+        return _badge("★ 매수", "#4BFFB3", "#0a2b1e", "rgba(75,255,179,0.3)")
+    if sig.get('dyn_buy_flag'):
+        return _badge("▲ 플래그", "#7AAFD4", "#0a1520", "rgba(120,175,212,0.2)")
+    if sig.get('dyn_holding'):
+        return _badge("보유", "#C8C850", "#1c1c08", "rgba(200,200,80,0.3)")
+    if sig.get('dyn_sell_signal'):
+        return _badge("★ 매도", "#FF4B6E", "#2d0d1a", "rgba(255,75,110,0.25)")
+    if sig.get('dyn_sell_flag'):
+        return _badge("▼ 플래그", "#E08A3A", "#221207", "rgba(224,138,58,0.2)")
+    return _badge("─", "#666", "#111113", "rgba(255,255,255,0.06)")
 
 
 def render_signal_table(signal_rows, market=None, current_chart_mode=None, current_intra_interval=None):
@@ -1710,7 +1693,10 @@ def render_signal_table(signal_rows, market=None, current_chart_mode=None, curre
             dyn_buy_flag, dyn_sell_flag, band_buy_flag, band_sell_flag,
             dyn_holding=dyn_holding, band_holding=band_holding,
         )
-        tf_badges = _tf_signal_badges_html(row.get('tf_signals'), current_chart_mode=current_chart_mode)
+        tf_signals = row.get('tf_signals') or {}
+        tf_day_badge = _single_tf_badge_html(tf_signals.get("일봉"))
+        tf_week_badge = _single_tf_badge_html(tf_signals.get("주봉"))
+        tf_month_badge = _single_tf_badge_html(tf_signals.get("월봉"))
 
         _name_html = row['name']
         if market in {"kr", "us"}:
@@ -1738,7 +1724,9 @@ def render_signal_table(signal_rows, market=None, current_chart_mode=None, curre
             <td style="padding:2px 14px;font-size:13px;color:{pct_color};text-align:right;font-variant-numeric:tabular-nums;">{pct_str}</td>
             <td style="padding:2px 14px;font-size:13px;color:{rsi_color};text-align:right;font-variant-numeric:tabular-nums;">{rsi_str}</td>
             <td style="padding:2px 14px;">{badges}</td>
-            <td style="padding:4px 14px;">{tf_badges}</td>
+            <td style="padding:2px 10px;text-align:center;">{tf_day_badge}</td>
+            <td style="padding:2px 10px;text-align:center;">{tf_week_badge}</td>
+            <td style="padding:2px 10px;text-align:center;">{tf_month_badge}</td>
         </tr>""")
 
     return f"""
@@ -1752,7 +1740,9 @@ def render_signal_table(signal_rows, market=None, current_chart_mode=None, curre
                 <th style="padding:8px 14px;font-size:10px;color:#555;font-weight:600;text-align:right;text-transform:uppercase;letter-spacing:0.8px;">등락률</th>
                 <th style="padding:8px 14px;font-size:10px;color:#555;font-weight:600;text-align:right;text-transform:uppercase;letter-spacing:0.8px;">RSI</th>
                 <th style="padding:8px 14px;font-size:10px;color:#555;font-weight:600;text-align:left;text-transform:uppercase;letter-spacing:0.8px;">신호</th>
-                <th style="padding:8px 14px;font-size:10px;color:#555;font-weight:600;text-align:left;text-transform:uppercase;letter-spacing:0.8px;">일/주/월</th>
+                <th style="padding:8px 10px;font-size:10px;color:#555;font-weight:600;text-align:center;text-transform:uppercase;letter-spacing:0.8px;">일봉</th>
+                <th style="padding:8px 10px;font-size:10px;color:#555;font-weight:600;text-align:center;text-transform:uppercase;letter-spacing:0.8px;">주봉</th>
+                <th style="padding:8px 10px;font-size:10px;color:#555;font-weight:600;text-align:center;text-transform:uppercase;letter-spacing:0.8px;">월봉</th>
             </tr>
         </thead>
         <tbody>{''.join(rows_html)}</tbody>
