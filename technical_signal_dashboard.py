@@ -3602,6 +3602,9 @@ def _add_price_signal_markers(fig, signal_df: pd.DataFrame, price_s: pd.Series, 
     if signal_df is None or signal_df.empty or price_s is None or price_s.empty:
         return
 
+    start_marker_color = 'rgba(210,55,55,0.95)'
+    end_marker_color = 'rgba(80,160,255,0.92)'
+
     def _signal_price_points(mask_col: str) -> pd.Series:
         sig_idx = signal_df.index[signal_df[mask_col].fillna(False)]
         if len(sig_idx) == 0:
@@ -3621,14 +3624,14 @@ def _add_price_signal_markers(fig, signal_df: pd.DataFrame, price_s: pd.Series, 
         fig.add_trace(go.Scatter(
             x=start_y.index, y=start_y, name=f'{prefix} 시작',
             mode='markers', yaxis=yaxis,
-            marker=dict(symbol='triangle-down', size=9, color='rgba(255,140,105,0.92)'),
+            marker=dict(symbol='triangle-down', size=9, color=start_marker_color),
             hovertemplate='<b>%{x|%Y-%m-%d}</b><br>리스크 시작<extra></extra>',
         ))
     if not end_y.empty:
         fig.add_trace(go.Scatter(
             x=end_y.index, y=end_y, name=f'{prefix} 종료',
             mode='markers', yaxis=yaxis,
-            marker=dict(symbol='triangle-up', size=9, color='rgba(75,255,179,0.92)'),
+            marker=dict(symbol='triangle-up', size=9, color=end_marker_color),
             hovertemplate='<b>%{x|%Y-%m-%d}</b><br>리스크 종료<extra></extra>',
         ))
 
@@ -3762,14 +3765,14 @@ def _add_ema20_downturn_signals(fig, s: pd.Series, show_downturn=True, overlay_p
         fig.add_trace(go.Scatter(
             x=sig1_start.index, y=sig1_start, name=f'1: 리스크 시작 ({start_count}/5 하락 + EMA{ema_span}<{ema_compare_days}D전)',
             mode='markers',
-            marker=dict(symbol='triangle-down', size=8, color='rgba(255,140,105,0.80)'),
+            marker=dict(symbol='triangle-down', size=8, color='rgba(210,55,55,0.90)'),
             hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>최근 5일 중 slope < -0.5*{std_window}일 std 가 {start_count}일 이상<br>현재 EMA{ema_span} < {ema_compare_days}일 전 EMA{ema_span}<extra></extra>',
         ))
     if not sig1_end.empty:
         fig.add_trace(go.Scatter(
             x=sig1_end.index, y=sig1_end, name=f'1: 리스크 종료 ({end_count}/5 상승 + EMA{ema_span}>{ema_compare_days}D전)',
             mode='markers',
-            marker=dict(symbol='triangle-up', size=8, color='rgba(75,255,179,0.80)'),
+            marker=dict(symbol='triangle-up', size=8, color='rgba(80,160,255,0.90)'),
             hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>최근 5일 중 slope > +0.5*{std_window}일 std 가 {end_count}일 이상<br>현재 EMA{ema_span} > {ema_compare_days}일 전 EMA{ema_span}<extra></extra>',
         ))
 
@@ -3796,13 +3799,13 @@ def _add_threshold_ema_signals(fig, s: pd.Series, threshold: float, ema_span: in
             fig.add_trace(go.Scatter(
                 x=sig_start.index, y=sig_start, name=f'{prefix} 시작',
                 mode='markers',
-                marker=dict(symbol='triangle-down', size=8, color='rgba(255,140,105,0.85)'),
+                marker=dict(symbol='triangle-down', size=8, color='rgba(210,55,55,0.92)'),
             ))
         if not sig_end.empty:
             fig.add_trace(go.Scatter(
                 x=sig_end.index, y=sig_end, name=f'{prefix} 종료',
                 mode='markers',
-                marker=dict(symbol='triangle-up', size=8, color='rgba(75,255,179,0.85)'),
+                marker=dict(symbol='triangle-up', size=8, color='rgba(80,160,255,0.92)'),
             ))
 
 
@@ -3880,13 +3883,13 @@ def _add_dual_threshold_ema_signals(
             fig.add_trace(go.Scatter(
                 x=sig_start.index, y=sig_start, name=f'{prefix} 시작',
                 mode='markers',
-                marker=dict(symbol='triangle-down', size=8, color='rgba(255,140,105,0.85)'),
+                marker=dict(symbol='triangle-down', size=8, color='rgba(210,55,55,0.92)'),
             ))
         if not sig_end.empty:
             fig.add_trace(go.Scatter(
                 x=sig_end.index, y=sig_end, name=f'{prefix} 종료',
                 mode='markers',
-                marker=dict(symbol='triangle-up', size=8, color='rgba(75,255,179,0.85)'),
+                marker=dict(symbol='triangle-up', size=8, color='rgba(80,160,255,0.92)'),
             ))
 
 
@@ -4018,13 +4021,13 @@ def _add_dynamic_quantile_signals(
             fig.add_trace(go.Scatter(
                 x=sig_start.index, y=sig_start, name=f'{prefix} 시작',
                 mode='markers',
-                marker=dict(symbol='triangle-down', size=8, color='rgba(255,140,105,0.85)'),
+                marker=dict(symbol='triangle-down', size=8, color='rgba(210,55,55,0.92)'),
             ))
         if not sig_end.empty:
             fig.add_trace(go.Scatter(
                 x=sig_end.index, y=sig_end, name=f'{prefix} 종료',
                 mode='markers',
-                marker=dict(symbol='triangle-up', size=8, color='rgba(75,255,179,0.85)'),
+                marker=dict(symbol='triangle-up', size=8, color='rgba(80,160,255,0.92)'),
             ))
 
 
@@ -6164,11 +6167,10 @@ def main(page="signal"):
         _market_macro_sections = [
             ("macro", "🌍 매크로 지표"),
             ("macro4", "🧪 매크로 지표 2"),
-            ("macro3", "🧪 매크로 지표 3"),
             ("market", "🌐 시장 내부지표"),
         ]
         if st.session_state.get("market_macro_section") not in {k for k, _ in _market_macro_sections}:
-            st.session_state["market_macro_section"] = "macro"
+            st.session_state["market_macro_section"] = "macro4"
         _market_macro_section = st.radio(
             "섹션 선택",
             options=[k for k, _ in _market_macro_sections],
