@@ -1346,6 +1346,24 @@ def make_detail_chart(ohlcv, name, period_days,
     band_buy_idx  = disp[band_buy[disp].values]
     band_sell_idx = disp[band_sell[disp].values]
 
+    # 동적 플래그는 상태가 여러 봉 지속될 수 있으므로 "플래그 진입 시점"만 마커로 표시
+    dyn_buy_flag_start = dyn_of & ~dyn_of.shift(1, fill_value=False)
+    dyn_sell_flag_start = dyn_oh & ~dyn_oh.shift(1, fill_value=False)
+    dyn_buy_flag_idx = disp[dyn_buy_flag_start[disp].values]
+    dyn_sell_flag_idx = disp[dyn_sell_flag_start[disp].values]
+
+    # 보유 중 구간: 동적 매수 확정 이후 동적 매도 확정 전까지 가격선에 오버레이
+    dyn_holding_state = pd.Series(False, index=close.index)
+    _in_dyn_position = False
+    for _i in range(len(close)):
+        if bool(dyn_buy.iloc[_i]):
+            _in_dyn_position = True
+        dyn_holding_state.iloc[_i] = _in_dyn_position
+        if bool(dyn_sell.iloc[_i]):
+            dyn_holding_state.iloc[_i] = _in_dyn_position
+            _in_dyn_position = False
+    dyn_holding_disp = close[disp].where(dyn_holding_state[disp])
+
     fig = make_subplots(
         rows=3, cols=1,
         row_heights=[0.50, 0.25, 0.25],
@@ -1369,6 +1387,9 @@ def make_detail_chart(ohlcv, name, period_days,
     fig.add_trace(go.Scatter(x=disp, y=close[disp],
         name=name, line=dict(color="#EDEDED", width=1.5),
         hovertemplate="종가: %{y:,.0f}<extra></extra>"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=disp, y=dyn_holding_disp,
+        name="★ 보유 중", line=dict(color="#C8C850", width=2.2),
+        connectgaps=False, hoverinfo='skip'), row=1, col=1)
     fig.add_trace(go.Scatter(x=disp, y=sma[disp],
         line=dict(color="rgba(120,126,231,0.4)", width=1, dash='dot'),
         showlegend=False, name="SMA20",
@@ -1384,6 +1405,8 @@ def make_detail_chart(ohlcv, name, period_days,
 
     # 동적+BB 확정 ★ / 밴드+BB 확정 ● — 시그널 없어도 레전드 항목은 항상 표시
     for _idx, _color, _outline, _sym, _sz, _label in [
+        (dyn_buy_flag_idx,  '#7AAFD4', 'rgba(122,175,212,0.30)', 'triangle-up',   9, "▲ 매수 플래그"),
+        (dyn_sell_flag_idx, '#D47A9F', 'rgba(212,122,159,0.30)', 'triangle-down', 9, "▼ 매도 플래그"),
         (dyn_buy_idx,  '#4BFFB3', 'rgba(75,255,179,0.4)',  'star',        10, "★ 동적+BB 매수"),
         (dyn_sell_idx, '#FF4B6E', 'rgba(255,75,110,0.4)',  'star',        10, "★ 동적+BB 매도"),
         (band_buy_idx, '#4BFFB3', '#4BFFB3',               'circle-open', 12, "● 밴드+BB 매수"),
@@ -1393,7 +1416,7 @@ def make_detail_chart(ohlcv, name, period_days,
         _y = close[_idx] if len(_idx) > 0 else []
         fig.add_trace(go.Scatter(x=_x, y=_y, mode='markers',
             marker=dict(symbol=_sym, color=_color, size=_sz,
-                        line=dict(color=_outline, width=1 if _sym == 'star' else 2.5)),
+                        line=dict(color=_outline, width=1 if _sym in {'star', 'triangle-up', 'triangle-down'} else 2.5)),
             name=_label, hoverinfo='skip'), row=1, col=1)
 
     # ══════════════════════════════════════════
