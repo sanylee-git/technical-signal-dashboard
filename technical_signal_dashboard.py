@@ -6501,7 +6501,7 @@ def main(page="signal"):
                 margin-bottom: 0.7rem;
             }
             .macro2-control-spacer {
-                height: 1rem;
+                height: 8px;
             }
             .st-key-macro4_preset div[data-baseweb="select"] > div,
             .st-key-macro4_benchmark div[data-baseweb="select"] > div,
