@@ -6177,7 +6177,13 @@ def main(page="signal"):
 
         # ── 차트 기간 (모드 전환 시 기본값 자동 변경)
         _period_keys = list(PERIOD_OPTIONS.keys())
-        _default_period = "3일" if chart_mode == "분봉" else "3개월"
+        _default_period_map = {
+            "분봉": "3일",
+            "일봉": "3개월",
+            "주봉": "1년",
+            "월봉": "10년",
+        }
+        _default_period = _default_period_map.get(chart_mode, "3개월")
         if st.session_state.get('_prev_chart_mode_period') != chart_mode:
             st.session_state['sidebar_period'] = _default_period
             st.session_state['_prev_chart_mode_period'] = chart_mode
