@@ -1804,6 +1804,106 @@ def _build_signal_dashboard_rows(favorites_tuple, us_watchlist_tuple, chart_mode
     return signal_rows, us_signal_rows, missing_kr, missing_us
 
 
+def _make_signal_table_snapshot_signature(favorites_tuple, us_watchlist_tuple, chart_mode,
+                                          yf_interval, higher_interval, period_days,
+                                          bb_window, bb_std, rsi_period,
+                                          rsi_buy_center, rsi_sell_center,
+                                          rsi_band, rsi_lookback, persist,
+                                          phase2_rsi):
+    payload = {
+        "favorites": list(favorites_tuple),
+        "us_watchlist": list(us_watchlist_tuple),
+        "chart_mode": chart_mode,
+        "yf_interval": yf_interval,
+        "higher_interval": higher_interval,
+        "period_days": int(period_days),
+        "bb_window": int(bb_window),
+        "bb_std": float(bb_std),
+        "rsi_period": int(rsi_period),
+        "rsi_buy_center": float(rsi_buy_center),
+        "rsi_sell_center": float(rsi_sell_center),
+        "rsi_band": float(rsi_band),
+        "rsi_lookback": int(rsi_lookback),
+        "persist": int(persist),
+        "phase2_rsi": float(phase2_rsi),
+    }
+    return hashlib.sha1(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+
+
+def _get_signal_table_snapshot(favorites_tuple, us_watchlist_tuple, chart_mode,
+                               yf_interval, higher_interval, period_days,
+                               data_start, data_end,
+                               bb_window, bb_std, rsi_period,
+                               rsi_buy_center, rsi_sell_center,
+                               rsi_band, rsi_lookback, persist,
+                               phase2_rsi, force_refresh=False):
+    snapshot_key = "_signal_table_snapshot_data"
+    signature_key = "_signal_table_snapshot_signature"
+    created_at_key = "_signal_table_snapshot_created_at"
+
+    signature = _make_signal_table_snapshot_signature(
+        favorites_tuple,
+        us_watchlist_tuple,
+        chart_mode,
+        yf_interval,
+        higher_interval,
+        period_days,
+        bb_window,
+        bb_std,
+        rsi_period,
+        rsi_buy_center,
+        rsi_sell_center,
+        rsi_band,
+        rsi_lookback,
+        persist,
+        phase2_rsi,
+    )
+
+    snapshot = st.session_state.get(snapshot_key)
+    snapshot_signature = st.session_state.get(signature_key)
+    needs_refresh = force_refresh or snapshot_signature != signature
+
+    if not needs_refresh:
+        if not isinstance(snapshot, dict):
+            needs_refresh = True
+        else:
+            required_keys = {"signal_rows", "us_signal_rows", "missing_kr", "missing_us"}
+            needs_refresh = not required_keys.issubset(snapshot.keys())
+
+    if needs_refresh:
+        signal_rows, us_signal_rows, missing_kr, missing_us = _build_signal_dashboard_rows(
+            favorites_tuple,
+            us_watchlist_tuple,
+            chart_mode,
+            yf_interval,
+            higher_interval,
+            data_start,
+            data_end,
+            bb_window=bb_window,
+            bb_std=bb_std,
+            rsi_period=rsi_period,
+            rsi_buy_center=rsi_buy_center,
+            rsi_sell_center=rsi_sell_center,
+            rsi_band=rsi_band,
+            rsi_lookback=rsi_lookback,
+            persist=persist,
+            phase2_rsi=phase2_rsi,
+        )
+        snapshot = {
+            "signal_rows": signal_rows,
+            "us_signal_rows": us_signal_rows,
+            "missing_kr": missing_kr,
+            "missing_us": missing_us,
+        }
+        st.session_state[snapshot_key] = snapshot
+        st.session_state[signature_key] = signature
+        st.session_state[created_at_key] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    return snapshot, st.session_state.get(created_at_key, "")
+
+
 def _single_tf_badge_html(sig: dict | None):
     if not sig:
         return _badge("─", "#666", "#111113", "rgba(255,255,255,0.06)")
@@ -8346,13 +8446,24 @@ def main(page="signal"):
             rsi_sell_center= 80
             rsi_band       = 5
 
+            _signal_snapshot_refresh_cols = st.columns([1, 0.22])
+            with _signal_snapshot_refresh_cols[0]:
+                st.markdown("<div style='height:1px'></div>", unsafe_allow_html=True)
+            with _signal_snapshot_refresh_cols[1]:
+                _signal_snapshot_force_refresh = st.button(
+                    "표 새로고침",
+                    key="signal_table_snapshot_refresh_btn",
+                    use_container_width=True,
+                )
+
             with st.spinner("📡 데이터 로딩..."):
-                signal_rows, us_signal_rows, _missing_kr, _missing_us = _build_signal_dashboard_rows(
+                _signal_snapshot, _signal_snapshot_created_at = _get_signal_table_snapshot(
                     tuple((item["code"], item["name"]) for item in favorites),
                     tuple((item["code"], item["name"]) for item in US_WATCHLIST),
                     chart_mode,
                     yf_interval,
                     higher_interval if chart_mode != "분봉" else None,
+                    period_days,
                     data_start,
                     data_end,
                     bb_window=bb_window,
@@ -8364,7 +8475,16 @@ def main(page="signal"):
                     rsi_lookback=rsi_lookback,
                     persist=persist,
                     phase2_rsi=phase2_rsi,
+                    force_refresh=_signal_snapshot_force_refresh,
                 )
+
+            signal_rows = _signal_snapshot["signal_rows"]
+            us_signal_rows = _signal_snapshot["us_signal_rows"]
+            _missing_kr = _signal_snapshot["missing_kr"]
+            _missing_us = _signal_snapshot["missing_us"]
+
+            if _signal_snapshot_created_at:
+                st.caption(f"현황 표 마지막 업데이트: {_signal_snapshot_created_at} · 같은 세션에서는 이 snapshot을 재사용합니다.")
 
             # 데이터 로딩 실패 종목 안내 (해당 종목만 빈 값으로 표시, 앱은 계속 동작)
             _missing_all = _missing_kr + _missing_us
