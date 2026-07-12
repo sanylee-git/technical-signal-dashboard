@@ -1678,6 +1678,102 @@ def _build_multitimeframe_signal_maps(items_tuple, tickers, data_end,
     return tf_maps
 
 
+def _signal_row_sort_key(row):
+    buy_sig = row.get('dyn_buy_signal')
+    buy_flag = row.get('dyn_buy_flag') and not row.get('dyn_buy_signal')
+    holding = row.get('dyn_holding')
+    sell_sig = row.get('dyn_sell_signal')
+    sell_flag = row.get('dyn_sell_flag') and not row.get('dyn_sell_signal')
+    if buy_sig:
+        return 0
+    if buy_flag:
+        return 1
+    if holding:
+        return 2
+    if sell_sig:
+        return 3
+    if sell_flag:
+        return 4
+    return 5
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _build_signal_dashboard_rows(favorites_tuple, us_watchlist_tuple, chart_mode,
+                                 yf_interval, higher_interval, data_start, data_end,
+                                 bb_window, bb_std, rsi_period,
+                                 rsi_buy_center, rsi_sell_center,
+                                 rsi_band, rsi_lookback, persist,
+                                 phase2_rsi):
+    favorites = [{"code": code, "name": name} for code, name in favorites_tuple]
+    us_watchlist = [{"code": code, "name": name} for code, name in us_watchlist_tuple]
+    tickers_tuple = tuple(code for code, _ in favorites_tuple)
+    us_tickers_tuple = tuple(code for code, _ in us_watchlist_tuple)
+
+    if chart_mode == "분봉":
+        closes = fetch_intraday_batch(tickers_tuple, yf_interval)
+        us_closes = fetch_intraday_batch(us_tickers_tuple, yf_interval)
+        highs = lows = pd.DataFrame()
+        us_highs = us_lows = pd.DataFrame()
+    else:
+        closes, highs, lows = fetch_ohlcv_batch(tickers_tuple, data_start, data_end, higher_interval)
+        us_closes, us_highs, us_lows = fetch_ohlcv_batch(us_tickers_tuple, data_start, data_end, higher_interval)
+
+    missing_kr = [
+        item['name'] for item in favorites
+        if item['code'] not in closes.columns or closes[item['code']].dropna().empty
+    ]
+    missing_us = [
+        item['name'] for item in us_watchlist
+        if item['code'] not in us_closes.columns or us_closes[item['code']].dropna().empty
+    ]
+
+    signal_rows = _build_signal_rows_for_items(
+        favorites, closes, highs, lows,
+        bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
+        rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
+        rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
+        phase2_rsi=phase2_rsi,
+    )
+    signal_rows.sort(key=_signal_row_sort_key)
+
+    us_signal_rows = _build_signal_rows_for_items(
+        us_watchlist, us_closes, us_highs, us_lows,
+        bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
+        rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
+        rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
+        phase2_rsi=phase2_rsi,
+    )
+    us_signal_rows.sort(key=_signal_row_sort_key)
+
+    tf_labels = ("일봉", "주봉", "월봉")
+
+    def _attach_multitimeframe_signals(items, rows, tickers):
+        tf_maps = _build_multitimeframe_signal_maps(
+            tuple((item["code"], item["name"]) for item in items),
+            tickers,
+            data_end,
+            bb_window=bb_window,
+            bb_std=bb_std,
+            rsi_period=rsi_period,
+            rsi_buy_center=rsi_buy_center,
+            rsi_sell_center=rsi_sell_center,
+            rsi_band=rsi_band,
+            rsi_lookback=rsi_lookback,
+            persist=persist,
+            phase2_rsi=phase2_rsi,
+        )
+        for row in rows:
+            row['tf_signals'] = {
+                tf_label: tf_maps.get(tf_label, {}).get(row['code'], _empty_signal_row(row['code'], row['name']))
+                for tf_label in tf_labels
+            }
+
+    _attach_multitimeframe_signals(favorites, signal_rows, tickers_tuple)
+    _attach_multitimeframe_signals(us_watchlist, us_signal_rows, us_tickers_tuple)
+
+    return signal_rows, us_signal_rows, missing_kr, missing_us
+
+
 def _single_tf_badge_html(sig: dict | None):
     if not sig:
         return _badge("─", "#666", "#111113", "rgba(255,255,255,0.06)")
@@ -8220,76 +8316,14 @@ def main(page="signal"):
             rsi_sell_center= 80
             rsi_band       = 5
 
-            tickers_tuple    = tuple(f['code'] for f in favorites)
-            us_tickers_tuple = tuple(t['code'] for t in US_WATCHLIST)
-
             with st.spinner("📡 데이터 로딩..."):
-                if chart_mode == "분봉":
-                    closes = fetch_intraday_batch(tickers_tuple, yf_interval)
-                    us_closes = fetch_intraday_batch(us_tickers_tuple, yf_interval)
-                    highs = lows = pd.DataFrame()
-                    us_highs = us_lows = pd.DataFrame()
-                else:
-                    closes, highs, lows = fetch_ohlcv_batch(tickers_tuple, data_start, data_end, higher_interval)
-                    us_closes, us_highs, us_lows = fetch_ohlcv_batch(us_tickers_tuple, data_start, data_end, higher_interval)
-
-            # 데이터 로딩 실패 종목 안내 (해당 종목만 빈 값으로 표시, 앱은 계속 동작)
-            _missing_kr = [f['name'] for f in favorites
-                           if f['code'] not in closes.columns or closes[f['code']].dropna().empty]
-            _missing_us = [t['name'] for t in US_WATCHLIST
-                           if t['code'] not in us_closes.columns or us_closes[t['code']].dropna().empty]
-            _missing_all = _missing_kr + _missing_us
-            if _missing_all:
-                st.warning(
-                    "⚠️ 일부 종목 데이터를 가져오지 못했습니다 (Yahoo Finance 요청 제한/일시 오류일 수 있음): "
-                    + ", ".join(_missing_all)
-                    + " — 해당 종목은 빈 값으로 표시됩니다. 잠시 후 새로고침하면 자동으로 다시 시도됩니다."
-                )
-
-            # 현재 차트모드 기준 신호 계산 (요약 카드/상세 차트 기준 유지)
-            signal_rows = _build_signal_rows_for_items(
-                favorites, closes, highs, lows,
-                bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
-                rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
-                rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
-                phase2_rsi=phase2_rsi,
-            )
-
-            # 확정 신호 > 보유 중 > 플래그 > 없음 순 정렬
-            def sort_key(r):
-                # 화면 badge와 동일한 기준 (dyn만) — band_* 는 display에 없으므로 정렬에서도 제외
-                # 매수신호 > 매수플래그 > 보유중 > 매도신호 > 매도플래그 > 없음
-                buy_sig   = r.get('dyn_buy_signal')
-                buy_flag  = r.get('dyn_buy_flag') and not r.get('dyn_buy_signal')
-                holding   = r.get('dyn_holding')
-                sell_sig  = r.get('dyn_sell_signal')
-                sell_flag = r.get('dyn_sell_flag') and not r.get('dyn_sell_signal')
-                if buy_sig:   return 0
-                if buy_flag:  return 1
-                if holding:   return 2
-                if sell_sig:  return 3
-                if sell_flag: return 4
-                return 5
-
-            signal_rows.sort(key=sort_key)
-
-            # US 현재 차트모드 기준 신호 계산
-            us_signal_rows = _build_signal_rows_for_items(
-                US_WATCHLIST, us_closes, us_highs, us_lows,
-                bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
-                rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
-                rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
-                phase2_rsi=phase2_rsi,
-            )
-            us_signal_rows.sort(key=sort_key)
-
-            # 펼침 테이블용 멀티 타임프레임 신호 (일봉 3개월 / 주봉 2년 / 월봉 10년)
-            _tf_specs = [("일봉",), ("주봉",), ("월봉",)]
-
-            def _attach_multitimeframe_signals(items, rows, tickers):
-                tf_maps = _build_multitimeframe_signal_maps(
-                    tuple((item["code"], item["name"]) for item in items),
-                    tickers,
+                signal_rows, us_signal_rows, _missing_kr, _missing_us = _build_signal_dashboard_rows(
+                    tuple((item["code"], item["name"]) for item in favorites),
+                    tuple((item["code"], item["name"]) for item in US_WATCHLIST),
+                    chart_mode,
+                    yf_interval,
+                    higher_interval if chart_mode != "분봉" else None,
+                    data_start,
                     data_end,
                     bb_window=bb_window,
                     bb_std=bb_std,
@@ -8301,15 +8335,15 @@ def main(page="signal"):
                     persist=persist,
                     phase2_rsi=phase2_rsi,
                 )
-                for _row in rows:
-                    _row['tf_signals'] = {
-                        _tf_label: tf_maps.get(_tf_label, {}).get(_row['code'], _empty_signal_row(_row['code'], _row['name']))
-                        for (_tf_label,) in _tf_specs
-                    }
 
-            with st.spinner("📡 일/주/월 보조 신호 계산 중..."):
-                _attach_multitimeframe_signals(favorites, signal_rows, tickers_tuple)
-                _attach_multitimeframe_signals(US_WATCHLIST, us_signal_rows, us_tickers_tuple)
+            # 데이터 로딩 실패 종목 안내 (해당 종목만 빈 값으로 표시, 앱은 계속 동작)
+            _missing_all = _missing_kr + _missing_us
+            if _missing_all:
+                st.warning(
+                    "⚠️ 일부 종목 데이터를 가져오지 못했습니다 (Yahoo Finance 요청 제한/일시 오류일 수 있음): "
+                    + ", ".join(_missing_all)
+                    + " — 해당 종목은 빈 값으로 표시됩니다. 잠시 후 새로고침하면 자동으로 다시 시도됩니다."
+                )
 
             # 신호 요약 카운트 — 한국
             n_dyn_buy_flag  = sum(1 for r in signal_rows if r.get('dyn_buy_flag')  and not r.get('dyn_buy_signal'))
