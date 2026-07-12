@@ -5295,6 +5295,10 @@ def _build_macro_meta_combo_event_df(
     combo_b_label: str,
     benchmark_name: str,
     exit_mode: str = "AND_EXIT",
+    start_persist: int = 1,
+    end_persist: int = 1,
+    min_hold_days: int = 0,
+    cooldown_days: int = 0,
 ) -> pd.DataFrame:
     if combo_a_event_df is None or combo_a_event_df.empty or combo_b_event_df is None or combo_b_event_df.empty:
         return pd.DataFrame()
@@ -5324,6 +5328,10 @@ def _build_macro_meta_combo_event_df(
         out[col] = (a_flag | b_flag).astype(bool)
 
     meta_in_cycle = False
+    start_streak = 0
+    end_streak = 0
+    hold_days = 0
+    cooldown_remaining = 0
     active_counts = []
     states = []
     starts = []
@@ -5334,14 +5342,28 @@ def _build_macro_meta_combo_event_df(
         start_hit = a_state and b_state
         hold_hit = (a_state or b_state) if exit_mode == "AND_EXIT" else (a_state and b_state)
 
+        start_streak = start_streak + 1 if start_hit else 0
+        end_condition = not hold_hit
+        end_streak = end_streak + 1 if end_condition else 0
+        start_ready = start_streak >= max(1, int(start_persist))
+        end_ready = end_streak >= max(1, int(end_persist))
+
         start_signal = False
         end_signal = False
-        if not meta_in_cycle and start_hit:
-            meta_in_cycle = True
-            start_signal = True
-        elif meta_in_cycle and not hold_hit:
-            meta_in_cycle = False
-            end_signal = True
+        if meta_in_cycle:
+            hold_days += 1
+            if hold_days > max(0, int(min_hold_days)) and end_ready:
+                meta_in_cycle = False
+                end_signal = True
+                hold_days = 0
+                cooldown_remaining = max(0, int(cooldown_days))
+        else:
+            if cooldown_remaining > 0:
+                cooldown_remaining -= 1
+            elif start_ready:
+                meta_in_cycle = True
+                start_signal = True
+                hold_days = 1
 
         active_counts.append(int(a_state) + int(b_state))
         states.append(meta_in_cycle)
@@ -5386,7 +5408,10 @@ def _build_macro_meta_combo_event_df(
     out["combo_n"] = 2
     out["initial_state_at_visible_start"] = bool(out["combo_risk_state"].iloc[0]) if not out.empty else False
     out["combo_slug"] = re.sub(r"[^A-Za-z0-9._-]+", "-", f"{benchmark_name}_{combo_a_label}_{combo_b_label}_{exit_mode}").lower()
-    out["param_signature"] = f"{combo_a_label} + {combo_b_label} ({exit_mode})"
+    out["param_signature"] = (
+        f"{combo_a_label} + {combo_b_label} ({exit_mode}, "
+        f"SP={int(start_persist)}, EP={int(end_persist)}, MH={int(min_hold_days)}, CD={int(cooldown_days)})"
+    )
     out["combo_label"] = f"{combo_a_label} + {combo_b_label}"
 
     return out.rename_axis("date").reset_index()
@@ -5400,6 +5425,10 @@ def make_macro_meta_combo_dynamic_chart(
     combo_a_label: str,
     combo_b_label: str,
     exit_mode: str = "AND_EXIT",
+    start_persist: int = 1,
+    end_persist: int = 1,
+    min_hold_days: int = 0,
+    cooldown_days: int = 0,
     return_debug: bool = False,
 ):
     if spx_s is None or spx_s.empty:
@@ -5413,6 +5442,10 @@ def make_macro_meta_combo_dynamic_chart(
         combo_b_label=combo_b_label,
         benchmark_name=benchmark_name,
         exit_mode=exit_mode,
+        start_persist=start_persist,
+        end_persist=end_persist,
+        min_hold_days=min_hold_days,
+        cooldown_days=cooldown_days,
     )
     if meta_event_df.empty:
         return (None, pd.DataFrame()) if return_debug else None
@@ -7295,6 +7328,50 @@ def main(page="signal"):
                         },
                     },
                 },
+                "snp_meta_stab": {
+                    "label": "S&P 전용 메타조합 안정화",
+                    "benchmark": "S&P500",
+                    "selected_codes": ["0", "1", "2", "3", "4", "6"],
+                    "combo_k": 2,
+                    "cfgs": {
+                        "0": {"ema": 20, "window": 252, "start": 0.80, "end": 0.70},
+                        "1": {"ema": 20, "window": 126, "start": 0.60, "end": 0.50},
+                        "2": {"ema": 30, "window": 63, "start": 0.80, "end": 0.10},
+                        "3": {"ema": 10, "window": 126, "start": 0.20, "end": 0.10},
+                        "4": {"ema": 10, "window": 252, "start": 0.40, "end": 0.30},
+                        "6": {"ema": 30, "window": 63, "start": 0.60, "end": 0.10},
+                    },
+                    "meta": {
+                        "exit_mode": "AND_EXIT",
+                        "start_persist": 10,
+                        "end_persist": 2,
+                        "min_hold_days": 0,
+                        "cooldown_days": 0,
+                        "combo_a": {
+                            "label": "A: ① HY + ② IG + ③ 신용스트레스 + ④ VIX + ⑥ VIX 스프레드",
+                            "selected_codes": ["1", "2", "3", "4", "6"],
+                            "combo_k": 4,
+                            "cfgs": {
+                                "1": {"ema": 20, "window": 126, "start": 0.60, "end": 0.50},
+                                "2": {"ema": 30, "window": 63, "start": 0.80, "end": 0.10},
+                                "3": {"ema": 30, "window": 63, "start": 0.60, "end": 0.10},
+                                "4": {"ema": 10, "window": 252, "start": 0.40, "end": 0.30},
+                                "6": {"ema": 20, "window": 126, "start": 0.60, "end": 0.10},
+                            },
+                        },
+                        "combo_b": {
+                            "label": "B: ⓪ 지수 + ① HY + ③ 신용스트레스 + ⑥ VIX 스프레드",
+                            "selected_codes": ["0", "1", "3", "6"],
+                            "combo_k": 3,
+                            "cfgs": {
+                                "0": {"ema": 20, "window": 252, "start": 0.80, "end": 0.70},
+                                "1": {"ema": 20, "window": 126, "start": 0.60, "end": 0.50},
+                                "3": {"ema": 10, "window": 126, "start": 0.20, "end": 0.10},
+                                "6": {"ema": 30, "window": 63, "start": 0.60, "end": 0.10},
+                            },
+                        },
+                    },
+                },
                 "nasdaq": {
                     "label": "나스닥 전용 조합",
                     "benchmark": "Nasdaq",
@@ -7476,6 +7553,10 @@ def main(page="signal"):
                             combo_a_label=_combo_a_cfg["label"],
                             combo_b_label=_combo_b_cfg["label"],
                             exit_mode=_meta_cfg.get("exit_mode", "AND_EXIT"),
+                            start_persist=int(_meta_cfg.get("start_persist", 1)),
+                            end_persist=int(_meta_cfg.get("end_persist", 1)),
+                            min_hold_days=int(_meta_cfg.get("min_hold_days", 0)),
+                            cooldown_days=int(_meta_cfg.get("cooldown_days", 0)),
                             return_debug=True,
                         )
                     else:
