@@ -7026,7 +7026,7 @@ def main(page="signal"):
             with _c0:
                 _benchmark_name = st.selectbox("기준지수", options=["S&P500", "Nasdaq", "KOSPI"], index=0, label_visibility='collapsed', key='macro2_benchmark')
             with _c1:
-                _yr_opts = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
+                _yr_opts = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년', 15: '15년', 20: '20년'}
                 _macro2_years = st.select_slider("기간", options=list(_yr_opts.keys()), value=3, format_func=lambda x: _yr_opts[x], label_visibility='collapsed', key='macro2_years')
             with _c2:
                 _show_raw_macro2 = st.checkbox("원본선 표시", value=False, key='macro2_show_raw')
@@ -7071,7 +7071,7 @@ def main(page="signal"):
             with _c0:
                 _benchmark_name3 = st.selectbox("기준지수", options=["S&P500", "Nasdaq", "KOSPI"], index=0, label_visibility='collapsed', key='macro3_benchmark')
             with _c1:
-                _yr_opts3 = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
+                _yr_opts3 = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년', 15: '15년', 20: '20년'}
                 _macro3_years = st.select_slider("기간", options=list(_yr_opts3.keys()), value=3, format_func=lambda x: _yr_opts3[x], label_visibility='collapsed', key='macro3_years')
             with _c2:
                 _show_raw_macro3 = st.checkbox("원본선 표시", value=False, key='macro3_show_raw')
@@ -7219,7 +7219,7 @@ def main(page="signal"):
                     },
                 },
                 "snp_meta_1": {
-                    "label": "S&P 메타조합 1",
+                    "label": "S&P 전용 메타조합 1",
                     "benchmark": "S&P500",
                     "selected_codes": ["0", "1", "2", "3", "4", "6"],
                     "combo_k": 2,
@@ -7259,7 +7259,7 @@ def main(page="signal"):
                     },
                 },
                 "snp_meta_2": {
-                    "label": "S&P 메타조합 2",
+                    "label": "S&P 전용 메타조합 2",
                     "benchmark": "S&P500",
                     "selected_codes": ["0", "1", "3", "4", "6"],
                     "combo_k": 2,
@@ -7387,7 +7387,7 @@ def main(page="signal"):
             with _m40:
                 _benchmark_name4 = st.selectbox("기준지수", options=["S&P500", "Nasdaq"], index=0, label_visibility='collapsed', key='macro4_benchmark', disabled=_macro4_is_meta)
             with _m41:
-                _yr_opts4 = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
+                _yr_opts4 = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년', 15: '15년', 20: '20년'}
                 _macro4_years = st.select_slider("기간", options=list(_yr_opts4.keys()), value=3, format_func=lambda x: _yr_opts4[x], label_visibility='collapsed', key='macro4_years')
             with _m42:
                 st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
@@ -7622,7 +7622,7 @@ def main(page="signal"):
             with _c0:
                 _benchmark_name = st.selectbox("기준지수", options=["S&P500", "Nasdaq", "KOSPI"], index=0, label_visibility='collapsed', key='macro_main_benchmark')
             with _c1:
-                _yr_opts = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년'}
+                _yr_opts = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년', 15: '15년', 20: '20년'}
                 _macro_years = st.select_slider("기간", options=list(_yr_opts.keys()), value=3, format_func=lambda x: _yr_opts[x], label_visibility='collapsed', key='macro_main_years')
             with _c2:
                 _show_spx = st.checkbox("S&P500 오버레이", value=True, key='macro_main_show_spx', label_visibility='collapsed')
