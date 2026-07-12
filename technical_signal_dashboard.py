@@ -5301,6 +5301,10 @@ def _build_macro_meta_backtest_panel(
     hold_20y = _macro_metric_float(hold_metrics.get("20Y 자산"))
     hold_mdd_10y = _macro_metric_float(hold_metrics.get("10Y MDD"))
     hold_mdd_20y = _macro_metric_float(hold_metrics.get("20Y MDD"))
+    def _ratio_span(ratio: float, good: bool) -> str:
+        color = "#7FE7B1" if good else "#8F8F8F"
+        weight = "700" if good else "400"
+        return f"<span style='color:{color};font-size:11px;font-weight:{weight};'>({ratio:.2f}x)</span>"
     current_state_map = {}
     if preset_defs:
         for key, _meta in group_items:
@@ -5330,13 +5334,17 @@ def _build_macro_meta_backtest_panel(
         mdd_10y_num = _macro_metric_float(mdd_10y)
         mdd_20y_num = _macro_metric_float(mdd_20y)
         if hold_10y and asset_10y_num is not None and key != hold_key:
-            asset_10y = f"{asset_10y} <span style='color:#8F8F8F;font-size:11px;'>({asset_10y_num / hold_10y:.2f}x)</span>"
+            _ratio = asset_10y_num / hold_10y
+            asset_10y = f"{asset_10y} {_ratio_span(_ratio, _ratio >= 1.5)}"
         if hold_20y and asset_20y_num is not None and key != hold_key:
-            asset_20y = f"{asset_20y} <span style='color:#8F8F8F;font-size:11px;'>({asset_20y_num / hold_20y:.2f}x)</span>"
+            _ratio = asset_20y_num / hold_20y
+            asset_20y = f"{asset_20y} {_ratio_span(_ratio, _ratio >= 1.5)}"
         if hold_mdd_10y and mdd_10y_num is not None and key != hold_key:
-            mdd_10y = f"{mdd_10y} <span style='color:#8F8F8F;font-size:11px;'>({abs(mdd_10y_num) / abs(hold_mdd_10y):.2f}x)</span>"
+            _ratio = abs(mdd_10y_num) / abs(hold_mdd_10y)
+            mdd_10y = f"{mdd_10y} {_ratio_span(_ratio, _ratio <= 0.5)}"
         if hold_mdd_20y and mdd_20y_num is not None and key != hold_key:
-            mdd_20y = f"{mdd_20y} <span style='color:#8F8F8F;font-size:11px;'>({abs(mdd_20y_num) / abs(hold_mdd_20y):.2f}x)</span>"
+            _ratio = abs(mdd_20y_num) / abs(hold_mdd_20y)
+            mdd_20y = f"{mdd_20y} {_ratio_span(_ratio, _ratio <= 0.5)}"
         current_state = current_state_map.get(key)
         current_state_html = "-" if current_state is None else _macro_status_circle(current_state, color_on="#4BFFB3")
         rows.append(
