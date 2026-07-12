@@ -103,13 +103,17 @@ MACRO_BENCHMARKS = {
 
 _MACRO_META_BACKTEST_COMPARE = {
     "sp500_buyhold": {"label": "S&P500 홀드", "group": "sp500", "metrics": {"10Y 자산": "356.4", "20Y 자산": "595.5", "10Y MDD": "-33.9%", "20Y MDD": "-56.8%", "20Y Risk-off": "0.0%", "20Y Cycle": "-", "짧은 Cycle": "-"}},
-    "snp": {"label": "S&P 전용 조합", "group": "sp500", "metrics": {"10Y 자산": "428.5", "20Y 자산": "645.3", "10Y MDD": "-10.2%", "20Y MDD": "-27.6%", "20Y Risk-off": "26.0%", "20Y Cycle": "45", "짧은 Cycle": "-"}},
-    "common": {"label": "미국 주식 공통 조합", "group": "sp500", "metrics": {"10Y 자산": "428.5", "20Y 자산": "645.3", "10Y MDD": "-10.2%", "20Y MDD": "-27.6%", "20Y Risk-off": "26.0%", "20Y Cycle": "45", "짧은 Cycle": "-"}},
-    "snp_meta_1": {"label": "S&P 전용 메타조합 1", "group": "sp500", "metrics": {"10Y 자산": "436.4", "20Y 자산": "755.6", "10Y MDD": "-11.7%", "20Y MDD": "-21.9%", "20Y Risk-off": "30.7%", "20Y Cycle": "31", "짧은 Cycle": "-"}},
-    "snp_meta_2": {"label": "S&P 전용 메타조합 2", "group": "sp500", "metrics": {"10Y 자산": "461.5", "20Y 자산": "1010.7", "10Y MDD": "-13.2%", "20Y MDD": "-26.0%", "20Y Risk-off": "15.8%", "20Y Cycle": "18", "짧은 Cycle": "-"}},
-    "snp_meta_stab": {"label": "S1", "group": "sp500", "metrics": {"10Y 자산": "474.6", "20Y 자산": "1399.7", "10Y MDD": "-19.2%", "20Y MDD": "-24.7%", "20Y Risk-off": "11.7%", "20Y Cycle": "11", "짧은 Cycle": "0"}},
-    "snp_meta_stab_2": {"label": "S2", "group": "sp500", "metrics": {"10Y 자산": "459.0", "20Y 자산": "1060.4", "10Y MDD": "-9.9%", "20Y MDD": "-23.6%", "20Y Risk-off": "33.1%", "20Y Cycle": "29", "짧은 Cycle": "0"}},
-    "snp_meta_stab_3": {"label": "S3", "group": "sp500", "metrics": {"10Y 자산": "422.5", "20Y 자산": "1088.3", "10Y MDD": "-13.0%", "20Y MDD": "-13.7%", "20Y Risk-off": "27.2%", "20Y Cycle": "28", "짧은 Cycle": "0"}},
+    "snp": {"label": "S&P 전용 조합", "group": "sp500", "metrics": {"10Y 자산": "428.5", "20Y 자산": "645.3", "10Y MDD": "-10.2%", "20Y MDD": "-27.6%", "20Y Risk-off": "26.0%", "20Y Cycle": "45", "짧은 Cycle": "5"}},
+    "common": {"label": "미국 주식 공통 조합", "group": "sp500", "metrics": {"10Y 자산": "428.5", "20Y 자산": "645.3", "10Y MDD": "-10.2%", "20Y MDD": "-27.6%", "20Y Risk-off": "26.0%", "20Y Cycle": "45", "짧은 Cycle": "5"}},
+    "snp_meta_1": {"label": "S&P 전용 메타조합 1", "group": "sp500", "metrics": {"10Y 자산": "436.4", "20Y 자산": "755.6", "10Y MDD": "-11.7%", "20Y MDD": "-21.9%", "20Y Risk-off": "30.7%", "20Y Cycle": "31", "짧은 Cycle": "5"}},
+    "snp_meta_2": {"label": "S&P 전용 메타조합 2", "group": "sp500", "metrics": {"10Y 자산": "461.5", "20Y 자산": "1010.7", "10Y MDD": "-13.2%", "20Y MDD": "-26.0%", "20Y Risk-off": "15.8%", "20Y Cycle": "18", "짧은 Cycle": "3"}},
+    "snp_meta_stab": {"label": "S&P 전용 메타조합 1 휩쏘제거", "group": "sp500", "metrics": {"10Y 자산": "474.6", "20Y 자산": "1399.7", "10Y MDD": "-19.2%", "20Y MDD": "-24.7%", "20Y Risk-off": "11.7%", "20Y Cycle": "11", "짧은 Cycle": "0"}},
+    "snp_meta_stab_2": {"label": "S&P 전용 메타조합 2 휩쏘제거", "group": "sp500", "metrics": {"10Y 자산": "459.0", "20Y 자산": "1060.4", "10Y MDD": "-9.9%", "20Y MDD": "-23.6%", "20Y Risk-off": "33.1%", "20Y Cycle": "29", "짧은 Cycle": "0"}},
+    "snp_meta_stab_3": {"label": "S&P 전용 메타조합 3 휩쏘제거", "group": "sp500", "metrics": {"10Y 자산": "422.5", "20Y 자산": "1088.3", "10Y MDD": "-13.0%", "20Y MDD": "-13.7%", "20Y Risk-off": "27.2%", "20Y Cycle": "28", "짧은 Cycle": "0"}},
+    "nasdaq_buyhold": {"label": "Nasdaq 홀드", "group": "nasdaq", "metrics": {"10Y 자산": "536.8", "20Y 자산": "1229.0", "10Y MDD": "-36.4%", "20Y MDD": "-55.6%", "20Y Risk-off": "0.0%", "20Y Cycle": "-", "짧은 Cycle": "-"}},
+    "nasdaq": {"label": "Nasdaq 전용 조합", "group": "nasdaq", "metrics": {"10Y 자산": "619.1", "20Y 자산": "2147.7", "10Y MDD": "-22.4%", "20Y MDD": "-23.2%", "20Y Risk-off": "25.5%", "20Y Cycle": "43", "짧은 Cycle": "-"}},
+    "nasdaq_common": {"label": "미국 주식 공통 조합 (Nasdaq 기준)", "group": "nasdaq", "metrics": {"10Y 자산": "543.0", "20Y 자산": "852.4", "10Y MDD": "-19.5%", "20Y MDD": "-29.3%", "20Y Risk-off": "26.2%", "20Y Cycle": "42", "짧은 Cycle": "-"}},
+    "nasdaq_meta": {"label": "Nasdaq 전용 메타조합", "group": "nasdaq", "metrics": {"10Y 자산": "785.7", "20Y 자산": "2617.9", "10Y MDD": "-21.5%", "20Y MDD": "-26.5%", "20Y Risk-off": "10.8%", "20Y Cycle": "17", "짧은 Cycle": "-"}},
 }
 
 DEFAULT_FAVORITES = [
@@ -5167,7 +5171,11 @@ def _build_macro_meta_backtest_panel(preset_key: str) -> tuple[str, str]:
     )
     rows = []
     group_items = [(key, meta) for key, meta in _MACRO_META_BACKTEST_COMPARE.items() if meta.get("group") == group]
-    sort_order = ["sp500_buyhold", "snp", "common", "snp_meta_1", "snp_meta_2", "snp_meta_stab", "snp_meta_stab_2", "snp_meta_stab_3"]
+    sort_orders = {
+        "sp500": ["sp500_buyhold", "snp", "common", "snp_meta_1", "snp_meta_2", "snp_meta_stab", "snp_meta_stab_2", "snp_meta_stab_3"],
+        "nasdaq": ["nasdaq_buyhold", "nasdaq", "nasdaq_common", "nasdaq_meta"],
+    }
+    sort_order = sort_orders.get(group, [])
     group_items.sort(key=lambda item: sort_order.index(item[0]) if item[0] in sort_order else 999)
     for key, meta in group_items:
         is_selected = key == preset_key
@@ -7739,7 +7747,7 @@ def main(page="signal"):
                         )
                     if _macro4_status_html:
                         st.markdown(_macro4_status_html, unsafe_allow_html=True)
-                    _macro4_bt_summary_html, _macro4_bt_compare_html = _build_macro_meta_backtest_panel(_macro4_preset) if _macro4_is_meta else ("", "")
+                    _macro4_bt_summary_html, _macro4_bt_compare_html = _build_macro_meta_backtest_panel(_macro4_preset)
                     if _macro4_bt_summary_html:
                         st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
                         st.markdown(_macro4_bt_summary_html, unsafe_allow_html=True)
