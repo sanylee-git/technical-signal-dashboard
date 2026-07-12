@@ -114,6 +114,7 @@ _MACRO_META_BACKTEST_COMPARE = {
     "nasdaq": {"label": "Nasdaq 전용 조합", "group": "nasdaq", "metrics": {"10Y 자산": "619.1", "20Y 자산": "2147.7", "10Y MDD": "-22.4%", "20Y MDD": "-23.2%", "20Y Risk-off": "25.5%", "20Y Cycle": "43", "짧은 Cycle": "-"}},
     "nasdaq_common": {"label": "미국 주식 공통 조합 (Nasdaq 기준)", "group": "nasdaq", "metrics": {"10Y 자산": "543.0", "20Y 자산": "852.4", "10Y MDD": "-19.5%", "20Y MDD": "-29.3%", "20Y Risk-off": "26.2%", "20Y Cycle": "42", "짧은 Cycle": "-"}},
     "nasdaq_meta": {"label": "Nasdaq 전용 메타조합", "group": "nasdaq", "metrics": {"10Y 자산": "785.7", "20Y 자산": "2617.9", "10Y MDD": "-21.5%", "20Y MDD": "-26.5%", "20Y Risk-off": "10.8%", "20Y Cycle": "17", "짧은 Cycle": "-"}},
+    "nasdaq_meta_stab_1": {"label": "Nasdaq 전용 메타조합 휩쏘제거 1", "group": "nasdaq", "metrics": {"10Y 자산": "776.4", "20Y 자산": "2586.9", "10Y MDD": "-21.5%", "20Y MDD": "-26.5%", "20Y Risk-off": "10.8%", "20Y Cycle": "16", "짧은 Cycle": "0"}},
 }
 
 DEFAULT_FAVORITES = [
@@ -5173,7 +5174,7 @@ def _build_macro_meta_backtest_panel(preset_key: str) -> tuple[str, str]:
     group_items = [(key, meta) for key, meta in _MACRO_META_BACKTEST_COMPARE.items() if meta.get("group") == group]
     sort_orders = {
         "sp500": ["sp500_buyhold", "snp", "common", "snp_meta_1", "snp_meta_2", "snp_meta_stab", "snp_meta_stab_2", "snp_meta_stab_3"],
-        "nasdaq": ["nasdaq_buyhold", "nasdaq", "nasdaq_common", "nasdaq_meta"],
+        "nasdaq": ["nasdaq_buyhold", "nasdaq", "nasdaq_common", "nasdaq_meta", "nasdaq_meta_stab_1"],
     }
     sort_order = sort_orders.get(group, [])
     group_items.sort(key=lambda item: sort_order.index(item[0]) if item[0] in sort_order else 999)
@@ -7314,6 +7315,51 @@ def main(page="signal"):
                         },
                     },
                 },
+                "nasdaq_meta_stab_1": {
+                    "label": "나스닥 전용 메타조합 휩쏘제거 1",
+                    "benchmark": "Nasdaq",
+                    "selected_codes": ["0", "1", "2", "3", "4", "6"],
+                    "combo_k": 2,
+                    "cfgs": {
+                        "0": {"ema": 10, "window": 252, "start": 0.80, "end": 0.50},
+                        "1": {"ema": 20, "window": 126, "start": 0.60, "end": 0.50},
+                        "2": {"ema": 30, "window": 63, "start": 0.20, "end": 0.10},
+                        "3": {"ema": 20, "window": 252, "start": 0.20, "end": 0.10},
+                        "4": {"ema": 10, "window": 63, "start": 0.60, "end": 0.30},
+                        "6": {"ema": 30, "window": 63, "start": 0.60, "end": 0.10},
+                    },
+                    "meta": {
+                        "exit_mode": "AND_EXIT",
+                        "start_persist": 1,
+                        "end_persist": 1,
+                        "min_hold_days": 5,
+                        "cooldown_days": 0,
+                        "combo_a": {
+                            "label": "A: ⓪ 지수 + ② IG + ③ 신용스트레스 + ④ VIX",
+                            "selected_codes": ["0", "2", "3", "4"],
+                            "combo_k": 3,
+                            "cfgs": {
+                                "0": {"ema": 10, "window": 252, "start": 0.80, "end": 0.50},
+                                "2": {"ema": 30, "window": 63, "start": 0.20, "end": 0.10},
+                                "3": {"ema": 20, "window": 252, "start": 0.20, "end": 0.10},
+                                "4": {"ema": 10, "window": 63, "start": 0.60, "end": 0.30},
+                            },
+                        },
+                        "combo_b": {
+                            "label": "B: ⓪ 지수 + ① HY + ② IG + ③ 신용스트레스 + ④ VIX + ⑥ VIX 스프레드",
+                            "selected_codes": ["0", "1", "2", "3", "4", "6"],
+                            "combo_k": 5,
+                            "cfgs": {
+                                "0": {"ema": 30, "window": 252, "start": 0.80, "end": 0.70},
+                                "1": {"ema": 20, "window": 126, "start": 0.60, "end": 0.50},
+                                "2": {"ema": 20, "window": 126, "start": 0.80, "end": 0.10},
+                                "3": {"ema": 30, "window": 63, "start": 0.60, "end": 0.30},
+                                "4": {"ema": 10, "window": 63, "start": 0.20, "end": 0.10},
+                                "6": {"ema": 30, "window": 63, "start": 0.60, "end": 0.10},
+                            },
+                        },
+                    },
+                },
                 "snp_meta_1": {
                     "label": "S&P 전용 메타조합 1",
                     "benchmark": "S&P500",
@@ -7759,6 +7805,7 @@ def main(page="signal"):
                         with st.expander("지표별 상태 보기", expanded=False):
                             st.markdown(_macro4_status_table_html, unsafe_allow_html=True)
                             _macro4_whipsaw_caption_map = {
+                                "nasdaq_meta_stab_1": "휩쏘제거 파라미터: 시작 1거래일 연속 ON, 종료 1거래일 연속 AND_EXIT, 최소보유 5일, 쿨다운 0일",
                                 "snp_meta_stab": "휩쏘제거 파라미터: 시작 10거래일 연속 ON, 종료 2거래일 연속 AND_EXIT, 최소보유 0일, 쿨다운 0일",
                                 "snp_meta_stab_2": "휩쏘제거 파라미터: 시작 1거래일 연속 ON, 종료 2거래일 연속 AND_EXIT, 최소보유 15일, 쿨다운 15일",
                                 "snp_meta_stab_3": "휩쏘제거 파라미터: 시작 1거래일 연속 ON, 종료 4거래일 연속 AND_EXIT, 최소보유 10일, 쿨다운 15일",
