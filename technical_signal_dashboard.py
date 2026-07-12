@@ -101,19 +101,15 @@ MACRO_BENCHMARKS = {
     "KOSPI": {"code": "^KS11", "label": "KOSPI", "kind": "kr"},
 }
 
-_MACRO_META_WHIPSAW_BACKTEST = {
-    "snp_meta_stab": {
-        "label": "S1",
-        "summary": {"10Y 자산": "474.6", "20Y 자산": "1399.7", "10Y MDD": "-19.2%", "20Y MDD": "-24.7%", "20Y Risk-off": "11.7%", "20Y Cycle": "11", "짧은 Cycle": "0"},
-    },
-    "snp_meta_stab_2": {
-        "label": "S2",
-        "summary": {"10Y 자산": "459.0", "20Y 자산": "1060.4", "10Y MDD": "-9.9%", "20Y MDD": "-23.6%", "20Y Risk-off": "33.1%", "20Y Cycle": "29", "짧은 Cycle": "0"},
-    },
-    "snp_meta_stab_3": {
-        "label": "S3",
-        "summary": {"10Y 자산": "422.5", "20Y 자산": "1088.3", "10Y MDD": "-13.0%", "20Y MDD": "-13.7%", "20Y Risk-off": "27.2%", "20Y Cycle": "28", "짧은 Cycle": "0"},
-    },
+_MACRO_META_BACKTEST_COMPARE = {
+    "sp500_buyhold": {"label": "S&P500 홀드", "group": "sp500", "metrics": {"10Y 자산": "356.4", "20Y 자산": "595.5", "10Y MDD": "-33.9%", "20Y MDD": "-56.8%", "20Y Risk-off": "0.0%", "20Y Cycle": "-", "짧은 Cycle": "-"}},
+    "snp": {"label": "S&P 전용 조합", "group": "sp500", "metrics": {"10Y 자산": "428.5", "20Y 자산": "645.3", "10Y MDD": "-10.2%", "20Y MDD": "-27.6%", "20Y Risk-off": "26.0%", "20Y Cycle": "45", "짧은 Cycle": "-"}},
+    "common": {"label": "미국 주식 공통 조합", "group": "sp500", "metrics": {"10Y 자산": "428.5", "20Y 자산": "645.3", "10Y MDD": "-10.2%", "20Y MDD": "-27.6%", "20Y Risk-off": "26.0%", "20Y Cycle": "45", "짧은 Cycle": "-"}},
+    "snp_meta_1": {"label": "S&P 전용 메타조합 1", "group": "sp500", "metrics": {"10Y 자산": "436.4", "20Y 자산": "755.6", "10Y MDD": "-11.7%", "20Y MDD": "-21.9%", "20Y Risk-off": "30.7%", "20Y Cycle": "31", "짧은 Cycle": "-"}},
+    "snp_meta_2": {"label": "S&P 전용 메타조합 2", "group": "sp500", "metrics": {"10Y 자산": "461.5", "20Y 자산": "1010.7", "10Y MDD": "-13.2%", "20Y MDD": "-26.0%", "20Y Risk-off": "15.8%", "20Y Cycle": "18", "짧은 Cycle": "-"}},
+    "snp_meta_stab": {"label": "S1", "group": "sp500", "metrics": {"10Y 자산": "474.6", "20Y 자산": "1399.7", "10Y MDD": "-19.2%", "20Y MDD": "-24.7%", "20Y Risk-off": "11.7%", "20Y Cycle": "11", "짧은 Cycle": "0"}},
+    "snp_meta_stab_2": {"label": "S2", "group": "sp500", "metrics": {"10Y 자산": "459.0", "20Y 자산": "1060.4", "10Y MDD": "-9.9%", "20Y MDD": "-23.6%", "20Y Risk-off": "33.1%", "20Y Cycle": "29", "짧은 Cycle": "0"}},
+    "snp_meta_stab_3": {"label": "S3", "group": "sp500", "metrics": {"10Y 자산": "422.5", "20Y 자산": "1088.3", "10Y MDD": "-13.0%", "20Y MDD": "-13.7%", "20Y Risk-off": "27.2%", "20Y Cycle": "28", "짧은 Cycle": "0"}},
 }
 
 DEFAULT_FAVORITES = [
@@ -5151,29 +5147,11 @@ def _build_macro_meta_combo_status_panel(
 
 
 def _build_macro_meta_backtest_panel(preset_key: str) -> tuple[str, str]:
-    selected = _MACRO_META_WHIPSAW_BACKTEST.get(preset_key)
+    selected = _MACRO_META_BACKTEST_COMPARE.get(preset_key)
     if not selected:
         return "", ""
-
+    group = selected.get("group")
     order = ["10Y 자산", "20Y 자산", "10Y MDD", "20Y MDD", "20Y Risk-off", "20Y Cycle", "짧은 Cycle"]
-    summary_cells = []
-    for key in order:
-        value = selected["summary"].get(key, "-")
-        summary_cells.append(
-            "<div style='padding:10px 12px;border:1px solid rgba(255,255,255,0.08);"
-            "background:#121214;border-radius:8px;min-width:120px;'>"
-            f"<div style='font-size:11px;color:#8F8F8F;margin-bottom:4px;'>{key}</div>"
-            f"<div style='font-size:15px;color:#EDEDED;font-weight:700;'>{value}</div>"
-            "</div>"
-        )
-    summary_html = (
-        "<div style='margin:2px 0 10px 0;'>"
-        f"<div style='font-size:12px;color:#8F8F8F;margin-bottom:8px;'>백테스트 요약 ({selected['label']})</div>"
-        "<div style='display:flex;flex-wrap:wrap;gap:8px;'>"
-        f"{''.join(summary_cells)}"
-        "</div></div>"
-    )
-
     header = (
         "<table style='width:100%;border-collapse:collapse;font-size:12px;'>"
         "<thead><tr>"
@@ -5188,24 +5166,28 @@ def _build_macro_meta_backtest_panel(preset_key: str) -> tuple[str, str]:
         "</tr></thead><tbody>"
     )
     rows = []
-    for key, meta in _MACRO_META_WHIPSAW_BACKTEST.items():
+    group_items = [(key, meta) for key, meta in _MACRO_META_BACKTEST_COMPARE.items() if meta.get("group") == group]
+    sort_order = ["sp500_buyhold", "snp", "common", "snp_meta_1", "snp_meta_2", "snp_meta_stab", "snp_meta_stab_2", "snp_meta_stab_3"]
+    group_items.sort(key=lambda item: sort_order.index(item[0]) if item[0] in sort_order else 999)
+    for key, meta in group_items:
         is_selected = key == preset_key
-        bg = "rgba(120,126,231,0.14)" if is_selected else "transparent"
-        border = "1px solid rgba(120,126,231,0.28)" if is_selected else "1px solid transparent"
+        bg = "rgba(120,126,231,0.16)" if is_selected else "transparent"
+        border = "1px solid rgba(120,126,231,0.34)" if is_selected else "1px solid transparent"
+        summary = meta["metrics"]
         rows.append(
             f"<tr style='background:{bg};border-top:{border};border-bottom:{border};'>"
             f"<td style='padding:7px 8px;color:#EDEDED;font-weight:700;'>{meta['label']}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{meta['summary']['10Y 자산']}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{meta['summary']['20Y 자산']}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{meta['summary']['10Y MDD']}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{meta['summary']['20Y MDD']}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{meta['summary']['20Y Risk-off']}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{meta['summary']['20Y Cycle']}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{meta['summary']['짧은 Cycle']}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['10Y 자산']}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['20Y 자산']}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['10Y MDD']}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['20Y MDD']}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['20Y Risk-off']}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['20Y Cycle']}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['짧은 Cycle']}</td>"
             "</tr>"
         )
     compare_html = header + "".join(rows) + "</tbody></table>"
-    return summary_html, compare_html
+    return "", compare_html
 
 
 def make_macro_combo_dynamic_chart(
