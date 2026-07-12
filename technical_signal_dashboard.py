@@ -45,6 +45,8 @@ except Exception:
 
 # 진단용: 즐겨찾기 표의 일/주/월 보조 배지 계산을 잠시 비활성화
 ENABLE_SIGNAL_TABLE_TF_BADGES = False
+# 진단용: 즐겨찾기 표 row 클릭 URL 이동을 잠시 비활성화
+ENABLE_SIGNAL_TABLE_ROW_LINKS = False
 
 
 # ============================================================
@@ -1982,7 +1984,7 @@ def render_signal_table(signal_rows, market=None, current_chart_mode=None, curre
             tf_month_badge = _single_tf_badge_html(None)
 
         _name_html = row['name']
-        if market in {"kr", "us"}:
+        if ENABLE_SIGNAL_TABLE_ROW_LINKS and market in {"kr", "us"}:
             _params = [
                 ("scan_market", market),
                 ("scan_code", row["code"]),
