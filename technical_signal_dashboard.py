@@ -43,6 +43,10 @@ except Exception:
     AUTOREFRESH_AVAILABLE = False
 
 
+# 진단용: 즐겨찾기 표의 일/주/월 보조 배지 계산을 잠시 비활성화
+ENABLE_SIGNAL_TABLE_TF_BADGES = False
+
+
 # ============================================================
 # 페이지 설정
 # ============================================================
@@ -1798,8 +1802,9 @@ def _build_signal_dashboard_rows(favorites_tuple, us_watchlist_tuple, chart_mode
                 for tf_label in tf_labels
             }
 
-    _attach_multitimeframe_signals(favorites, signal_rows, tickers_tuple)
-    _attach_multitimeframe_signals(us_watchlist, us_signal_rows, us_tickers_tuple)
+    if ENABLE_SIGNAL_TABLE_TF_BADGES:
+        _attach_multitimeframe_signals(favorites, signal_rows, tickers_tuple)
+        _attach_multitimeframe_signals(us_watchlist, us_signal_rows, us_tickers_tuple)
 
     return signal_rows, us_signal_rows, missing_kr, missing_us
 
@@ -1966,10 +1971,15 @@ def render_signal_table(signal_rows, market=None, current_chart_mode=None, curre
             dyn_buy_flag, dyn_sell_flag, band_buy_flag, band_sell_flag,
             dyn_holding=dyn_holding, band_holding=band_holding,
         )
-        tf_signals = row.get('tf_signals') or {}
-        tf_day_badge = _single_tf_badge_html(tf_signals.get("일봉"))
-        tf_week_badge = _single_tf_badge_html(tf_signals.get("주봉"))
-        tf_month_badge = _single_tf_badge_html(tf_signals.get("월봉"))
+        if ENABLE_SIGNAL_TABLE_TF_BADGES:
+            tf_signals = row.get('tf_signals') or {}
+            tf_day_badge = _single_tf_badge_html(tf_signals.get("일봉"))
+            tf_week_badge = _single_tf_badge_html(tf_signals.get("주봉"))
+            tf_month_badge = _single_tf_badge_html(tf_signals.get("월봉"))
+        else:
+            tf_day_badge = _single_tf_badge_html(None)
+            tf_week_badge = _single_tf_badge_html(None)
+            tf_month_badge = _single_tf_badge_html(None)
 
         _name_html = row['name']
         if market in {"kr", "us"}:
