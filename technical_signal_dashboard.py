@@ -1650,6 +1650,34 @@ def _build_signal_rows_for_items(items, closes, highs, lows,
     return rows
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _build_multitimeframe_signal_maps(items_tuple, tickers, data_end,
+                                      bb_window, bb_std, rsi_period,
+                                      rsi_buy_center, rsi_sell_center,
+                                      rsi_band, rsi_lookback, persist,
+                                      phase2_rsi):
+    items = [{"code": code, "name": name} for code, name in items_tuple]
+    tf_specs = [
+        ("일봉", "1d", 63),
+        ("주봉", "1wk", 504),
+        ("월봉", "1mo", 2520),
+    ]
+    today = datetime.now().date()
+    tf_maps = {}
+    for tf_label, tf_interval, tf_days in tf_specs:
+        tf_start = str(today - timedelta(days=tf_days + 400))
+        tf_closes, tf_highs, tf_lows = fetch_ohlcv_batch(tickers, tf_start, data_end, tf_interval)
+        tf_rows = _build_signal_rows_for_items(
+            items, tf_closes, tf_highs, tf_lows,
+            bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
+            rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
+            rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
+            phase2_rsi=phase2_rsi,
+        )
+        tf_maps[tf_label] = {row["code"]: row for row in tf_rows}
+    return tf_maps
+
+
 def _single_tf_badge_html(sig: dict | None):
     if not sig:
         return _badge("─", "#666", "#111113", "rgba(255,255,255,0.06)")
@@ -8256,34 +8284,32 @@ def main(page="signal"):
             us_signal_rows.sort(key=sort_key)
 
             # 펼침 테이블용 멀티 타임프레임 신호 (일봉 3개월 / 주봉 2년 / 월봉 10년)
-            _tf_specs = [
-                ("일봉", "1d", 63),
-                ("주봉", "1wk", 504),
-                ("월봉", "1mo", 2520),
-            ]
+            _tf_specs = [("일봉",), ("주봉",), ("월봉",)]
 
-            def _attach_multitimeframe_signals(items, rows, tickers, is_us=False):
-                tf_maps = {}
-                for _tf_label, _tf_interval, _tf_days in _tf_specs:
-                    _tf_start = str(today - timedelta(days=_tf_days + 400))
-                    _tf_closes, _tf_highs, _tf_lows = fetch_ohlcv_batch(tickers, _tf_start, data_end, _tf_interval)
-                    _tf_rows = _build_signal_rows_for_items(
-                        items, _tf_closes, _tf_highs, _tf_lows,
-                        bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
-                        rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
-                        rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
-                        phase2_rsi=phase2_rsi,
-                    )
-                    tf_maps[_tf_label] = {r['code']: r for r in _tf_rows}
+            def _attach_multitimeframe_signals(items, rows, tickers):
+                tf_maps = _build_multitimeframe_signal_maps(
+                    tuple((item["code"], item["name"]) for item in items),
+                    tickers,
+                    data_end,
+                    bb_window=bb_window,
+                    bb_std=bb_std,
+                    rsi_period=rsi_period,
+                    rsi_buy_center=rsi_buy_center,
+                    rsi_sell_center=rsi_sell_center,
+                    rsi_band=rsi_band,
+                    rsi_lookback=rsi_lookback,
+                    persist=persist,
+                    phase2_rsi=phase2_rsi,
+                )
                 for _row in rows:
                     _row['tf_signals'] = {
                         _tf_label: tf_maps.get(_tf_label, {}).get(_row['code'], _empty_signal_row(_row['code'], _row['name']))
-                        for _tf_label, _, _ in _tf_specs
+                        for (_tf_label,) in _tf_specs
                     }
 
             with st.spinner("📡 일/주/월 보조 신호 계산 중..."):
                 _attach_multitimeframe_signals(favorites, signal_rows, tickers_tuple)
-                _attach_multitimeframe_signals(US_WATCHLIST, us_signal_rows, us_tickers_tuple, is_us=True)
+                _attach_multitimeframe_signals(US_WATCHLIST, us_signal_rows, us_tickers_tuple)
 
             # 신호 요약 카운트 — 한국
             n_dyn_buy_flag  = sum(1 for r in signal_rows if r.get('dyn_buy_flag')  and not r.get('dyn_buy_signal'))
