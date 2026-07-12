@@ -7618,6 +7618,21 @@ def main(page="signal"):
                     },
                 },
             }
+            _macro4_preset_order = [
+                "common",
+                "nasdaq",
+                "nasdaq_meta",
+                "nasdaq_meta_stab_1",
+                "snp",
+                "snp_meta_1",
+                "snp_meta_2",
+                "snp_meta_stab",
+                "snp_meta_stab_2",
+                "snp_meta_stab_3",
+                "custom",
+            ]
+            _macro4_preset_options = [k for k in _macro4_preset_order if k in _macro4_presets]
+            _macro4_preset_options.extend([k for k in _macro4_presets.keys() if k not in _macro4_preset_options])
             if "macro4_preset" not in st.session_state:
                 st.session_state["macro4_preset"] = "snp"
 
@@ -7637,8 +7652,8 @@ def main(page="signal"):
             with _m39:
                 _macro4_preset = st.selectbox(
                     "조합 프리셋",
-                    options=list(_macro4_presets.keys()),
-                    index=list(_macro4_presets.keys()).index(st.session_state.get("macro4_preset", "snp")),
+                    options=_macro4_preset_options,
+                    index=_macro4_preset_options.index(st.session_state.get("macro4_preset", "snp")),
                     format_func=lambda x: _macro4_presets[x]["label"],
                     key="macro4_preset",
                     label_visibility="collapsed",
