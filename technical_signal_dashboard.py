@@ -110,11 +110,11 @@ _MACRO_META_BACKTEST_COMPARE = {
     "snp_meta_stab": {"label": "S&P 전용 메타조합 1 휩쏘제거", "group": "sp500", "metrics": {"10Y 자산": "474.6", "20Y 자산": "1399.7", "10Y MDD": "-19.2%", "20Y MDD": "-24.7%", "20Y Risk-off": "11.7%", "20Y Cycle": "11", "짧은 Cycle": "0"}},
     "snp_meta_stab_2": {"label": "S&P 전용 메타조합 2 휩쏘제거", "group": "sp500", "metrics": {"10Y 자산": "459.0", "20Y 자산": "1060.4", "10Y MDD": "-9.9%", "20Y MDD": "-23.6%", "20Y Risk-off": "33.1%", "20Y Cycle": "29", "짧은 Cycle": "0"}},
     "snp_meta_stab_3": {"label": "S&P 전용 메타조합 3 휩쏘제거", "group": "sp500", "metrics": {"10Y 자산": "422.5", "20Y 자산": "1088.3", "10Y MDD": "-13.0%", "20Y MDD": "-13.7%", "20Y Risk-off": "27.2%", "20Y Cycle": "28", "짧은 Cycle": "0"}},
-    "nasdaq_buyhold": {"label": "Nasdaq 홀드", "group": "nasdaq", "metrics": {"10Y 자산": "536.8", "20Y 자산": "1229.0", "10Y MDD": "-36.4%", "20Y MDD": "-55.6%", "20Y Risk-off": "0.0%", "20Y Cycle": "-", "짧은 Cycle": "-"}},
-    "nasdaq": {"label": "Nasdaq 전용 조합", "group": "nasdaq", "metrics": {"10Y 자산": "619.1", "20Y 자산": "2147.7", "10Y MDD": "-22.4%", "20Y MDD": "-23.2%", "20Y Risk-off": "25.5%", "20Y Cycle": "43", "짧은 Cycle": "5"}},
-    "nasdaq_common": {"label": "미국 주식 공통 조합 (Nasdaq 기준)", "group": "nasdaq", "metrics": {"10Y 자산": "543.0", "20Y 자산": "852.4", "10Y MDD": "-19.5%", "20Y MDD": "-29.3%", "20Y Risk-off": "26.2%", "20Y Cycle": "42", "짧은 Cycle": "-"}},
-    "nasdaq_meta": {"label": "Nasdaq 전용 메타조합", "group": "nasdaq", "metrics": {"10Y 자산": "785.7", "20Y 자산": "2617.9", "10Y MDD": "-21.5%", "20Y MDD": "-26.5%", "20Y Risk-off": "10.8%", "20Y Cycle": "17", "짧은 Cycle": "1"}},
-    "nasdaq_meta_stab_1": {"label": "Nasdaq 전용 메타조합 휩쏘제거 1", "group": "nasdaq", "metrics": {"10Y 자산": "776.4", "20Y 자산": "2586.9", "10Y MDD": "-21.5%", "20Y MDD": "-26.5%", "20Y Risk-off": "10.8%", "20Y Cycle": "16", "짧은 Cycle": "0"}},
+    "nasdaq_buyhold": {"label": "나스닥 홀드", "group": "nasdaq", "metrics": {"10Y 자산": "536.8", "20Y 자산": "1229.0", "10Y MDD": "-36.4%", "20Y MDD": "-55.6%", "20Y Risk-off": "0.0%", "20Y Cycle": "-", "짧은 Cycle": "-"}},
+    "nasdaq": {"label": "나스닥 전용 조합", "group": "nasdaq", "metrics": {"10Y 자산": "619.1", "20Y 자산": "2147.7", "10Y MDD": "-22.4%", "20Y MDD": "-23.2%", "20Y Risk-off": "25.5%", "20Y Cycle": "43", "짧은 Cycle": "5"}},
+    "nasdaq_common": {"label": "미국 주식 공통 조합 (나스닥 기준)", "group": "nasdaq", "metrics": {"10Y 자산": "543.0", "20Y 자산": "852.4", "10Y MDD": "-19.5%", "20Y MDD": "-29.3%", "20Y Risk-off": "26.2%", "20Y Cycle": "42", "짧은 Cycle": "-"}},
+    "nasdaq_meta": {"label": "나스닥 전용 메타조합", "group": "nasdaq", "metrics": {"10Y 자산": "785.7", "20Y 자산": "2617.9", "10Y MDD": "-21.5%", "20Y MDD": "-26.5%", "20Y Risk-off": "10.8%", "20Y Cycle": "17", "짧은 Cycle": "1"}},
+    "nasdaq_meta_stab_1": {"label": "나스닥 전용 메타조합 휩쏘제거 1", "group": "nasdaq", "metrics": {"10Y 자산": "776.4", "20Y 자산": "2586.9", "10Y MDD": "-21.5%", "20Y MDD": "-26.5%", "20Y Risk-off": "10.8%", "20Y Cycle": "16", "짧은 Cycle": "0"}},
 }
 
 DEFAULT_FAVORITES = [
@@ -4934,6 +4934,102 @@ def _macro_status_circle(on: bool, color_on: str = "#4BFFB3", color_off: str = "
     )
 
 
+def _macro_metric_float(value) -> float | None:
+    if value is None:
+        return None
+    text = str(value).strip().replace(",", "")
+    if text in {"", "-"}:
+        return None
+    if text.endswith("%"):
+        text = text[:-1]
+    if text.endswith("x"):
+        text = text[:-1]
+    try:
+        return float(text)
+    except Exception:
+        return None
+
+
+def _compute_macro_preset_current_state(preset_cfg: dict, years: int, sync_bucket: str | None = None):
+    benchmark_name = preset_cfg.get("benchmark", "S&P500")
+    benchmark = _get_macro_benchmark(benchmark_name)
+    spx_s = _yf_close(benchmark["code"], years, sync_bucket=sync_bucket)
+    if spx_s is None or spx_s.empty:
+        return None
+
+    meta_cfg = preset_cfg.get("meta")
+    if meta_cfg:
+        combo_a_cfg = meta_cfg.get("combo_a", {})
+        combo_b_cfg = meta_cfg.get("combo_b", {})
+        combo_a_combo, combo_a_active = _compute_macro_combo_signal_frame(
+            spx_s=spx_s,
+            benchmark_name=benchmark_name,
+            selected_codes=combo_a_cfg.get("selected_codes", []),
+            cfgs=combo_a_cfg.get("cfgs", {}),
+            combo_k=int(combo_a_cfg.get("combo_k", 1)),
+            sync_bucket=sync_bucket,
+        )
+        combo_b_combo, combo_b_active = _compute_macro_combo_signal_frame(
+            spx_s=spx_s,
+            benchmark_name=benchmark_name,
+            selected_codes=combo_b_cfg.get("selected_codes", []),
+            cfgs=combo_b_cfg.get("cfgs", {}),
+            combo_k=int(combo_b_cfg.get("combo_k", 1)),
+            sync_bucket=sync_bucket,
+        )
+        combo_a_event_df = _build_macro_combo_event_df(
+            combo=combo_a_combo,
+            active_codes=combo_a_active,
+            benchmark_name=benchmark_name,
+            selected_codes=combo_a_cfg.get("selected_codes", []),
+            cfgs=combo_a_cfg.get("cfgs", {}),
+            combo_k=int(combo_a_cfg.get("combo_k", 1)),
+        )
+        combo_b_event_df = _build_macro_combo_event_df(
+            combo=combo_b_combo,
+            active_codes=combo_b_active,
+            benchmark_name=benchmark_name,
+            selected_codes=combo_b_cfg.get("selected_codes", []),
+            cfgs=combo_b_cfg.get("cfgs", {}),
+            combo_k=int(combo_b_cfg.get("combo_k", 1)),
+        )
+        meta_event_df = _build_macro_meta_combo_event_df(
+            combo_a_event_df=combo_a_event_df,
+            combo_b_event_df=combo_b_event_df,
+            combo_a_label="조합 A",
+            combo_b_label="조합 B",
+            benchmark_name=benchmark_name,
+            exit_mode=str(meta_cfg.get("exit_mode", "AND_EXIT")),
+            start_persist=int(meta_cfg.get("start_persist", 1)),
+            end_persist=int(meta_cfg.get("end_persist", 1)),
+            min_hold_days=int(meta_cfg.get("min_hold_days", 0)),
+            cooldown_days=int(meta_cfg.get("cooldown_days", 0)),
+        )
+        if meta_event_df is None or meta_event_df.empty:
+            return None
+        return bool(meta_event_df.sort_values("date").iloc[-1].get("combo_risk_state", False))
+
+    combo, active_codes = _compute_macro_combo_signal_frame(
+        spx_s=spx_s,
+        benchmark_name=benchmark_name,
+        selected_codes=preset_cfg.get("selected_codes", []),
+        cfgs=preset_cfg.get("cfgs", {}),
+        combo_k=int(preset_cfg.get("combo_k", 1)),
+        sync_bucket=sync_bucket,
+    )
+    combo_event_df = _build_macro_combo_event_df(
+        combo=combo,
+        active_codes=active_codes,
+        benchmark_name=benchmark_name,
+        selected_codes=preset_cfg.get("selected_codes", []),
+        cfgs=preset_cfg.get("cfgs", {}),
+        combo_k=int(preset_cfg.get("combo_k", 1)),
+    )
+    if combo_event_df is None or combo_event_df.empty:
+        return None
+    return bool(combo_event_df.sort_values("date").iloc[-1].get("combo_risk_state", False))
+
+
 def _macro_date_text(value) -> str:
     if value is None or (isinstance(value, float) and np.isnan(value)):
         return "-"
@@ -5151,12 +5247,16 @@ def _build_macro_meta_combo_status_panel(
     return summary_html, table_html
 
 
-def _build_macro_meta_backtest_panel(preset_key: str) -> tuple[str, str]:
+def _build_macro_meta_backtest_panel(
+    preset_key: str,
+    preset_defs: dict | None = None,
+    years: int = 3,
+    sync_bucket: str | None = None,
+) -> tuple[str, str]:
     selected = _MACRO_META_BACKTEST_COMPARE.get(preset_key)
     if not selected:
         return "", ""
     group = selected.get("group")
-    order = ["10Y 자산", "20Y 자산", "10Y MDD", "20Y MDD", "20Y Risk-off", "20Y Cycle", "짧은 Cycle"]
     header = (
         "<table style='width:100%;border-collapse:collapse;font-size:12px;'>"
         "<thead><tr>"
@@ -5168,6 +5268,7 @@ def _build_macro_meta_backtest_panel(preset_key: str) -> tuple[str, str]:
         "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>20Y Risk-off</th>"
         "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>20Y Cycle</th>"
         "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>짧은 Cycle</th>"
+        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>현재</th>"
         "</tr></thead><tbody>"
     )
     rows = []
@@ -5178,21 +5279,51 @@ def _build_macro_meta_backtest_panel(preset_key: str) -> tuple[str, str]:
     }
     sort_order = sort_orders.get(group, [])
     group_items.sort(key=lambda item: sort_order.index(item[0]) if item[0] in sort_order else 999)
+    hold_key = "sp500_buyhold" if group == "sp500" else "nasdaq_buyhold"
+    hold_metrics = _MACRO_META_BACKTEST_COMPARE.get(hold_key, {}).get("metrics", {})
+    hold_10y = _macro_metric_float(hold_metrics.get("10Y 자산"))
+    hold_20y = _macro_metric_float(hold_metrics.get("20Y 자산"))
+    current_state_map = {}
+    if preset_defs:
+        for key, _meta in group_items:
+            preset_cfg = preset_defs.get(key)
+            if not preset_cfg:
+                current_state_map[key] = None
+                continue
+            try:
+                current_state_map[key] = _compute_macro_preset_current_state(
+                    preset_cfg=preset_cfg,
+                    years=years,
+                    sync_bucket=sync_bucket,
+                )
+            except Exception:
+                current_state_map[key] = None
     for key, meta in group_items:
         is_selected = key == preset_key
         bg = "rgba(120,126,231,0.16)" if is_selected else "transparent"
         border = "1px solid rgba(120,126,231,0.34)" if is_selected else "1px solid transparent"
         summary = meta["metrics"]
+        asset_10y = summary["10Y 자산"]
+        asset_20y = summary["20Y 자산"]
+        asset_10y_num = _macro_metric_float(asset_10y)
+        asset_20y_num = _macro_metric_float(asset_20y)
+        if hold_10y and asset_10y_num is not None and key != hold_key:
+            asset_10y = f"{asset_10y} <span style='color:#8F8F8F;font-size:11px;'>({asset_10y_num / hold_10y:.2f}x)</span>"
+        if hold_20y and asset_20y_num is not None and key != hold_key:
+            asset_20y = f"{asset_20y} <span style='color:#8F8F8F;font-size:11px;'>({asset_20y_num / hold_20y:.2f}x)</span>"
+        current_state = current_state_map.get(key)
+        current_state_html = "-" if current_state is None else _macro_status_circle(current_state, color_on="#4BFFB3")
         rows.append(
             f"<tr style='background:{bg};border-top:{border};border-bottom:{border};'>"
             f"<td style='padding:7px 8px;color:#EDEDED;font-weight:700;'>{meta['label']}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['10Y 자산']}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['20Y 자산']}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{asset_10y}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{asset_20y}</td>"
             f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['10Y MDD']}</td>"
             f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['20Y MDD']}</td>"
             f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['20Y Risk-off']}</td>"
             f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['20Y Cycle']}</td>"
             f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['짧은 Cycle']}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:center;'>{current_state_html}</td>"
             "</tr>"
         )
     compare_html = header + "".join(rows) + "</tbody></table>"
@@ -7808,7 +7939,12 @@ def main(page="signal"):
                         )
                     if _macro4_status_html:
                         st.markdown(_macro4_status_html, unsafe_allow_html=True)
-                    _macro4_bt_summary_html, _macro4_bt_compare_html = _build_macro_meta_backtest_panel(_macro4_preset)
+                    _macro4_bt_summary_html, _macro4_bt_compare_html = _build_macro_meta_backtest_panel(
+                        _macro4_preset,
+                        preset_defs=_macro4_presets,
+                        years=_macro4_years,
+                        sync_bucket=_macro4_sync_bucket,
+                    )
                     if _macro4_bt_summary_html:
                         st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
                         st.markdown(_macro4_bt_summary_html, unsafe_allow_html=True)
