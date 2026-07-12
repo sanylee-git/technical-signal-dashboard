@@ -23,6 +23,7 @@ import os
 import re
 import sys
 import time
+import copy
 import warnings
 import traceback
 warnings.filterwarnings('ignore')
