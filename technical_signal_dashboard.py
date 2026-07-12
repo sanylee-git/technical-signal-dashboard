@@ -51,40 +51,42 @@ _IS_MARKET_MACRO_APP = any(
     for arg in sys.argv
 )
 
-st.set_page_config(
-    page_title="시장/매크로 지표" if _IS_MARKET_MACRO_APP else "기술적 신호 스캐너",
-    page_icon="🏔️" if _IS_MARKET_MACRO_APP else "🎯",
-    layout="wide",
-    initial_sidebar_state="collapsed" if _IS_MARKET_MACRO_APP else "expanded"
-)
+def _configure_streamlit_page(page="signal"):
+    is_market_macro_app = page in ("market_macro", "market", "macro", "macro2", "macro3", "macro4") or _IS_MARKET_MACRO_APP
+    st.set_page_config(
+        page_title="시장/매크로 지표" if is_market_macro_app else "기술적 신호 스캐너",
+        page_icon="🏔️" if is_market_macro_app else "🎯",
+        layout="wide",
+        initial_sidebar_state="collapsed" if is_market_macro_app else "expanded"
+    )
 
-st.markdown("""
-    <meta name="google-adsense-account" content="ca-pub-9688338422874533">
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9688338422874533"
-         crossorigin="anonymous"></script>
-""", unsafe_allow_html=True)
+    st.markdown("""
+        <meta name="google-adsense-account" content="ca-pub-9688338422874533">
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9688338422874533"
+             crossorigin="anonymous"></script>
+    """, unsafe_allow_html=True)
 
-st.markdown("""
-    <style>
-    [data-testid="stHeader"]               { display: none !important; }
-    [data-testid="stToolbar"]              { display: none !important; }
-    [data-testid="stDecoration"]           { display: none !important; }
-    [data-testid="stStatusWidget"]         { display: none !important; }
-    #MainMenu                              { display: none !important; }
-    footer                                 { display: none !important; }
-    [data-testid="stSidebarCollapseButton"]   { display: none !important; }
-    [data-testid="stSidebarCollapsedControl"] { display: none !important; }
-    [data-testid="stBottom"]              { display: none !important; }
-    [data-testid="embeddedAppMetaInfoBar"] { display: none !important; }
-    [class*="embeddedAppMetaInfoBar"]      { display: none !important; }
-    [class*="EmbedToolbar"]               { display: none !important; }
-    .stApp                                 { background-color: #0D0D0E !important; }
-    [data-testid="stAppViewContainer"]     { background-color: #0D0D0E !important; }
-    [data-testid="stVerticalBlock"]        { background-color: transparent !important; }
-    [data-testid="stMainBlockContainer"]   { padding-top: 0rem !important; }
-    .modebar                               { display: none !important; }
-    </style>
-""", unsafe_allow_html=True)
+    st.markdown("""
+        <style>
+        [data-testid="stHeader"]               { display: none !important; }
+        [data-testid="stToolbar"]              { display: none !important; }
+        [data-testid="stDecoration"]           { display: none !important; }
+        [data-testid="stStatusWidget"]         { display: none !important; }
+        #MainMenu                              { display: none !important; }
+        footer                                 { display: none !important; }
+        [data-testid="stSidebarCollapseButton"]   { display: none !important; }
+        [data-testid="stSidebarCollapsedControl"] { display: none !important; }
+        [data-testid="stBottom"]              { display: none !important; }
+        [data-testid="embeddedAppMetaInfoBar"] { display: none !important; }
+        [class*="embeddedAppMetaInfoBar"]      { display: none !important; }
+        [class*="EmbedToolbar"]               { display: none !important; }
+        .stApp                                 { background-color: #0D0D0E !important; }
+        [data-testid="stAppViewContainer"]     { background-color: #0D0D0E !important; }
+        [data-testid="stVerticalBlock"]        { background-color: transparent !important; }
+        [data-testid="stMainBlockContainer"]   { padding-top: 0rem !important; }
+        .modebar                               { display: none !important; }
+        </style>
+    """, unsafe_allow_html=True)
 
 
 # ============================================================
@@ -6729,6 +6731,7 @@ def make_arrow_safe(df):
 def main(page="signal"):
     global rsi_buy_lower_global, rsi_sell_lower_global
 
+    _configure_streamlit_page(page)
     st.markdown(DARK_CSS, unsafe_allow_html=True)
     if page == "market_macro":
         st.markdown("""
