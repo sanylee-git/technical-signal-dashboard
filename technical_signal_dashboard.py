@@ -111,9 +111,9 @@ _MACRO_META_BACKTEST_COMPARE = {
     "snp_meta_stab_2": {"label": "S&P 전용 메타조합 2 휩쏘제거", "group": "sp500", "metrics": {"10Y 자산": "459.0", "20Y 자산": "1060.4", "10Y MDD": "-9.9%", "20Y MDD": "-23.6%", "20Y Risk-off": "33.1%", "20Y Cycle": "29", "짧은 Cycle": "0"}},
     "snp_meta_stab_3": {"label": "S&P 전용 메타조합 3 휩쏘제거", "group": "sp500", "metrics": {"10Y 자산": "422.5", "20Y 자산": "1088.3", "10Y MDD": "-13.0%", "20Y MDD": "-13.7%", "20Y Risk-off": "27.2%", "20Y Cycle": "28", "짧은 Cycle": "0"}},
     "nasdaq_buyhold": {"label": "Nasdaq 홀드", "group": "nasdaq", "metrics": {"10Y 자산": "536.8", "20Y 자산": "1229.0", "10Y MDD": "-36.4%", "20Y MDD": "-55.6%", "20Y Risk-off": "0.0%", "20Y Cycle": "-", "짧은 Cycle": "-"}},
-    "nasdaq": {"label": "Nasdaq 전용 조합", "group": "nasdaq", "metrics": {"10Y 자산": "619.1", "20Y 자산": "2147.7", "10Y MDD": "-22.4%", "20Y MDD": "-23.2%", "20Y Risk-off": "25.5%", "20Y Cycle": "43", "짧은 Cycle": "-"}},
+    "nasdaq": {"label": "Nasdaq 전용 조합", "group": "nasdaq", "metrics": {"10Y 자산": "619.1", "20Y 자산": "2147.7", "10Y MDD": "-22.4%", "20Y MDD": "-23.2%", "20Y Risk-off": "25.5%", "20Y Cycle": "43", "짧은 Cycle": "5"}},
     "nasdaq_common": {"label": "미국 주식 공통 조합 (Nasdaq 기준)", "group": "nasdaq", "metrics": {"10Y 자산": "543.0", "20Y 자산": "852.4", "10Y MDD": "-19.5%", "20Y MDD": "-29.3%", "20Y Risk-off": "26.2%", "20Y Cycle": "42", "짧은 Cycle": "-"}},
-    "nasdaq_meta": {"label": "Nasdaq 전용 메타조합", "group": "nasdaq", "metrics": {"10Y 자산": "785.7", "20Y 자산": "2617.9", "10Y MDD": "-21.5%", "20Y MDD": "-26.5%", "20Y Risk-off": "10.8%", "20Y Cycle": "17", "짧은 Cycle": "-"}},
+    "nasdaq_meta": {"label": "Nasdaq 전용 메타조합", "group": "nasdaq", "metrics": {"10Y 자산": "785.7", "20Y 자산": "2617.9", "10Y MDD": "-21.5%", "20Y MDD": "-26.5%", "20Y Risk-off": "10.8%", "20Y Cycle": "17", "짧은 Cycle": "1"}},
     "nasdaq_meta_stab_1": {"label": "Nasdaq 전용 메타조합 휩쏘제거 1", "group": "nasdaq", "metrics": {"10Y 자산": "776.4", "20Y 자산": "2586.9", "10Y MDD": "-21.5%", "20Y MDD": "-26.5%", "20Y Risk-off": "10.8%", "20Y Cycle": "16", "짧은 Cycle": "0"}},
 }
 
