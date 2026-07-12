@@ -5030,6 +5030,21 @@ def _compute_macro_preset_current_state(preset_cfg: dict, years: int, sync_bucke
     return bool(combo_event_df.sort_values("date").iloc[-1].get("combo_risk_state", False))
 
 
+def _resolve_macro_backtest_preset_cfg(key: str, preset_defs: dict | None):
+    if not preset_defs:
+        return None
+    direct = preset_defs.get(key)
+    if direct:
+        return direct
+    if key == "nasdaq_common":
+        base = preset_defs.get("common")
+        if base:
+            resolved = copy.deepcopy(base)
+            resolved["benchmark"] = "Nasdaq"
+            return resolved
+    return None
+
+
 def _macro_date_text(value) -> str:
     if value is None or (isinstance(value, float) and np.isnan(value)):
         return "-"
@@ -5283,10 +5298,12 @@ def _build_macro_meta_backtest_panel(
     hold_metrics = _MACRO_META_BACKTEST_COMPARE.get(hold_key, {}).get("metrics", {})
     hold_10y = _macro_metric_float(hold_metrics.get("10Y 자산"))
     hold_20y = _macro_metric_float(hold_metrics.get("20Y 자산"))
+    hold_mdd_10y = _macro_metric_float(hold_metrics.get("10Y MDD"))
+    hold_mdd_20y = _macro_metric_float(hold_metrics.get("20Y MDD"))
     current_state_map = {}
     if preset_defs:
         for key, _meta in group_items:
-            preset_cfg = preset_defs.get(key)
+            preset_cfg = _resolve_macro_backtest_preset_cfg(key, preset_defs)
             if not preset_cfg:
                 current_state_map[key] = None
                 continue
@@ -5305,12 +5322,20 @@ def _build_macro_meta_backtest_panel(
         summary = meta["metrics"]
         asset_10y = summary["10Y 자산"]
         asset_20y = summary["20Y 자산"]
+        mdd_10y = summary["10Y MDD"]
+        mdd_20y = summary["20Y MDD"]
         asset_10y_num = _macro_metric_float(asset_10y)
         asset_20y_num = _macro_metric_float(asset_20y)
+        mdd_10y_num = _macro_metric_float(mdd_10y)
+        mdd_20y_num = _macro_metric_float(mdd_20y)
         if hold_10y and asset_10y_num is not None and key != hold_key:
             asset_10y = f"{asset_10y} <span style='color:#8F8F8F;font-size:11px;'>({asset_10y_num / hold_10y:.2f}x)</span>"
         if hold_20y and asset_20y_num is not None and key != hold_key:
             asset_20y = f"{asset_20y} <span style='color:#8F8F8F;font-size:11px;'>({asset_20y_num / hold_20y:.2f}x)</span>"
+        if hold_mdd_10y and mdd_10y_num is not None and key != hold_key:
+            mdd_10y = f"{mdd_10y} <span style='color:#8F8F8F;font-size:11px;'>({abs(mdd_10y_num) / abs(hold_mdd_10y):.2f}x)</span>"
+        if hold_mdd_20y and mdd_20y_num is not None and key != hold_key:
+            mdd_20y = f"{mdd_20y} <span style='color:#8F8F8F;font-size:11px;'>({abs(mdd_20y_num) / abs(hold_mdd_20y):.2f}x)</span>"
         current_state = current_state_map.get(key)
         current_state_html = "-" if current_state is None else _macro_status_circle(current_state, color_on="#4BFFB3")
         rows.append(
@@ -5318,8 +5343,8 @@ def _build_macro_meta_backtest_panel(
             f"<td style='padding:7px 8px;color:#EDEDED;font-weight:700;'>{meta['label']}</td>"
             f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{asset_10y}</td>"
             f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{asset_20y}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['10Y MDD']}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['20Y MDD']}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{mdd_10y}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{mdd_20y}</td>"
             f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['20Y Risk-off']}</td>"
             f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['20Y Cycle']}</td>"
             f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['짧은 Cycle']}</td>"
