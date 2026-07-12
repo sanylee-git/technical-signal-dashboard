@@ -7329,7 +7329,7 @@ def main(page="signal"):
                     },
                 },
                 "snp_meta_stab": {
-                    "label": "S&P 전용 메타조합 안정화",
+                    "label": "S&P 전용 메타조합 휩쏘제거",
                     "benchmark": "S&P500",
                     "selected_codes": ["0", "1", "2", "3", "4", "6"],
                     "combo_k": 2,
@@ -7600,6 +7600,8 @@ def main(page="signal"):
                         st.markdown('<div style="height:18px;"></div>', unsafe_allow_html=True)
                         with st.expander("지표별 상태 보기", expanded=False):
                             st.markdown(_macro4_status_table_html, unsafe_allow_html=True)
+                            if _macro4_preset == "snp_meta_stab":
+                                st.caption("휩쏘제거 파라미터: 시작 10거래일 연속 ON, 종료 2거래일 연속 AND_EXIT, 최소보유 0일, 쿨다운 0일")
                     st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
                     st.plotly_chart(_macro4_combo_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_combo_{_macro4_preset}_{_benchmark_name4}_{_macro4_years}_{'_'.join(_selected_codes4)}_{_combo_k4}_{_macro_dynamic_cfg_signature(_macro4_cfgs, _selected_codes4)}")
                     if _macro4_is_meta:
