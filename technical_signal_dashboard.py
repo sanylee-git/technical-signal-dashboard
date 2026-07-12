@@ -7410,7 +7410,9 @@ def main(page="signal"):
 
             _macro4_cfgs = {}
             if _macro4_is_meta:
-                _macro4_cfgs = {k: dict(v) for k, v in _macro4_preset_cfg["cfgs"].items()}
+                _macro4_cfgs = {k: dict(v) for k, v in _macro4_defaults.items()}
+                for _code, _cfg in _macro4_preset_cfg["cfgs"].items():
+                    _macro4_cfgs[_code] = dict(_cfg)
                 st.caption("메타조합 프리셋은 백테스트 선정값으로 고정되어 있습니다. 아래에는 메타 차트와 하위 조합 A/B 차트를 함께 표시합니다.")
             else:
                 with st.expander("▸ 고급 설정: 지표별 EMA / Window / Start / End", expanded=False):
