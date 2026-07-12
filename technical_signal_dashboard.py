@@ -1066,20 +1066,50 @@ def fetch_intraday(ticker, interval):
 
 @st.cache_data(ttl=60)
 def fetch_intraday_batch(tickers_tuple, interval):
-    """분봉 Close 일괄 조회 (스캐너용). 각 ticker 순차 fetch 후 DataFrame으로 합산."""
+    """분봉 Close 일괄 조회 (스캐너용).
+
+    우선 yfinance batch 요청 1회로 최대한 묶고, 배치 누락 종목만 개별 fetch로 보완한다.
+    """
     tickers = list(tickers_tuple)
     if not tickers:
         return pd.DataFrame()
+
+    result = pd.DataFrame()
+    period = {"5m": "5d", "15m": "7d", "30m": "14d", "60m": "30d"}.get(interval, "30d")
+
+    try:
+        raw = yf.download(
+            tickers,
+            period=period,
+            interval=interval,
+            progress=False,
+            group_by='ticker',
+            threads=False,
+        )
+        result = _extract_close_df(raw, tickers)
+    except Exception:
+        pass
+
     frames = {}
+    if not result.empty:
+        for ticker in result.columns:
+            series = result[ticker].dropna()
+            if not series.empty:
+                frames[ticker] = series
+
     for ticker in tickers:
+        if ticker in frames and not frames[ticker].empty:
+            continue
         try:
             df, _ = fetch_intraday(ticker, interval)
             if not df.empty and 'Close' in df.columns:
                 frames[ticker] = df['Close']
         except Exception:
             pass
+
     if not frames:
         return pd.DataFrame()
+
     result = pd.DataFrame(frames)
     result.index = _strip_tz(result.index)
     return result
