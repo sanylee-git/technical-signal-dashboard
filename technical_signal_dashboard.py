@@ -48,6 +48,7 @@ except Exception:
 ENABLE_SIGNAL_TABLE_TF_BADGES = True
 ENABLE_SIGNAL_TABLE_ROW_LINKS = True
 DEBUG_MODE = False
+MACRO_DEBUG_MODE = False
 INFLIGHT_GUARD_STALE_SECONDS = 12
 RECENT_FETCH_FALLBACK_SECONDS = 75
 RECENT_FETCH_MAX_ITEMS = 8
@@ -1038,6 +1039,26 @@ def _signal_debug_log(event: str, **kwargs):
         print("[signal-debug] " + json.dumps(payload, ensure_ascii=False, default=str))
     except Exception:
         print(f"[signal-debug] {event} {payload}")
+
+
+def _macro_debug_log(event: str, **kwargs):
+    if not MACRO_DEBUG_MODE:
+        return
+    payload = {
+        "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+        "event": event,
+    }
+    for key, value in kwargs.items():
+        if isinstance(value, pd.DataFrame):
+            payload[key] = f"{value.shape[0]}x{value.shape[1]}"
+        elif isinstance(value, (list, tuple, set)) and len(value) > 12:
+            payload[key] = f"{type(value).__name__}[{len(value)}]"
+        else:
+            payload[key] = value
+    try:
+        print("[macro-debug] " + json.dumps(payload, ensure_ascii=False, default=str))
+    except Exception:
+        print(f"[macro-debug] {event} {payload}")
 
 
 def _signal_scope_key(chart_mode: str, purpose: str, ticker: str | None = None,
@@ -5247,7 +5268,8 @@ def _macro_combo_warmup_years(visible_years: int, cfgs: dict, selected_codes) ->
 
 
 def _build_macro2_dynamic_charts(years: int, spx_s, show_raw: bool, benchmark_name: str, cfgs: dict, sync_bucket: str | None = None):
-    return [
+    _started = time.perf_counter()
+    charts = [
         make_macro_index_cycle_chart(
             years, spx_s, show_raw, benchmark_name=benchmark_name,
             dynamic_mode=True, ema_span=cfgs["0"]["ema"],
@@ -5297,6 +5319,14 @@ def _build_macro2_dynamic_charts(years: int, spx_s, show_raw: bool, benchmark_na
             sync_bucket=sync_bucket,
         ),
     ]
+    _macro_debug_log(
+        "build_macro2_dynamic_charts",
+        benchmark_name=benchmark_name,
+        years=years,
+        chart_count=len(charts),
+        elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+    )
+    return charts
 
 
 def _get_macro2_signal_series(signal_code: str, years: int, benchmark_name: str = 'S&P500', spx_s=None, sync_bucket: str | None = None) -> pd.Series:
@@ -5743,7 +5773,22 @@ def _macro_metric_float(value) -> float | None:
         return None
 
 
-def _compute_macro_preset_current_state(preset_cfg: dict, years: int, sync_bucket: str | None = None):
+@st.cache_data(ttl=3600, show_spinner=False)
+def _get_macro_signal_latest_date(code: str, years: int, benchmark_name: str = 'S&P500', sync_bucket: str | None = None):
+    series = _get_macro2_signal_series(
+        code,
+        years,
+        benchmark_name=benchmark_name,
+        spx_s=None,
+        sync_bucket=sync_bucket,
+    )
+    if series is None or series.empty:
+        return None
+    return series.index.max()
+
+
+@st.cache_data(show_spinner=False)
+def _compute_macro_preset_current_state_cached(preset_cfg: dict, years: int, sync_bucket: str | None = None):
     benchmark_name = preset_cfg.get("benchmark", "S&P500")
     benchmark = _get_macro_benchmark(benchmark_name)
     spx_s = _yf_close(benchmark["code"], years, sync_bucket=sync_bucket)
@@ -5835,6 +5880,35 @@ def _compute_macro_preset_current_state(preset_cfg: dict, years: int, sync_bucke
     }
 
 
+def _compute_macro_preset_current_state(preset_cfg: dict, years: int, sync_bucket: str | None = None):
+    _started = time.perf_counter()
+    preset_name = str(preset_cfg.get("label") or preset_cfg.get("benchmark") or "unknown")
+    benchmark_name = preset_cfg.get("benchmark", "S&P500")
+    meta_cfg = preset_cfg.get("meta")
+    _macro_debug_log(
+        "compute_macro_preset_current_state_start",
+        preset_key=preset_name,
+        benchmark_name=benchmark_name,
+        years=years,
+        is_meta=bool(meta_cfg),
+    )
+    result = _compute_macro_preset_current_state_cached(
+        preset_cfg=preset_cfg,
+        years=years,
+        sync_bucket=sync_bucket,
+    )
+    _macro_debug_log(
+        "compute_macro_preset_current_state_end",
+        preset_key=preset_name,
+        benchmark_name=benchmark_name,
+        years=years,
+        is_meta=bool(meta_cfg),
+        elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+        has_result=result is not None,
+    )
+    return result
+
+
 def _resolve_macro_backtest_preset_cfg(key: str, preset_defs: dict | None):
     if not preset_defs:
         return None
@@ -5882,6 +5956,7 @@ def _build_macro_combo_status_panel(
     combo_event_df: pd.DataFrame,
     sync_bucket: str | None = None,
 ):
+    _started = time.perf_counter()
     selected_codes = list(selected_codes or [])
     if combo_event_df is None or combo_event_df.empty:
         return "", ""
@@ -5897,14 +5972,12 @@ def _build_macro_combo_status_panel(
     entries = []
 
     for code, label in _MACRO2_SIGNAL_LABELS.items():
-        series = _get_macro2_signal_series(
+        latest_date = _get_macro_signal_latest_date(
             code,
             years,
             benchmark_name=benchmark_name,
-            spx_s=spx_s,
             sync_bucket=sync_bucket,
         )
-        latest_date = series.index.max() if series is not None and not series.empty else None
         flag_col = f"{_macro2_debug_name(code)}_flag"
         is_selected = code in selected_codes
         is_on = bool(latest_row.get(flag_col, False)) if flag_col in latest_row.index else False
@@ -5972,6 +6045,13 @@ def _build_macro_combo_status_panel(
         "</table>"
     )
 
+    _macro_debug_log(
+        "build_macro_combo_status_panel",
+        benchmark_name=benchmark_name,
+        years=years,
+        selected_codes=len(selected_codes),
+        elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+    )
     return summary_html, table_html
 
 
@@ -5986,6 +6066,7 @@ def _build_macro_meta_combo_status_panel(
     combo_b_cfg: dict,
     sync_bucket: str | None = None,
 ):
+    _started = time.perf_counter()
     if meta_event_df is None or meta_event_df.empty:
         return "", ""
 
@@ -6014,14 +6095,12 @@ def _build_macro_meta_combo_status_panel(
             "latest_date": _macro_date_text(combo_latest.get("date")),
         }]
         for code in combo_cfg["selected_codes"]:
-            signal_series = _get_macro2_signal_series(
+            latest_date = _get_macro_signal_latest_date(
                 code,
                 years,
                 benchmark_name=benchmark_name,
-                spx_s=spx_s,
                 sync_bucket=sync_bucket,
             )
-            latest_date = signal_series.index.max() if signal_series is not None and not signal_series.empty else None
             flag_col = f"{_macro2_debug_name(code)}_flag"
             entries.append({
                 "label": _MACRO2_SIGNAL_LABELS.get(code, code),
@@ -6079,6 +6158,14 @@ def _build_macro_meta_combo_status_panel(
         "</table>"
     )
 
+    _macro_debug_log(
+        "build_macro_meta_combo_status_panel",
+        benchmark_name=benchmark_name,
+        years=years,
+        combo_a_codes=len(combo_a_cfg.get("selected_codes", [])),
+        combo_b_codes=len(combo_b_cfg.get("selected_codes", [])),
+        elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+    )
     return summary_html, table_html
 
 
@@ -6088,6 +6175,7 @@ def _build_macro_meta_backtest_panel(
     years: int = 3,
     sync_bucket: str | None = None,
 ) -> tuple[str, str]:
+    _started = time.perf_counter()
     selected = _MACRO_META_BACKTEST_COMPARE.get(preset_key)
     if not selected:
         return "", ""
@@ -6186,6 +6274,14 @@ def _build_macro_meta_backtest_panel(
             "</tr>"
         )
     compare_html = header + "".join(rows) + "</tbody></table>"
+    _macro_debug_log(
+        "build_macro_meta_backtest_panel",
+        preset_key=preset_key,
+        group=group,
+        years=years,
+        candidate_count=len(group_items),
+        elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+    )
     return "", compare_html
 
 
@@ -6199,6 +6295,7 @@ def make_macro_combo_dynamic_chart(
     return_debug: bool = False,
     sync_bucket: str | None = None,
 ):
+    _started = time.perf_counter()
     benchmark = _get_macro_benchmark(benchmark_name)
     visible_spx_s = spx_s
     if visible_spx_s is None or visible_spx_s.empty:
@@ -6338,7 +6435,23 @@ def make_macro_combo_dynamic_chart(
         borderpad=4,
     )
     if return_debug:
+        _macro_debug_log(
+            "make_macro_combo_dynamic_chart",
+            benchmark_name=benchmark_name,
+            years=years,
+            selected_codes=len(selected_codes),
+            combo_k=combo_k,
+            elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+        )
         return fig, combo_event_df
+    _macro_debug_log(
+        "make_macro_combo_dynamic_chart",
+        benchmark_name=benchmark_name,
+        years=years,
+        selected_codes=len(selected_codes),
+        combo_k=combo_k,
+        elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+    )
     return fig
 
 
@@ -6485,6 +6598,7 @@ def make_macro_meta_combo_dynamic_chart(
     cooldown_days: int = 0,
     return_debug: bool = False,
 ):
+    _started = time.perf_counter()
     if spx_s is None or spx_s.empty:
         return (None, pd.DataFrame()) if return_debug else None
 
@@ -6604,7 +6718,27 @@ def make_macro_meta_combo_dynamic_chart(
         borderpad=4,
     )
     if return_debug:
+        _macro_debug_log(
+            "make_macro_meta_combo_dynamic_chart",
+            benchmark_name=benchmark_name,
+            exit_mode=exit_mode,
+            start_persist=start_persist,
+            end_persist=end_persist,
+            min_hold_days=min_hold_days,
+            cooldown_days=cooldown_days,
+            elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+        )
         return fig, meta_event_df
+    _macro_debug_log(
+        "make_macro_meta_combo_dynamic_chart",
+        benchmark_name=benchmark_name,
+        exit_mode=exit_mode,
+        start_persist=start_persist,
+        end_persist=end_persist,
+        min_hold_days=min_hold_days,
+        cooldown_days=cooldown_days,
+        elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+    )
     return fig
 
 
@@ -8206,6 +8340,7 @@ def main(page="signal"):
 
     def render_macro4_combo_section(container):
         with container:
+            _started = time.perf_counter()
             st.markdown(
                 '<div class="macro2-helper-text">선택한 지표의 리스크 사이클 상태를 조합해 신호를 표시합니다.</div>',
                 unsafe_allow_html=True,
@@ -8867,6 +9002,15 @@ def main(page="signal"):
                             )
                         else:
                             st.warning("개별 실험 차트 데이터 로딩 실패 — 잠시 후 다시 시도해 주세요.")
+                _macro_debug_log(
+                    "render_macro4_combo_section",
+                    preset_key=_macro4_preset,
+                    benchmark_name=_benchmark_name4,
+                    years=_macro4_years,
+                    selected_codes=len(_selected_codes4),
+                    is_meta=_macro4_is_meta,
+                    elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+                )
 
     def render_market_macro_main_section(container):
         with container:
