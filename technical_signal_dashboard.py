@@ -5941,7 +5941,7 @@ def _macro_flag_ratio_html(on_count: int, total_count: int) -> str:
     elif on > (total / 2):
         color = "#E6C15A"
     else:
-        color = "rgba(255,255,255,0.46)"
+        color = "#66D9B8"
     return (
         f"<span style='color:{color};font-weight:700;font-variant-numeric:tabular-nums;'>"
         f"{on}/{total}</span>"
