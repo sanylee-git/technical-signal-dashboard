@@ -46,6 +46,10 @@ except Exception:
 # 즐겨찾기 표 기능 토글
 ENABLE_SIGNAL_TABLE_TF_BADGES = True
 ENABLE_SIGNAL_TABLE_ROW_LINKS = True
+DEBUG_MODE = False
+INFLIGHT_GUARD_STALE_SECONDS = 12
+RECENT_FETCH_FALLBACK_SECONDS = 75
+RECENT_FETCH_MAX_ITEMS = 8
 
 
 # ============================================================
@@ -1006,11 +1010,232 @@ def _fetch_kis_today(krx_code: str):
         return pd.DataFrame()
 
 
+def _signal_increment_counter(name: str):
+    try:
+        counters = st.session_state.setdefault("_signal_debug_counters", {})
+        counters[name] = int(counters.get(name, 0)) + 1
+        return counters[name]
+    except Exception:
+        return None
+
+
+def _signal_debug_log(event: str, **kwargs):
+    if not DEBUG_MODE:
+        return
+    payload = {
+        "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+        "event": event,
+    }
+    for key, value in kwargs.items():
+        if isinstance(value, pd.DataFrame):
+            payload[key] = f"{value.shape[0]}x{value.shape[1]}"
+        elif isinstance(value, (list, tuple, set)) and len(value) > 12:
+            payload[key] = f"{type(value).__name__}[{len(value)}]"
+        else:
+            payload[key] = value
+    try:
+        print("[signal-debug] " + json.dumps(payload, ensure_ascii=False, default=str))
+    except Exception:
+        print(f"[signal-debug] {event} {payload}")
+
+
+def _signal_scope_key(chart_mode: str, purpose: str, ticker: str | None = None,
+                      interval: str | None = None, tickers_tuple=None):
+    tickers_hash = ""
+    if tickers_tuple:
+        joined = "|".join(str(x) for x in tickers_tuple)
+        tickers_hash = hashlib.sha1(joined.encode("utf-8")).hexdigest()[:12]
+    payload = {
+        "chart_mode": chart_mode or "",
+        "purpose": purpose or "",
+        "ticker": ticker or "",
+        "interval": interval or "",
+        "tickers_hash": tickers_hash,
+    }
+    return json.dumps(payload, sort_keys=True, ensure_ascii=False)
+
+
+def _signal_inflight_enter(scope_key: str, stale_seconds: int = INFLIGHT_GUARD_STALE_SECONDS):
+    try:
+        guards = st.session_state.setdefault("_signal_inflight_guards", {})
+        now = time.time()
+        active = guards.get(scope_key)
+        if active and now - float(active.get("ts", 0.0)) < stale_seconds:
+            return False
+        guards[scope_key] = {"ts": now}
+        st.session_state["_signal_inflight_guards"] = guards
+        return True
+    except Exception:
+        return True
+
+
+def _signal_inflight_exit(scope_key: str):
+    try:
+        guards = st.session_state.get("_signal_inflight_guards", {})
+        if scope_key in guards:
+            guards.pop(scope_key, None)
+            st.session_state["_signal_inflight_guards"] = guards
+    except Exception:
+        pass
+
+
+def _signal_recent_fetch_get(scope_key: str, max_age_seconds: int = RECENT_FETCH_FALLBACK_SECONDS):
+    try:
+        cache = st.session_state.get("_signal_recent_fetch_cache", {})
+        item = cache.get(scope_key)
+        if not item:
+            return None
+        if time.time() - float(item.get("ts", 0.0)) > max_age_seconds:
+            return None
+        return {
+            "df": item.get("df", pd.DataFrame()).copy(),
+            "err": item.get("err"),
+            "meta": dict(item.get("meta", {})),
+        }
+    except Exception:
+        return None
+
+
+def _signal_recent_fetch_put(scope_key: str, df: pd.DataFrame, err=None, **meta):
+    try:
+        cache = st.session_state.setdefault("_signal_recent_fetch_cache", {})
+        cache[scope_key] = {
+            "ts": time.time(),
+            "df": df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame(),
+            "err": err,
+            "meta": meta,
+        }
+        if len(cache) > RECENT_FETCH_MAX_ITEMS:
+            oldest_keys = sorted(cache.keys(), key=lambda k: cache[k].get("ts", 0.0))
+            for old_key in oldest_keys[:-RECENT_FETCH_MAX_ITEMS]:
+                cache.pop(old_key, None)
+        st.session_state["_signal_recent_fetch_cache"] = cache
+    except Exception:
+        pass
+
+
+def _fetch_intraday_guarded(ticker: str, interval: str, chart_mode: str, purpose: str):
+    scope_key = _signal_scope_key(chart_mode=chart_mode, purpose=purpose, ticker=ticker, interval=interval)
+    call_count = _signal_increment_counter("fetch_intraday_guarded")
+    started = time.perf_counter()
+    acquired = _signal_inflight_enter(scope_key)
+    if not acquired:
+        recent = _signal_recent_fetch_get(scope_key)
+        if recent is not None:
+            _signal_debug_log(
+                "fetch_intraday_guarded_recent_reuse",
+                ticker=ticker,
+                interval=interval,
+                chart_mode=chart_mode,
+                purpose=purpose,
+                call_count=call_count,
+                df_shape=recent["df"].shape,
+            )
+            return recent["df"], recent.get("err")
+
+    try:
+        _signal_debug_log(
+            "fetch_intraday_guarded_start",
+            ticker=ticker,
+            interval=interval,
+            chart_mode=chart_mode,
+            purpose=purpose,
+            call_count=call_count,
+        )
+        df, err = fetch_intraday(ticker, interval)
+        if not df.empty:
+            _signal_recent_fetch_put(scope_key, df, err, ticker=ticker, interval=interval, purpose=purpose)
+        else:
+            recent = _signal_recent_fetch_get(scope_key)
+            if recent is not None:
+                _signal_debug_log(
+                    "fetch_intraday_guarded_fallback",
+                    ticker=ticker,
+                    interval=interval,
+                    chart_mode=chart_mode,
+                    purpose=purpose,
+                    df_shape=recent["df"].shape,
+                )
+                return recent["df"], recent.get("err") or err
+        return df, err
+    finally:
+        if acquired:
+            _signal_inflight_exit(scope_key)
+        _signal_debug_log(
+            "fetch_intraday_guarded_end",
+            ticker=ticker,
+            interval=interval,
+            chart_mode=chart_mode,
+            purpose=purpose,
+            elapsed_ms=round((time.perf_counter() - started) * 1000, 1),
+        )
+
+
+def _fetch_intraday_batch_guarded(tickers_tuple, interval: str, chart_mode: str, purpose: str):
+    scope_key = _signal_scope_key(chart_mode=chart_mode, purpose=purpose, interval=interval, tickers_tuple=tickers_tuple)
+    call_count = _signal_increment_counter("fetch_intraday_batch_guarded")
+    started = time.perf_counter()
+    acquired = _signal_inflight_enter(scope_key)
+    if not acquired:
+        recent = _signal_recent_fetch_get(scope_key)
+        if recent is not None:
+            _signal_debug_log(
+                "fetch_intraday_batch_guarded_recent_reuse",
+                interval=interval,
+                chart_mode=chart_mode,
+                purpose=purpose,
+                tickers=len(tickers_tuple or ()),
+                call_count=call_count,
+                df_shape=recent["df"].shape,
+            )
+            return recent["df"]
+
+    try:
+        _signal_debug_log(
+            "fetch_intraday_batch_guarded_start",
+            interval=interval,
+            chart_mode=chart_mode,
+            purpose=purpose,
+            tickers=len(tickers_tuple or ()),
+            call_count=call_count,
+        )
+        df = fetch_intraday_batch(tickers_tuple, interval)
+        if not df.empty:
+            _signal_recent_fetch_put(scope_key, df, None, interval=interval, purpose=purpose, tickers=len(tickers_tuple or ()))
+        else:
+            recent = _signal_recent_fetch_get(scope_key)
+            if recent is not None:
+                _signal_debug_log(
+                    "fetch_intraday_batch_guarded_fallback",
+                    interval=interval,
+                    chart_mode=chart_mode,
+                    purpose=purpose,
+                    tickers=len(tickers_tuple or ()),
+                    df_shape=recent["df"].shape,
+                )
+                return recent["df"]
+        return df
+    finally:
+        if acquired:
+            _signal_inflight_exit(scope_key)
+        _signal_debug_log(
+            "fetch_intraday_batch_guarded_end",
+            interval=interval,
+            chart_mode=chart_mode,
+            purpose=purpose,
+            tickers=len(tickers_tuple or ()),
+            elapsed_ms=round((time.perf_counter() - started) * 1000, 1),
+        )
+
+
 @st.cache_data(ttl=60)
 def fetch_intraday(ticker, interval):
     """분봉 OHLCV (5m/15m/30m/60m). TTL=60s → 새로고침 시 최신 분봉 반영.
     반환: (DataFrame, error_str | None)
     """
+    _call_count = _signal_increment_counter("fetch_intraday")
+    _started = time.perf_counter()
+    _signal_debug_log("fetch_intraday_start", ticker=ticker, interval=interval, call_count=_call_count)
     errors = []
     _kor = ticker.endswith(('.KS', '.KQ'))
 
@@ -1064,9 +1289,29 @@ def fetch_intraday(ticker, interval):
     if not df_hist.empty:
         cols = [c for c in ['Open', 'High', 'Low', 'Close', 'Volume'] if c in df_hist.columns]
         err_str = " | ".join(errors) if errors else None
-        return df_hist[cols].copy(), err_str
+        out = df_hist[cols].copy()
+        _signal_debug_log(
+            "fetch_intraday_end",
+            ticker=ticker,
+            interval=interval,
+            call_count=_call_count,
+            elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+            df_shape=out.shape,
+            error=err_str,
+        )
+        return out, err_str
 
-    return pd.DataFrame(), " | ".join(errors)
+    err_str = " | ".join(errors)
+    _signal_debug_log(
+        "fetch_intraday_end",
+        ticker=ticker,
+        interval=interval,
+        call_count=_call_count,
+        elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+        df_shape=(0, 0),
+        error=err_str,
+    )
+    return pd.DataFrame(), err_str
 
 
 @st.cache_data(ttl=60)
@@ -1078,6 +1323,10 @@ def fetch_intraday_batch(tickers_tuple, interval):
     tickers = list(tickers_tuple)
     if not tickers:
         return pd.DataFrame()
+
+    _call_count = _signal_increment_counter("fetch_intraday_batch")
+    _started = time.perf_counter()
+    _signal_debug_log("fetch_intraday_batch_start", interval=interval, tickers=len(tickers), call_count=_call_count)
 
     result = pd.DataFrame()
     period = {"5m": "5d", "15m": "7d", "30m": "14d", "60m": "30d"}.get(interval, "30d")
@@ -1113,10 +1362,26 @@ def fetch_intraday_batch(tickers_tuple, interval):
             pass
 
     if not frames:
+        _signal_debug_log(
+            "fetch_intraday_batch_end",
+            interval=interval,
+            tickers=len(tickers),
+            call_count=_call_count,
+            elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+            df_shape=(0, 0),
+        )
         return pd.DataFrame()
 
     result = pd.DataFrame(frames)
     result.index = _strip_tz(result.index)
+    _signal_debug_log(
+        "fetch_intraday_batch_end",
+        interval=interval,
+        tickers=len(tickers),
+        call_count=_call_count,
+        elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+        df_shape=result.shape,
+    )
     return result
 
 
@@ -1691,6 +1956,8 @@ def _build_multitimeframe_signal_maps(items_tuple, tickers, data_end,
                                       rsi_buy_center, rsi_sell_center,
                                       rsi_band, rsi_lookback, persist,
                                       phase2_rsi):
+    _started = time.perf_counter()
+    _signal_debug_log("multitimeframe_signal_maps_start", items=len(items_tuple), tickers=len(tickers or ()))
     items = [{"code": code, "name": name} for code, name in items_tuple]
     tf_specs = [
         ("일봉", "1d", 63),
@@ -1710,6 +1977,12 @@ def _build_multitimeframe_signal_maps(items_tuple, tickers, data_end,
             phase2_rsi=phase2_rsi,
         )
         tf_maps[tf_label] = {row["code"]: row for row in tf_rows}
+    _signal_debug_log(
+        "multitimeframe_signal_maps_end",
+        items=len(items_tuple),
+        tickers=len(tickers or ()),
+        elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+    )
     return tf_maps
 
 
@@ -1739,14 +2012,22 @@ def _build_signal_dashboard_rows(favorites_tuple, us_watchlist_tuple, chart_mode
                                  rsi_buy_center, rsi_sell_center,
                                  rsi_band, rsi_lookback, persist,
                                  phase2_rsi):
+    _started = time.perf_counter()
+    _signal_debug_log(
+        "build_signal_dashboard_rows_start",
+        chart_mode=chart_mode,
+        favorites=len(favorites_tuple),
+        us_favorites=len(us_watchlist_tuple),
+        interval=yf_interval if chart_mode == "분봉" else higher_interval,
+    )
     favorites = [{"code": code, "name": name} for code, name in favorites_tuple]
     us_watchlist = [{"code": code, "name": name} for code, name in us_watchlist_tuple]
     tickers_tuple = tuple(code for code, _ in favorites_tuple)
     us_tickers_tuple = tuple(code for code, _ in us_watchlist_tuple)
 
     if chart_mode == "분봉":
-        closes = fetch_intraday_batch(tickers_tuple, yf_interval)
-        us_closes = fetch_intraday_batch(us_tickers_tuple, yf_interval)
+        closes = _fetch_intraday_batch_guarded(tickers_tuple, yf_interval, chart_mode, "watchlist_batch_kr")
+        us_closes = _fetch_intraday_batch_guarded(us_tickers_tuple, yf_interval, chart_mode, "watchlist_batch_us")
         highs = lows = pd.DataFrame()
         us_highs = us_lows = pd.DataFrame()
     else:
@@ -1807,6 +2088,16 @@ def _build_signal_dashboard_rows(favorites_tuple, us_watchlist_tuple, chart_mode
         _attach_multitimeframe_signals(favorites, signal_rows, tickers_tuple)
         _attach_multitimeframe_signals(us_watchlist, us_signal_rows, us_tickers_tuple)
 
+    _signal_debug_log(
+        "build_signal_dashboard_rows_end",
+        chart_mode=chart_mode,
+        favorites=len(favorites_tuple),
+        us_favorites=len(us_watchlist_tuple),
+        interval=yf_interval if chart_mode == "분봉" else higher_interval,
+        kr_shape=closes.shape if isinstance(closes, pd.DataFrame) else None,
+        us_shape=us_closes.shape if isinstance(us_closes, pd.DataFrame) else None,
+        elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+    )
     return signal_rows, us_signal_rows, missing_kr, missing_us
 
 
@@ -1845,6 +2136,7 @@ def _get_signal_table_snapshot(favorites_tuple, us_watchlist_tuple, chart_mode,
                                rsi_buy_center, rsi_sell_center,
                                rsi_band, rsi_lookback, persist,
                                phase2_rsi, force_refresh=False):
+    _started = time.perf_counter()
     snapshot_key = "_signal_table_snapshot_data"
     signature_key = "_signal_table_snapshot_signature"
     created_at_key = "_signal_table_snapshot_created_at"
@@ -1870,6 +2162,7 @@ def _get_signal_table_snapshot(favorites_tuple, us_watchlist_tuple, chart_mode,
     snapshot = st.session_state.get(snapshot_key)
     snapshot_signature = st.session_state.get(signature_key)
     needs_refresh = force_refresh or snapshot_signature != signature
+    action = "refresh" if needs_refresh else "reuse"
 
     if not needs_refresh:
         if not isinstance(snapshot, dict):
@@ -1877,6 +2170,8 @@ def _get_signal_table_snapshot(favorites_tuple, us_watchlist_tuple, chart_mode,
         else:
             required_keys = {"signal_rows", "us_signal_rows", "missing_kr", "missing_us"}
             needs_refresh = not required_keys.issubset(snapshot.keys())
+        if needs_refresh:
+            action = "repair_refresh"
 
     if needs_refresh:
         signal_rows, us_signal_rows, missing_kr, missing_us = _build_signal_dashboard_rows(
@@ -1907,6 +2202,15 @@ def _get_signal_table_snapshot(favorites_tuple, us_watchlist_tuple, chart_mode,
         st.session_state[signature_key] = signature
         st.session_state[created_at_key] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    _signal_debug_log(
+        "signal_table_snapshot",
+        action=action,
+        chart_mode=chart_mode,
+        favorites=len(favorites_tuple),
+        us_favorites=len(us_watchlist_tuple),
+        interval=yf_interval if chart_mode == "분봉" else higher_interval,
+        elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+    )
     return snapshot, st.session_state.get(created_at_key, "")
 
 
@@ -7040,6 +7344,13 @@ def main(page="signal"):
         str(_intra_interval_param or ""),
     ])
     if _scan_market_param and _scan_code_param and st.session_state.get("_last_scan_nav_sig") != _scan_nav_sig:
+        _signal_debug_log(
+            "scan_queryparam_apply",
+            market=_scan_market_param,
+            code=_scan_code_param,
+            chart_mode=_chart_mode_param,
+            intra_interval=_intra_interval_param,
+        )
         if _scan_market_param == "kr":
             _matched_kr = next((f for f in favorites if f['code'] == _scan_code_param), None)
             if _matched_kr is not None:
@@ -8429,6 +8740,7 @@ def main(page="signal"):
     # ═══════════════════════════════════════════════════════════
     if page in ("all", "signal"):
         with tab1:
+            _signal_debug_log("scanner_page_enter", chart_mode=chart_mode, favorites=len(favorites), auto_refresh=auto_refresh)
             # 자동 새로고침 (분봉/일봉 옵션 ON 일 때만)
             if auto_refresh and AUTOREFRESH_AVAILABLE:
                 st_autorefresh(interval=refresh_ms, key=f"{chart_mode}_autorefresh")
@@ -8720,8 +9032,17 @@ def main(page="signal"):
 
             # ── 일/주/월봉 차트 ─────────────────────────────────
             if chart_mode != "분봉":
+                _detail_fetch_started = time.perf_counter()
                 with st.spinner("차트 로딩..."):
                     ohlcv = fetch_ohlcv(selected_code, data_start, data_end, higher_interval)
+                _signal_debug_log(
+                    "detail_chart_fetch",
+                    chart_mode=chart_mode,
+                    ticker=selected_code,
+                    interval=higher_interval,
+                    elapsed_ms=round((time.perf_counter() - _detail_fetch_started) * 1000, 1),
+                    df_shape=ohlcv.shape if isinstance(ohlcv, pd.DataFrame) else None,
+                )
 
                 if ohlcv.empty:
                     st.warning(f"⚠️ {selected_name} 데이터를 가져올 수 없습니다.")
@@ -8731,6 +9052,7 @@ def main(page="signal"):
                         _display_bars = max(1, round(period_days / _higher_bars_divisor["주봉"]))
                     elif chart_mode == "월봉":
                         _display_bars = max(1, round(period_days / _higher_bars_divisor["월봉"]))
+                    _plot_started = time.perf_counter()
                     fig = make_detail_chart(
                         ohlcv, selected_name, period_days,
                         bb_window=bb_window, rsi_lookback=rsi_lookback,
@@ -8738,8 +9060,17 @@ def main(page="signal"):
                         persist=persist, phase2_rsi=phase2_rsi,
                         display_bars=_display_bars,
                     )
+                    _signal_debug_log(
+                        "detail_chart_plotly_create",
+                        chart_mode=chart_mode,
+                        ticker=selected_code,
+                        elapsed_ms=round((time.perf_counter() - _plot_started) * 1000, 1),
+                        has_figure=bool(fig),
+                    )
                     if fig:
+                        _signal_debug_log("detail_chart_render_before", chart_mode=chart_mode, ticker=selected_code)
                         st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                        _signal_debug_log("detail_chart_render_after", chart_mode=chart_mode, ticker=selected_code)
                     else:
                         close = ohlcv['Close'].dropna()
                         have  = len(close)
@@ -8769,8 +9100,17 @@ def main(page="signal"):
             # ── 분봉 차트 ──────────────────────────────────────
             else:
                 _ticker = selected_code
+                _signal_debug_log("intraday_mode_enter", ticker=_ticker, interval=yf_interval, period_days=period_days)
                 with st.spinner(f"분봉 로딩... ({intra_interval_label}, {period_name} 기준)"):
-                    ohlcv_intra, intra_err = fetch_intraday(_ticker, yf_interval)
+                    ohlcv_intra, intra_err = _fetch_intraday_guarded(_ticker, yf_interval, chart_mode, "detail_chart")
+                _signal_debug_log(
+                    "detail_intraday_fetch",
+                    ticker=_ticker,
+                    interval=yf_interval,
+                    chart_mode=chart_mode,
+                    df_shape=ohlcv_intra.shape if isinstance(ohlcv_intra, pd.DataFrame) else None,
+                    error=intra_err,
+                )
 
                 if ohlcv_intra.empty:
                     st.warning(f"⚠️ {selected_name} 분봉 데이터를 가져올 수 없습니다.")
@@ -8781,6 +9121,7 @@ def main(page="signal"):
                         st.caption(f"⚠️ 데이터 로딩 경고: {intra_err}")
                     _disp_bars = _intra_bars_per_day[yf_interval] * period_days
                     _session   = (15.5, 9.0) if _is_korean else None
+                    _plot_started = time.perf_counter()
                     fig_intra  = make_detail_chart(
                         ohlcv_intra, f"{selected_name} ({intra_interval_label})", period_days,
                         bb_window=bb_window, rsi_lookback=rsi_lookback,
@@ -8789,8 +9130,17 @@ def main(page="signal"):
                         display_bars=_disp_bars,
                         intraday_session=_session,
                     )
+                    _signal_debug_log(
+                        "detail_intraday_plotly_create",
+                        ticker=_ticker,
+                        interval=yf_interval,
+                        elapsed_ms=round((time.perf_counter() - _plot_started) * 1000, 1),
+                        has_figure=bool(fig_intra),
+                    )
                     if fig_intra:
+                        _signal_debug_log("detail_intraday_render_before", ticker=_ticker, interval=yf_interval)
                         st.plotly_chart(fig_intra, width="stretch", config={"displayModeBar": False})
+                        _signal_debug_log("detail_intraday_render_after", ticker=_ticker, interval=yf_interval)
                     else:
                         close_intra = ohlcv_intra['Close'].dropna()
                         have  = len(close_intra)
