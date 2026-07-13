@@ -43,10 +43,9 @@ except Exception:
     AUTOREFRESH_AVAILABLE = False
 
 
-# 진단용: 즐겨찾기 표의 일/주/월 보조 배지 계산을 잠시 비활성화
-ENABLE_SIGNAL_TABLE_TF_BADGES = False
-# 진단용: 즐겨찾기 표 row 클릭 URL 이동을 잠시 비활성화
-ENABLE_SIGNAL_TABLE_ROW_LINKS = False
+# 즐겨찾기 표 기능 토글
+ENABLE_SIGNAL_TABLE_TF_BADGES = True
+ENABLE_SIGNAL_TABLE_ROW_LINKS = True
 
 
 # ============================================================
@@ -8458,18 +8457,8 @@ def main(page="signal"):
             rsi_sell_center= 80
             rsi_band       = 5
 
-            _signal_snapshot_refresh_cols = st.columns([1, 0.22])
-            with _signal_snapshot_refresh_cols[0]:
-                st.markdown("<div style='height:1px'></div>", unsafe_allow_html=True)
-            with _signal_snapshot_refresh_cols[1]:
-                _signal_snapshot_force_refresh = st.button(
-                    "표 새로고침",
-                    key="signal_table_snapshot_refresh_btn",
-                    use_container_width=True,
-                )
-
             with st.spinner("📡 데이터 로딩..."):
-                _signal_snapshot, _signal_snapshot_created_at = _get_signal_table_snapshot(
+                _signal_snapshot, _ = _get_signal_table_snapshot(
                     tuple((item["code"], item["name"]) for item in favorites),
                     tuple((item["code"], item["name"]) for item in US_WATCHLIST),
                     chart_mode,
@@ -8487,16 +8476,13 @@ def main(page="signal"):
                     rsi_lookback=rsi_lookback,
                     persist=persist,
                     phase2_rsi=phase2_rsi,
-                    force_refresh=_signal_snapshot_force_refresh,
+                    force_refresh=False,
                 )
 
             signal_rows = _signal_snapshot["signal_rows"]
             us_signal_rows = _signal_snapshot["us_signal_rows"]
             _missing_kr = _signal_snapshot["missing_kr"]
             _missing_us = _signal_snapshot["missing_us"]
-
-            if _signal_snapshot_created_at:
-                st.caption(f"현황 표 마지막 업데이트: {_signal_snapshot_created_at} · 같은 세션에서는 이 snapshot을 재사용합니다.")
 
             # 데이터 로딩 실패 종목 안내 (해당 종목만 빈 값으로 표시, 앱은 계속 동작)
             _missing_all = _missing_kr + _missing_us
