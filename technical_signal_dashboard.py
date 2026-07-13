@@ -5800,7 +5800,14 @@ def _compute_macro_preset_current_state(preset_cfg: dict, years: int, sync_bucke
         )
         if meta_event_df is None or meta_event_df.empty:
             return None
-        return bool(meta_event_df.sort_values("date").iloc[-1].get("combo_risk_state", False))
+        latest = meta_event_df.sort_values("date").iloc[-1]
+        a_on = bool(latest.get("a_state", False))
+        b_on = bool(latest.get("b_state", False))
+        return {
+            "is_on": bool(latest.get("combo_risk_state", False)),
+            "on_count": int(a_on) + int(b_on),
+            "total_count": 2,
+        }
 
     combo, active_codes = _compute_macro_combo_signal_frame(
         spx_s=spx_s,
@@ -5820,7 +5827,12 @@ def _compute_macro_preset_current_state(preset_cfg: dict, years: int, sync_bucke
     )
     if combo_event_df is None or combo_event_df.empty:
         return None
-    return bool(combo_event_df.sort_values("date").iloc[-1].get("combo_risk_state", False))
+    latest = combo_event_df.sort_values("date").iloc[-1]
+    return {
+        "is_on": bool(latest.get("combo_risk_state", False)),
+        "on_count": int(latest.get("active_count", 0)),
+        "total_count": int(latest.get("combo_n", max(1, len(active_codes)))),
+    }
 
 
 def _resolve_macro_backtest_preset_cfg(key: str, preset_defs: dict | None):
@@ -5845,6 +5857,21 @@ def _macro_date_text(value) -> str:
         return pd.Timestamp(value).strftime("%Y-%m-%d")
     except Exception:
         return str(value)
+
+
+def _macro_flag_ratio_html(on_count: int, total_count: int) -> str:
+    total = max(1, int(total_count))
+    on = max(0, min(int(on_count), total))
+    if on == total:
+        color = "#FF6B6B"
+    elif on > (total / 2):
+        color = "#E6C15A"
+    else:
+        color = "rgba(255,255,255,0.46)"
+    return (
+        f"<span style='color:{color};font-weight:700;font-variant-numeric:tabular-nums;'>"
+        f"{on}/{total}</span>"
+    )
 
 
 def _build_macro_combo_status_panel(
@@ -6138,7 +6165,13 @@ def _build_macro_meta_backtest_panel(
             _ratio = abs(mdd_20y_num) / abs(hold_mdd_20y)
             mdd_20y = f"{mdd_20y} {_ratio_span(_ratio, _ratio <= 0.5)}"
         current_state = current_state_map.get(key)
-        current_state_html = "-" if current_state is None else _macro_status_circle(current_state, color_on="#4BFFB3")
+        if current_state is None:
+            current_state_html = "-"
+        else:
+            current_state_html = _macro_flag_ratio_html(
+                current_state.get("on_count", 0),
+                current_state.get("total_count", 1),
+            )
         rows.append(
             f"<tr style='background:{bg};border-top:{border};border-bottom:{border};'>"
             f"<td style='padding:7px 8px;color:#EDEDED;font-weight:700;'>{meta['label']}</td>"
