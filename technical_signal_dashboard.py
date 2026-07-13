@@ -26,6 +26,7 @@ import time
 import copy
 import warnings
 import traceback
+from zoneinfo import ZoneInfo
 warnings.filterwarnings('ignore')
 
 try:
@@ -1950,6 +1951,145 @@ def _build_signal_rows_for_items(items, closes, highs, lows,
     return rows
 
 
+def _coerce_aware_datetime(now, tz_name: str):
+    tz = ZoneInfo(tz_name)
+    if now is None:
+        return datetime.now(tz)
+    if now.tzinfo is None:
+        return now.replace(tzinfo=tz)
+    return now.astimezone(tz)
+
+
+def _is_kr_market_active(now=None):
+    now_kst = _coerce_aware_datetime(now, "Asia/Seoul")
+    if now_kst.weekday() >= 5:
+        return False
+    current_minutes = now_kst.hour * 60 + now_kst.minute
+    start_minutes = 8 * 60
+    end_minutes = 16 * 60 + 30
+    return start_minutes <= current_minutes <= end_minutes
+
+
+def _is_us_market_active(now=None):
+    now_et = _coerce_aware_datetime(now, "America/New_York")
+    if now_et.weekday() >= 5:
+        return False
+    current_minutes = now_et.hour * 60 + now_et.minute
+    start_minutes = 8 * 60 + 30
+    end_minutes = 17 * 60
+    return start_minutes <= current_minutes <= end_minutes
+
+
+def _get_market_refresh_policy(auto_refresh=False, now=None):
+    kr_active = _is_kr_market_active(now)
+    us_active = _is_us_market_active(now)
+    if not auto_refresh:
+        return {
+            "kr_active": kr_active,
+            "us_active": us_active,
+            "refresh_kr_snapshot": False,
+            "refresh_us_snapshot": False,
+        }
+    return {
+        "kr_active": kr_active,
+        "us_active": us_active,
+        "refresh_kr_snapshot": kr_active,
+        "refresh_us_snapshot": us_active,
+    }
+
+
+def _signal_snapshot_required_keys():
+    return {"signal_rows", "us_signal_rows", "missing_kr", "missing_us"}
+
+
+def _make_signal_market_snapshot_signature(items_tuple, market_key, chart_mode,
+                                           yf_interval, higher_interval, period_days,
+                                           bb_window, bb_std, rsi_period,
+                                           rsi_buy_center, rsi_sell_center,
+                                           rsi_band, rsi_lookback, persist,
+                                           phase2_rsi):
+    payload = {
+        "items": list(items_tuple),
+        "market": market_key,
+        "chart_mode": chart_mode,
+        "yf_interval": yf_interval,
+        "higher_interval": higher_interval,
+        "period_days": int(period_days),
+        "bb_window": int(bb_window),
+        "bb_std": float(bb_std),
+        "rsi_period": int(rsi_period),
+        "rsi_buy_center": float(rsi_buy_center),
+        "rsi_sell_center": float(rsi_sell_center),
+        "rsi_band": float(rsi_band),
+        "rsi_lookback": int(rsi_lookback),
+        "persist": int(persist),
+        "phase2_rsi": float(phase2_rsi),
+    }
+    return hashlib.sha1(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _build_signal_market_rows(items_tuple, market_key, chart_mode,
+                              yf_interval, higher_interval, data_start, data_end,
+                              bb_window, bb_std, rsi_period,
+                              rsi_buy_center, rsi_sell_center,
+                              rsi_band, rsi_lookback, persist,
+                              phase2_rsi):
+    items = [{"code": code, "name": name} for code, name in items_tuple]
+    tickers_tuple = tuple(code for code, _ in items_tuple)
+
+    if chart_mode == "분봉":
+        closes = _fetch_intraday_batch_guarded(
+            tickers_tuple,
+            yf_interval,
+            chart_mode,
+            f"watchlist_batch_{market_key}",
+        )
+        highs = lows = pd.DataFrame()
+    else:
+        closes, highs, lows = fetch_ohlcv_batch(tickers_tuple, data_start, data_end, higher_interval)
+
+    missing_items = [
+        item["name"] for item in items
+        if item["code"] not in closes.columns or closes[item["code"]].dropna().empty
+    ]
+
+    signal_rows = _build_signal_rows_for_items(
+        items, closes, highs, lows,
+        bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
+        rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
+        rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
+        phase2_rsi=phase2_rsi,
+    )
+    signal_rows.sort(key=_signal_row_sort_key)
+
+    if ENABLE_SIGNAL_TABLE_TF_BADGES:
+        tf_labels = ("일봉", "주봉", "월봉")
+        tf_maps = _build_multitimeframe_signal_maps(
+            tuple((item["code"], item["name"]) for item in items),
+            tickers_tuple,
+            data_end,
+            bb_window=bb_window,
+            bb_std=bb_std,
+            rsi_period=rsi_period,
+            rsi_buy_center=rsi_buy_center,
+            rsi_sell_center=rsi_sell_center,
+            rsi_band=rsi_band,
+            rsi_lookback=rsi_lookback,
+            persist=persist,
+            phase2_rsi=phase2_rsi,
+        )
+        for row in signal_rows:
+            row["tf_signals"] = {
+                tf_label: tf_maps.get(tf_label, {}).get(row["code"], _empty_signal_row(row["code"], row["name"]))
+                for tf_label in tf_labels
+            }
+
+    return signal_rows, missing_items, closes.shape if isinstance(closes, pd.DataFrame) else None
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def _build_multitimeframe_signal_maps(items_tuple, tickers, data_end,
                                       bb_window, bb_std, rsi_period,
@@ -2020,73 +2160,32 @@ def _build_signal_dashboard_rows(favorites_tuple, us_watchlist_tuple, chart_mode
         us_favorites=len(us_watchlist_tuple),
         interval=yf_interval if chart_mode == "분봉" else higher_interval,
     )
-    favorites = [{"code": code, "name": name} for code, name in favorites_tuple]
-    us_watchlist = [{"code": code, "name": name} for code, name in us_watchlist_tuple]
-    tickers_tuple = tuple(code for code, _ in favorites_tuple)
-    us_tickers_tuple = tuple(code for code, _ in us_watchlist_tuple)
-
-    if chart_mode == "분봉":
-        closes = _fetch_intraday_batch_guarded(tickers_tuple, yf_interval, chart_mode, "watchlist_batch_kr")
-        us_closes = _fetch_intraday_batch_guarded(us_tickers_tuple, yf_interval, chart_mode, "watchlist_batch_us")
-        highs = lows = pd.DataFrame()
-        us_highs = us_lows = pd.DataFrame()
-    else:
-        closes, highs, lows = fetch_ohlcv_batch(tickers_tuple, data_start, data_end, higher_interval)
-        us_closes, us_highs, us_lows = fetch_ohlcv_batch(us_tickers_tuple, data_start, data_end, higher_interval)
-
-    missing_kr = [
-        item['name'] for item in favorites
-        if item['code'] not in closes.columns or closes[item['code']].dropna().empty
-    ]
-    missing_us = [
-        item['name'] for item in us_watchlist
-        if item['code'] not in us_closes.columns or us_closes[item['code']].dropna().empty
-    ]
-
-    signal_rows = _build_signal_rows_for_items(
-        favorites, closes, highs, lows,
+    signal_rows, missing_kr, kr_shape = _build_signal_market_rows(
+        favorites_tuple,
+        "kr",
+        chart_mode,
+        yf_interval,
+        higher_interval,
+        data_start,
+        data_end,
         bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
         rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
         rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
         phase2_rsi=phase2_rsi,
     )
-    signal_rows.sort(key=_signal_row_sort_key)
-
-    us_signal_rows = _build_signal_rows_for_items(
-        us_watchlist, us_closes, us_highs, us_lows,
+    us_signal_rows, missing_us, us_shape = _build_signal_market_rows(
+        us_watchlist_tuple,
+        "us",
+        chart_mode,
+        yf_interval,
+        higher_interval,
+        data_start,
+        data_end,
         bb_window=bb_window, bb_std=bb_std, rsi_period=rsi_period,
         rsi_buy_center=rsi_buy_center, rsi_sell_center=rsi_sell_center,
         rsi_band=rsi_band, rsi_lookback=rsi_lookback, persist=persist,
         phase2_rsi=phase2_rsi,
     )
-    us_signal_rows.sort(key=_signal_row_sort_key)
-
-    tf_labels = ("일봉", "주봉", "월봉")
-
-    def _attach_multitimeframe_signals(items, rows, tickers):
-        tf_maps = _build_multitimeframe_signal_maps(
-            tuple((item["code"], item["name"]) for item in items),
-            tickers,
-            data_end,
-            bb_window=bb_window,
-            bb_std=bb_std,
-            rsi_period=rsi_period,
-            rsi_buy_center=rsi_buy_center,
-            rsi_sell_center=rsi_sell_center,
-            rsi_band=rsi_band,
-            rsi_lookback=rsi_lookback,
-            persist=persist,
-            phase2_rsi=phase2_rsi,
-        )
-        for row in rows:
-            row['tf_signals'] = {
-                tf_label: tf_maps.get(tf_label, {}).get(row['code'], _empty_signal_row(row['code'], row['name']))
-                for tf_label in tf_labels
-            }
-
-    if ENABLE_SIGNAL_TABLE_TF_BADGES:
-        _attach_multitimeframe_signals(favorites, signal_rows, tickers_tuple)
-        _attach_multitimeframe_signals(us_watchlist, us_signal_rows, us_tickers_tuple)
 
     _signal_debug_log(
         "build_signal_dashboard_rows_end",
@@ -2094,8 +2193,8 @@ def _build_signal_dashboard_rows(favorites_tuple, us_watchlist_tuple, chart_mode
         favorites=len(favorites_tuple),
         us_favorites=len(us_watchlist_tuple),
         interval=yf_interval if chart_mode == "분봉" else higher_interval,
-        kr_shape=closes.shape if isinstance(closes, pd.DataFrame) else None,
-        us_shape=us_closes.shape if isinstance(us_closes, pd.DataFrame) else None,
+        kr_shape=kr_shape,
+        us_shape=us_shape,
         elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
     )
     return signal_rows, us_signal_rows, missing_kr, missing_us
@@ -2129,19 +2228,45 @@ def _make_signal_table_snapshot_signature(favorites_tuple, us_watchlist_tuple, c
     ).hexdigest()
 
 
+def _compose_signal_snapshot_from_market_payloads(market_payloads):
+    market_payloads = market_payloads if isinstance(market_payloads, dict) else {}
+    kr_payload = market_payloads.get("kr") if isinstance(market_payloads.get("kr"), dict) else {}
+    us_payload = market_payloads.get("us") if isinstance(market_payloads.get("us"), dict) else {}
+    return {
+        "signal_rows": list(kr_payload.get("signal_rows", [])),
+        "us_signal_rows": list(us_payload.get("signal_rows", [])),
+        "missing_kr": list(kr_payload.get("missing_items", [])),
+        "missing_us": list(us_payload.get("missing_items", [])),
+        "_market_payloads": {
+            "kr": {
+                "signal_rows": list(kr_payload.get("signal_rows", [])),
+                "missing_items": list(kr_payload.get("missing_items", [])),
+            },
+            "us": {
+                "signal_rows": list(us_payload.get("signal_rows", [])),
+                "missing_items": list(us_payload.get("missing_items", [])),
+            },
+        },
+    }
+
+
+def _signal_snapshot_has_required_keys(snapshot):
+    return isinstance(snapshot, dict) and _signal_snapshot_required_keys().issubset(snapshot.keys())
+
+
 def _get_signal_table_snapshot(favorites_tuple, us_watchlist_tuple, chart_mode,
                                yf_interval, higher_interval, period_days,
                                data_start, data_end,
                                bb_window, bb_std, rsi_period,
                                rsi_buy_center, rsi_sell_center,
                                rsi_band, rsi_lookback, persist,
-                               phase2_rsi, force_refresh=False):
+                               phase2_rsi, force_refresh=False, auto_refresh=False):
     _started = time.perf_counter()
     snapshot_key = "_signal_table_snapshot_data"
     signature_key = "_signal_table_snapshot_signature"
     created_at_key = "_signal_table_snapshot_created_at"
 
-    signature = _make_signal_table_snapshot_signature(
+    combined_signature = _make_signal_table_snapshot_signature(
         favorites_tuple,
         us_watchlist_tuple,
         chart_mode,
@@ -2158,49 +2283,135 @@ def _get_signal_table_snapshot(favorites_tuple, us_watchlist_tuple, chart_mode,
         persist,
         phase2_rsi,
     )
+    kr_signature = _make_signal_market_snapshot_signature(
+        favorites_tuple, "kr", chart_mode, yf_interval, higher_interval, period_days,
+        bb_window, bb_std, rsi_period, rsi_buy_center, rsi_sell_center,
+        rsi_band, rsi_lookback, persist, phase2_rsi,
+    )
+    us_signature = _make_signal_market_snapshot_signature(
+        us_watchlist_tuple, "us", chart_mode, yf_interval, higher_interval, period_days,
+        bb_window, bb_std, rsi_period, rsi_buy_center, rsi_sell_center,
+        rsi_band, rsi_lookback, persist, phase2_rsi,
+    )
 
     snapshot = st.session_state.get(snapshot_key)
-    snapshot_signature = st.session_state.get(signature_key)
-    needs_refresh = force_refresh or snapshot_signature != signature
-    action = "refresh" if needs_refresh else "reuse"
+    snapshot_signature_state = st.session_state.get(signature_key)
+    snapshot_created_state = st.session_state.get(created_at_key)
 
-    if not needs_refresh:
-        if not isinstance(snapshot, dict):
+    signature_map = snapshot_signature_state if isinstance(snapshot_signature_state, dict) else {}
+    created_at_map = snapshot_created_state if isinstance(snapshot_created_state, dict) else {}
+    market_payloads = snapshot.get("_market_payloads") if isinstance(snapshot, dict) else None
+
+    policy = _get_market_refresh_policy(auto_refresh=auto_refresh)
+    action = "reuse"
+
+    if not auto_refresh:
+        needs_refresh = force_refresh or signature_map.get("_combined", snapshot_signature_state) != combined_signature
+        if not needs_refresh and not _signal_snapshot_has_required_keys(snapshot):
             needs_refresh = True
-        else:
-            required_keys = {"signal_rows", "us_signal_rows", "missing_kr", "missing_us"}
-            needs_refresh = not required_keys.issubset(snapshot.keys())
-        if needs_refresh:
             action = "repair_refresh"
+        elif needs_refresh:
+            action = "refresh"
 
-    if needs_refresh:
-        signal_rows, us_signal_rows, missing_kr, missing_us = _build_signal_dashboard_rows(
-            favorites_tuple,
-            us_watchlist_tuple,
-            chart_mode,
-            yf_interval,
-            higher_interval,
-            data_start,
-            data_end,
-            bb_window=bb_window,
-            bb_std=bb_std,
-            rsi_period=rsi_period,
-            rsi_buy_center=rsi_buy_center,
-            rsi_sell_center=rsi_sell_center,
-            rsi_band=rsi_band,
-            rsi_lookback=rsi_lookback,
-            persist=persist,
-            phase2_rsi=phase2_rsi,
+        if needs_refresh:
+            signal_rows, us_signal_rows, missing_kr, missing_us = _build_signal_dashboard_rows(
+                favorites_tuple,
+                us_watchlist_tuple,
+                chart_mode,
+                yf_interval,
+                higher_interval,
+                data_start,
+                data_end,
+                bb_window=bb_window,
+                bb_std=bb_std,
+                rsi_period=rsi_period,
+                rsi_buy_center=rsi_buy_center,
+                rsi_sell_center=rsi_sell_center,
+                rsi_band=rsi_band,
+                rsi_lookback=rsi_lookback,
+                persist=persist,
+                phase2_rsi=phase2_rsi,
+            )
+            now_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            snapshot = {
+                "signal_rows": signal_rows,
+                "us_signal_rows": us_signal_rows,
+                "missing_kr": missing_kr,
+                "missing_us": missing_us,
+                "_market_payloads": {
+                    "kr": {"signal_rows": list(signal_rows), "missing_items": list(missing_kr)},
+                    "us": {"signal_rows": list(us_signal_rows), "missing_items": list(missing_us)},
+                },
+            }
+            st.session_state[snapshot_key] = snapshot
+            st.session_state[signature_key] = {
+                "_combined": combined_signature,
+                "kr": kr_signature,
+                "us": us_signature,
+            }
+            st.session_state[created_at_key] = {
+                "_combined": now_text,
+                "kr": now_text,
+                "us": now_text,
+            }
+    else:
+        legacy_snapshot = not isinstance(market_payloads, dict) or not all(
+            isinstance(market_payloads.get(market), dict) for market in ("kr", "us")
         )
-        snapshot = {
-            "signal_rows": signal_rows,
-            "us_signal_rows": us_signal_rows,
-            "missing_kr": missing_kr,
-            "missing_us": missing_us,
+        if legacy_snapshot:
+            market_payloads = {"kr": None, "us": None}
+            action = "legacy_refresh"
+        refresh_flags = {
+            "kr": force_refresh or legacy_snapshot or signature_map.get("kr") != kr_signature or policy["refresh_kr_snapshot"],
+            "us": force_refresh or legacy_snapshot or signature_map.get("us") != us_signature or policy["refresh_us_snapshot"],
         }
+        if action == "reuse" and any(refresh_flags.values()):
+            action = "market_refresh"
+
+        for market_key, items_tuple, market_signature in (
+            ("kr", favorites_tuple, kr_signature),
+            ("us", us_watchlist_tuple, us_signature),
+        ):
+            payload = market_payloads.get(market_key) if isinstance(market_payloads, dict) else None
+            payload_valid = isinstance(payload, dict) and {"signal_rows", "missing_items"}.issubset(payload.keys())
+            if not refresh_flags[market_key] and not payload_valid:
+                refresh_flags[market_key] = True
+                action = "repair_refresh"
+            if refresh_flags[market_key]:
+                signal_rows, missing_items, _shape = _build_signal_market_rows(
+                    items_tuple,
+                    market_key,
+                    chart_mode,
+                    yf_interval,
+                    higher_interval,
+                    data_start,
+                    data_end,
+                    bb_window=bb_window,
+                    bb_std=bb_std,
+                    rsi_period=rsi_period,
+                    rsi_buy_center=rsi_buy_center,
+                    rsi_sell_center=rsi_sell_center,
+                    rsi_band=rsi_band,
+                    rsi_lookback=rsi_lookback,
+                    persist=persist,
+                    phase2_rsi=phase2_rsi,
+                )
+                market_payloads[market_key] = {
+                    "signal_rows": list(signal_rows),
+                    "missing_items": list(missing_items),
+                }
+                signature_map[market_key] = market_signature
+                created_at_map[market_key] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        signature_map["_combined"] = combined_signature
+        created_at_map["_combined"] = max(
+            [v for v in (created_at_map.get("kr"), created_at_map.get("us")) if isinstance(v, str)],
+            default=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        snapshot = _compose_signal_snapshot_from_market_payloads(market_payloads)
         st.session_state[snapshot_key] = snapshot
-        st.session_state[signature_key] = signature
-        st.session_state[created_at_key] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.session_state[signature_key] = signature_map
+        st.session_state[created_at_key] = created_at_map
 
     _signal_debug_log(
         "signal_table_snapshot",
@@ -2209,9 +2420,19 @@ def _get_signal_table_snapshot(favorites_tuple, us_watchlist_tuple, chart_mode,
         favorites=len(favorites_tuple),
         us_favorites=len(us_watchlist_tuple),
         interval=yf_interval if chart_mode == "분봉" else higher_interval,
+        auto_refresh=auto_refresh,
+        kr_active=policy["kr_active"],
+        us_active=policy["us_active"],
+        refresh_kr=policy["refresh_kr_snapshot"],
+        refresh_us=policy["refresh_us_snapshot"],
         elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
     )
-    return snapshot, st.session_state.get(created_at_key, "")
+    created_state = st.session_state.get(created_at_key, "")
+    if isinstance(created_state, dict):
+        created_value = created_state.get("_combined", "")
+    else:
+        created_value = created_state
+    return snapshot, created_value
 
 
 def _single_tf_badge_html(sig: dict | None):
@@ -8789,6 +9010,7 @@ def main(page="signal"):
                     persist=persist,
                     phase2_rsi=phase2_rsi,
                     force_refresh=False,
+                    auto_refresh=auto_refresh,
                 )
 
             signal_rows = _signal_snapshot["signal_rows"]
