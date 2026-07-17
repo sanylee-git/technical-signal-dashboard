@@ -29,6 +29,22 @@ import traceback
 from zoneinfo import ZoneInfo
 warnings.filterwarnings('ignore')
 
+_COMBO1_EXPANDED_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "combo1_expanded_v1")
+if os.path.isdir(os.path.join(_COMBO1_EXPANDED_ROOT, "combo1_expanded")) and _COMBO1_EXPANDED_ROOT not in sys.path:
+    sys.path.append(_COMBO1_EXPANDED_ROOT)
+
+try:
+    from combo1_expanded.signals import (
+        align_signal_to_benchmark as _combo1_align_signal_to_benchmark,
+        build_hysteresis_combo_state as _combo1_build_hysteresis_combo_state,
+        compute_bollinger_signal_frame as _combo1_compute_bollinger_signal_frame,
+        compute_dynamic_quantile_signal_frame as _combo1_compute_dynamic_quantile_signal_frame,
+        compute_yield_slope_signal_frame as _combo1_compute_yield_slope_signal_frame,
+    )
+    COMBO1_EXPANDED_SIGNALS_AVAILABLE = True
+except Exception:
+    COMBO1_EXPANDED_SIGNALS_AVAILABLE = False
+
 try:
     from pykrx import stock as pykrx_stock
     PYKRX_AVAILABLE = True
@@ -63,7 +79,7 @@ _IS_MARKET_MACRO_APP = any(
 )
 
 def _configure_streamlit_page(page="signal"):
-    is_market_macro_app = page in ("market_macro", "market", "macro", "macro2", "macro3", "macro4") or _IS_MARKET_MACRO_APP
+    is_market_macro_app = page in ("market_macro", "market", "macro", "macro2", "macro3", "macro4", "macro5") or _IS_MARKET_MACRO_APP
     st.set_page_config(
         page_title="시장/매크로 지표" if is_market_macro_app else "기술적 신호 스캐너",
         page_icon="🏔️" if is_market_macro_app else "🎯",
@@ -6285,6 +6301,722 @@ def _build_macro_meta_backtest_panel(
     return "", compare_html
 
 
+_MACRO3_FINAL8_CSV = os.path.join(
+    _DIR,
+    "combo1_expanded_v1",
+    "outputs_sp500_final_v1",
+    "sp500",
+    "sp500_final8",
+    "sp500_dashboard_review_final8.csv",
+)
+_MACRO3_ROBUSTNESS_V2_CSV = os.path.join(
+    _DIR,
+    "combo1_expanded_v1",
+    "outputs_sp500_final_v1",
+    "sp500",
+    "robustness_44_v1",
+    "robustness_44_reweighted_v2.csv",
+)
+_MACRO3_INDICATOR_ORDER = [
+    "Index",
+    "HY",
+    "IG",
+    "Credit Stress",
+    "VIX",
+    "VIX Spread",
+    "10Y Real Yield",
+    "10Y-2Y Spread",
+    "10Y-3M Spread",
+    "10Y Nominal Yield Slope",
+    "Bollinger Band",
+]
+_MACRO3_INDICATOR_LABELS = {
+    "Index": "① 지수",
+    "HY": "② HY",
+    "IG": "③ IG",
+    "Credit Stress": "④ 신용스트레스",
+    "VIX": "⑤ VIX",
+    "VIX Spread": "⑥ VIX 스프레드",
+    "10Y Real Yield": "⑦ 10Y 실질금리",
+    "10Y-2Y Spread": "⑧ 10Y-2Y 스프레드",
+    "10Y-3M Spread": "⑨ 10Y-3M 스프레드",
+    "10Y Nominal Yield Slope": "⑩ 10Y 금리기울기",
+    "Bollinger Band": "⑪ 볼린저밴드",
+}
+
+
+def _macro3_indicator_key(name: str) -> str:
+    text = re.sub(r"[^a-z0-9]+", "_", str(name).strip().lower())
+    return text.strip("_")
+
+
+def _macro3_metric_percent(value) -> str:
+    return f"{float(value) * 100:.1f}%"
+
+
+def _macro3_metric_asset(value) -> str:
+    return f"{float(value):.1f}"
+
+
+def _parse_macro3_param_token(raw_value: str) -> dict | None:
+    value = str(raw_value).strip()
+    m_level = re.fullmatch(r"EMA(\d+)_W(\d+)_S(\d+)_E(\d+)", value)
+    if m_level:
+        return {
+            "kind": "level",
+            "ema": int(m_level.group(1)),
+            "window": int(m_level.group(2)),
+            "start": int(m_level.group(3)) / 100.0,
+            "end": int(m_level.group(4)) / 100.0,
+            "raw": value,
+        }
+    m_slope = re.fullmatch(r"SW(\d+)_EMA(\d+)_W(\d+)_S(\d+)_E(\d+)", value)
+    if m_slope:
+        return {
+            "kind": "yield_slope",
+            "slope_window": int(m_slope.group(1)),
+            "ema": int(m_slope.group(2)),
+            "window": int(m_slope.group(3)),
+            "start": int(m_slope.group(4)) / 100.0,
+            "end": int(m_slope.group(5)) / 100.0,
+            "raw": value,
+        }
+    m_bb = re.fullmatch(r"BBW(\d+)_STD([0-9p]+)", value)
+    if m_bb:
+        return {
+            "kind": "bollinger",
+            "window": int(m_bb.group(1)),
+            "std": float(m_bb.group(2).replace("p", ".")),
+            "raw": value,
+        }
+    return None
+
+
+def _parse_macro3_combo_key(combo_key: str) -> dict:
+    cfgs = {}
+    start_k = None
+    end_l = None
+    for token in str(combo_key).split("|"):
+        if "=" not in token:
+            continue
+        name, raw_value = token.split("=", 1)
+        name = name.strip()
+        raw_value = raw_value.strip()
+        if name == "start_k":
+            start_k = int(raw_value)
+            continue
+        if name == "end_l":
+            end_l = int(raw_value)
+            continue
+        parsed = _parse_macro3_param_token(raw_value)
+        if parsed:
+            cfgs[name] = parsed
+    selected_indicators = [name for name in _MACRO3_INDICATOR_ORDER if name in cfgs]
+    return {
+        "cfgs": cfgs,
+        "selected_indicators": selected_indicators,
+        "start_k": start_k,
+        "end_l": end_l,
+    }
+
+
+@st.cache_data(show_spinner=False)
+def _load_macro3_final8_presets():
+    if not os.path.exists(_MACRO3_FINAL8_CSV) or not os.path.exists(_MACRO3_ROBUSTNESS_V2_CSV):
+        return {}
+    final8 = pd.read_csv(_MACRO3_FINAL8_CSV)
+    robust = pd.read_csv(_MACRO3_ROBUSTNESS_V2_CSV)
+    merged = final8.merge(
+        robust[["candidate_key", "reconstructed_combo_key"]],
+        on="candidate_key",
+        how="left",
+    ).sort_values("dashboard_priority").reset_index(drop=True)
+    presets = {}
+    for row in merged.to_dict("records"):
+        parsed = _parse_macro3_combo_key(row.get("reconstructed_combo_key", ""))
+        if not parsed["selected_indicators"] or parsed["start_k"] is None or parsed["end_l"] is None:
+            continue
+        short_cycle_count = int(round(float(row["cycle_count_20y"]) * float(row["short_cycle_ratio_20y"])))
+        preset_key = f"macro5_final8_{int(row['dashboard_priority'])}"
+        role = str(row.get("role_tags", "")).strip()
+        label = f"S&P Final {int(row['dashboard_priority'])}. {role}" if role else f"S&P Final {int(row['dashboard_priority'])}"
+        presets[preset_key] = {
+            "label": label,
+            "benchmark": "S&P500",
+            "candidate_key": str(row["candidate_key"]),
+            "combo_id": int(row["combo_id"]),
+            "selected_indicators": parsed["selected_indicators"],
+            "combo_k": int(parsed["start_k"]),
+            "combo_l": int(parsed["end_l"]),
+            "cfgs": parsed["cfgs"],
+            "metrics": {
+                "10Y 자산": _macro3_metric_asset(row["final_asset_10y"]),
+                "20Y 자산": _macro3_metric_asset(row["final_asset_20y"]),
+                "10Y MDD": _macro3_metric_percent(row["total_mdd_10y"]),
+                "20Y MDD": _macro3_metric_percent(row["total_mdd_20y"]),
+                "20Y Risk-off": _macro3_metric_percent(row["risk_off_share_20y"]),
+                "20Y Cycle": str(int(row["cycle_count_20y"])),
+                "짧은 Cycle": str(short_cycle_count),
+            },
+            "role_tags": role,
+            "selection_reason": str(row.get("selection_reason", "")).strip(),
+            "dashboard_review_focus": str(row.get("dashboard_review_focus", "")).strip(),
+            "reconstructed_combo_key": str(row.get("reconstructed_combo_key", "")).strip(),
+        }
+    return presets
+
+
+def _macro3_fetch_benchmark_ohlcv(benchmark_name: str, years: int) -> pd.DataFrame:
+    benchmark = _get_macro_benchmark(benchmark_name)
+    end = (pd.Timestamp.now() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    start = (pd.Timestamp.now() - pd.DateOffset(years=years)).strftime("%Y-%m-%d")
+    df = fetch_ohlcv(benchmark["code"], start, end, interval="1d")
+    return pd.DataFrame() if df is None else df.sort_index()
+
+
+def _macro3_credit_stress_series(years: int, sync_bucket: str | None = None) -> pd.Series:
+    hy = _credit_spread_series("BAMLH0A0HYM2", years + 1, sync_bucket=sync_bucket)
+    nfci = _fred("NFCI", years + 1, sync_bucket=sync_bucket)
+    vix = _yf_close("^VIX", years + 1, sync_bucket=sync_bucket)
+    parts = []
+    if hy is not None and not hy.empty:
+        parts.append(_zscore(hy).rename("HY"))
+    if nfci is not None and not nfci.empty:
+        parts.append(_zscore(nfci).rename("NFCI"))
+    if vix is not None and not vix.empty:
+        parts.append(_zscore(vix).rename("VIX"))
+    if not parts:
+        return pd.Series(dtype=float)
+    return (-pd.concat(parts, axis=1).mean(axis=1).dropna()).dropna()
+
+
+def _macro3_get_indicator_raw_series(
+    indicator: str,
+    years: int,
+    benchmark_name: str = "S&P500",
+    spx_s: pd.Series | None = None,
+    sync_bucket: str | None = None,
+):
+    benchmark = _get_macro_benchmark(benchmark_name)
+    if indicator == "Index":
+        if spx_s is None or spx_s.empty:
+            spx_s = _yf_close(benchmark["code"], years, sync_bucket=sync_bucket)
+        return spx_s.dropna() if spx_s is not None else pd.Series(dtype=float)
+    if indicator == "HY":
+        return (-_credit_spread_series("BAMLH0A0HYM2", years, sync_bucket=sync_bucket)).dropna()
+    if indicator == "IG":
+        return (-_credit_spread_series("BAMLC0A0CM", years, sync_bucket=sync_bucket)).dropna()
+    if indicator == "Credit Stress":
+        return _macro3_credit_stress_series(years, sync_bucket=sync_bucket)
+    if indicator == "VIX":
+        return (-_yf_close("^VIX", years, sync_bucket=sync_bucket)).dropna()
+    if indicator == "VIX Spread":
+        vix = _yf_close("^VIX", years, sync_bucket=sync_bucket)
+        vix3m = _yf_close("^VIX3M", years, sync_bucket=sync_bucket)
+        if vix.empty or vix3m.empty:
+            return pd.Series(dtype=float)
+        return (-(vix - vix3m.reindex(vix.index))).dropna()
+
+    bundle = _get_macro_yield_bundle(years, benchmark_name)
+    if indicator == "10Y Real Yield":
+        return (-bundle.get("dfii10", pd.Series(dtype=float))).dropna()
+    if indicator == "10Y-2Y Spread":
+        return bundle.get("spread_10y2y", pd.Series(dtype=float)).dropna()
+    if indicator == "10Y-3M Spread":
+        return bundle.get("spread_10y3m", pd.Series(dtype=float)).dropna()
+    if indicator == "10Y Nominal Yield Slope":
+        return bundle.get("dgs10", pd.Series(dtype=float)).dropna()
+    return pd.Series(dtype=float)
+
+
+def _macro3_get_indicator_signal_frame(
+    indicator: str,
+    cfg: dict,
+    benchmark_index: pd.DatetimeIndex,
+    years: int,
+    benchmark_name: str = "S&P500",
+    spx_s: pd.Series | None = None,
+    sync_bucket: str | None = None,
+):
+    if not COMBO1_EXPANDED_SIGNALS_AVAILABLE:
+        return pd.DataFrame()
+    kind = cfg.get("kind", "level")
+    if kind == "bollinger":
+        ohlc = _macro3_fetch_benchmark_ohlcv(benchmark_name, years)
+        if ohlc.empty:
+            return pd.DataFrame()
+        signal = _combo1_compute_bollinger_signal_frame(
+            close=ohlc["Close"],
+            high=ohlc["High"],
+            low=ohlc["Low"],
+            window=int(cfg["window"]),
+            std_multiplier=float(cfg["std"]),
+        )
+        return _combo1_align_signal_to_benchmark(signal, benchmark_index)
+
+    raw_series = _macro3_get_indicator_raw_series(
+        indicator=indicator,
+        years=years,
+        benchmark_name=benchmark_name,
+        spx_s=spx_s,
+        sync_bucket=sync_bucket,
+    )
+    if raw_series is None or raw_series.empty:
+        return pd.DataFrame()
+    if kind == "yield_slope":
+        signal = _combo1_compute_yield_slope_signal_frame(
+            dgs10=raw_series,
+            slope_window=int(cfg["slope_window"]),
+            ema_span=int(cfg["ema"]),
+            threshold_window=int(cfg["window"]),
+            start_quantile=float(cfg["start"]),
+            end_quantile=float(cfg["end"]),
+        )
+    else:
+        signal = _combo1_compute_dynamic_quantile_signal_frame(
+            series=raw_series,
+            window=int(cfg["window"]),
+            start_quantile=float(cfg["start"]),
+            end_quantile=float(cfg["end"]),
+            ema_span=int(cfg["ema"]),
+        )
+    return _combo1_align_signal_to_benchmark(signal, benchmark_index)
+
+
+def _compute_macro3_combo_signal_frame(
+    spx_s: pd.Series,
+    benchmark_name: str,
+    selected_indicators,
+    cfgs: dict,
+    combo_k: int,
+    combo_l: int,
+    sync_bucket: str | None = None,
+):
+    if spx_s is None or spx_s.empty or not COMBO1_EXPANDED_SIGNALS_AVAILABLE:
+        return pd.DataFrame(), []
+    selected_indicators = list(selected_indicators or [])
+    if not selected_indicators:
+        return pd.DataFrame(), []
+    frames = {}
+    active_indicators = []
+    fetch_years = max(3, int(np.ceil(len(spx_s.dropna()) / 252.0)) + 2)
+    for indicator in selected_indicators:
+        cfg = cfgs.get(indicator)
+        if not cfg:
+            continue
+        signal_df = _macro3_get_indicator_signal_frame(
+            indicator=indicator,
+            cfg=cfg,
+            benchmark_index=spx_s.index,
+            years=fetch_years,
+            benchmark_name=benchmark_name,
+            spx_s=spx_s,
+            sync_bucket=sync_bucket,
+        )
+        if signal_df.empty:
+            continue
+        key = _macro3_indicator_key(indicator)
+        frames[indicator] = signal_df.rename(columns={
+            "risk_state": f"{key}_flag",
+            "risk_start_signal": f"{key}_start_signal",
+            "risk_end_signal": f"{key}_end_signal",
+        })[[f"{key}_flag", f"{key}_start_signal", f"{key}_end_signal"]]
+        active_indicators.append(indicator)
+    if not frames:
+        return pd.DataFrame(), []
+    combo = pd.concat(frames.values(), axis=1).reindex(spx_s.index).fillna(False)
+    flag_cols = [f"{_macro3_indicator_key(name)}_flag" for name in active_indicators]
+    combo["active_count"] = combo[flag_cols].sum(axis=1).astype(int)
+    state, starts, ends = _combo1_build_hysteresis_combo_state(combo["active_count"].to_numpy(), int(combo_k), int(combo_l))
+    combo["combo_risk_state"] = state.astype(bool)
+    combo["combo_start_signal"] = starts.astype(bool)
+    combo["combo_end_signal"] = ends.astype(bool)
+    combo[flag_cols + [c for c in combo.columns if c.endswith("_signal")]] = combo[
+        flag_cols + [c for c in combo.columns if c.endswith("_signal")]
+    ].astype(bool)
+    return combo, active_indicators
+
+
+def _build_macro3_combo_event_df(
+    combo: pd.DataFrame,
+    active_indicators,
+    benchmark_name: str,
+    selected_indicators,
+    cfgs: dict,
+    combo_k: int,
+    combo_l: int,
+):
+    if combo is None or combo.empty:
+        return pd.DataFrame()
+    ordered = [name for name in list(selected_indicators or []) if name in active_indicators]
+    event_df = combo.copy().rename_axis("date").reset_index()
+    event_df["date"] = pd.to_datetime(event_df["date"])
+    event_df["prev_active_count"] = event_df["active_count"].shift(1).fillna(0).astype(int)
+    event_df["combo_state_before"] = event_df["combo_risk_state"].shift(1).fillna(False).astype(bool)
+    label_cols = []
+    for indicator in ordered:
+        flag_col = f"{_macro3_indicator_key(indicator)}_flag"
+        if flag_col in event_df.columns:
+            label_cols.append((indicator, flag_col))
+
+    def _flag_text(row, expect_true: bool) -> str:
+        labels = [_MACRO3_INDICATOR_LABELS.get(name, name) for name, col in label_cols if bool(row.get(col, False)) is expect_true]
+        return ", ".join(labels)
+
+    def _flag_bits(row) -> str:
+        return "/".join(["1" if bool(row.get(col, False)) else "0" for _, col in label_cols])
+
+    event_df["active_flags"] = event_df.apply(lambda r: _flag_text(r, True), axis=1)
+    event_df["inactive_flags"] = event_df.apply(lambda r: _flag_text(r, False), axis=1)
+    event_df["prev_active_flags"] = event_df["active_flags"].shift(1).fillna("")
+    event_df["prev_inactive_flags"] = event_df["inactive_flags"].shift(1).fillna("")
+    event_df["flag_state_string"] = event_df.apply(_flag_bits, axis=1)
+    event_df["selected_labels"] = ", ".join([_MACRO3_INDICATOR_LABELS.get(name, name) for name in ordered])
+    event_df["benchmark_name"] = benchmark_name
+    event_df["combo_k"] = int(combo_k)
+    event_df["combo_l"] = int(combo_l)
+    event_df["combo_n"] = len(ordered)
+    event_df["param_signature"] = " | ".join([f"{name}={cfgs[name]['raw']}" for name in ordered if name in cfgs])
+    event_df["combo_label"] = " + ".join(ordered)
+    return event_df
+
+
+def make_macro3_combo_dynamic_chart(
+    years: int,
+    benchmark_name: str,
+    preset_cfg: dict,
+    return_debug: bool = False,
+    sync_bucket: str | None = None,
+):
+    benchmark = _get_macro_benchmark(benchmark_name)
+    visible_spx = _yf_close(benchmark["code"], years, sync_bucket=sync_bucket)
+    if visible_spx is None or visible_spx.empty:
+        return (None, pd.DataFrame()) if return_debug else None
+    warmup_years = max(years + 2, 5)
+    combo_spx = _yf_close(benchmark["code"], warmup_years, sync_bucket=sync_bucket)
+    if combo_spx is None or combo_spx.empty:
+        combo_spx = visible_spx
+    combo, active_indicators = _compute_macro3_combo_signal_frame(
+        spx_s=combo_spx,
+        benchmark_name=benchmark_name,
+        selected_indicators=preset_cfg.get("selected_indicators", []),
+        cfgs=preset_cfg.get("cfgs", {}),
+        combo_k=int(preset_cfg.get("combo_k", 1)),
+        combo_l=int(preset_cfg.get("combo_l", 0)),
+        sync_bucket=sync_bucket,
+    )
+    if combo.empty or not active_indicators:
+        return (None, pd.DataFrame()) if return_debug else None
+    combo = combo.loc[combo.index >= visible_spx.dropna().index.min()].copy()
+    spx_aligned = visible_spx.reindex(combo.index).dropna()
+    combo = combo.reindex(spx_aligned.index)
+    event_df = _build_macro3_combo_event_df(
+        combo=combo,
+        active_indicators=active_indicators,
+        benchmark_name=benchmark_name,
+        selected_indicators=preset_cfg.get("selected_indicators", []),
+        cfgs=preset_cfg.get("cfgs", {}),
+        combo_k=int(preset_cfg.get("combo_k", 1)),
+        combo_l=int(preset_cfg.get("combo_l", 0)),
+    )
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=spx_aligned.index, y=spx_aligned, name=benchmark["label"],
+        line=dict(color="rgba(182,182,182,0.88)", width=1.55),
+        hovertemplate=f"<b>%{{x|%Y-%m-%d}}</b><br>{benchmark['label']} %{{y:,.1f}}<extra></extra>",
+    ))
+    start_rows = event_df.loc[event_df["combo_start_signal"]].copy()
+    end_rows = event_df.loc[event_df["combo_end_signal"]].copy()
+    start_y = spx_aligned.reindex(pd.to_datetime(start_rows["date"])) if not start_rows.empty else pd.Series(dtype=float)
+    end_y = spx_aligned.reindex(pd.to_datetime(end_rows["date"])) if not end_rows.empty else pd.Series(dtype=float)
+    if not start_rows.empty and not start_y.empty:
+        fig.add_trace(go.Scatter(
+            x=start_y.index, y=start_y, name="리스크 시작",
+            mode="markers", marker=dict(symbol="triangle-down", size=10, color="rgba(210,55,55,0.95)"),
+        ))
+    if not end_rows.empty and not end_y.empty:
+        fig.add_trace(go.Scatter(
+            x=end_y.index, y=end_y, name="리스크 종료",
+            mode="markers", marker=dict(symbol="triangle-up", size=10, color="rgba(80,160,255,0.92)"),
+        ))
+    fig.update_layout(
+        **_ml(
+            f"⓪ 최종 후보 리스크 사이클 ({benchmark['label']}, {int(preset_cfg.get('combo_k', 1))}/{len(active_indicators)}, end≤{int(preset_cfg.get('combo_l', 0))})",
+            height=300,
+        ),
+    )
+    fig.add_annotation(
+        xref="paper", yref="paper", x=0.01, y=0.98, showarrow=False,
+        text=f"<b>조합</b>: {event_df['selected_labels'].iloc[0]}",
+        font=dict(size=11, color="#C8C8C8"),
+        align="left",
+        bgcolor="rgba(0,0,0,0.18)",
+        bordercolor="rgba(255,255,255,0.08)",
+        borderwidth=1,
+        borderpad=4,
+    )
+    return (fig, event_df) if return_debug else fig
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _get_macro3_signal_latest_date(indicator: str, years: int, benchmark_name: str = "S&P500", sync_bucket: str | None = None):
+    if indicator == "Bollinger Band":
+        ohlc = _macro3_fetch_benchmark_ohlcv(benchmark_name, years)
+        return None if ohlc.empty else ohlc.index.max()
+    series = _macro3_get_indicator_raw_series(indicator, years, benchmark_name=benchmark_name, sync_bucket=sync_bucket)
+    return None if series is None or series.empty else series.index.max()
+
+
+def _build_macro3_status_panel(
+    benchmark_name: str,
+    years: int,
+    preset_cfg: dict,
+    combo_event_df: pd.DataFrame,
+    sync_bucket: str | None = None,
+):
+    if combo_event_df is None or combo_event_df.empty:
+        return "", ""
+    latest = combo_event_df.sort_values("date").iloc[-1]
+    combo_state = bool(latest.get("combo_risk_state", False))
+    active_count = int(latest.get("active_count", 0))
+    combo_n = int(latest.get("combo_n", len(preset_cfg.get("selected_indicators", []))))
+    basis_date = _macro_date_text(latest.get("date"))
+    status_text = "리스크 사이클 ON" if combo_state else "리스크 사이클 OFF"
+    status_color = "#FF8C69" if combo_state else "#4BFFB3"
+    active_labels = []
+    entries = []
+    selected = set(preset_cfg.get("selected_indicators", []))
+    for indicator in _MACRO3_INDICATOR_ORDER:
+        key = _macro3_indicator_key(indicator)
+        is_on = bool(latest.get(f"{key}_flag", False))
+        if is_on:
+            active_labels.append(_MACRO3_INDICATOR_LABELS.get(indicator, indicator))
+        entries.append({
+            "label": _MACRO3_INDICATOR_LABELS.get(indicator, indicator),
+            "selected": indicator in selected,
+            "flag": is_on,
+            "latest_date": _macro_date_text(_get_macro3_signal_latest_date(indicator, years, benchmark_name=benchmark_name, sync_bucket=sync_bucket)),
+        })
+    active_flags_text = ", ".join(active_labels) if active_labels else "없음"
+    summary_html = (
+        '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;padding:0 0 18px 0;color:#CFCFCF;font-size:13px;">'
+        f"<span><b>기준일</b> {basis_date}</span>"
+        f"<span><b>현재 플래그</b> {active_count} / {combo_n} ON ({active_flags_text})</span>"
+        f"<span><b>상태</b> <span style='color:{status_color};font-weight:700;'>{status_text}</span></span>"
+        "</div>"
+    )
+    midpoint = int(np.ceil(len(entries) / 2))
+    left_entries = entries[:midpoint]
+    right_entries = entries[midpoint:]
+    row_count = max(len(left_entries), len(right_entries))
+
+    def _entry_cells(entry):
+        if not entry:
+            return "<td style='padding:6px 8px;'></td>" * 4
+        return (
+            f"<td style='padding:6px 8px;color:#D6D6D6;'>{entry['label']}</td>"
+            f"<td style='padding:6px 8px;text-align:center;'>{_macro_status_circle(entry['selected'], color_on='#7C7CF7')}</td>"
+            f"<td style='padding:6px 8px;text-align:center;'>{_macro_status_circle(entry['flag'], color_on='#4BFFB3')}</td>"
+            f"<td style='padding:6px 8px;color:#AFAFAF;'>{entry['latest_date']}</td>"
+        )
+
+    rows_html = []
+    for idx in range(row_count):
+        left = left_entries[idx] if idx < len(left_entries) else None
+        right = right_entries[idx] if idx < len(right_entries) else None
+        rows_html.append(f"<tr>{_entry_cells(left)}<td style='width:12px;'></td>{_entry_cells(right)}</tr>")
+    table_html = (
+        "<table style='width:100%;border-collapse:collapse;font-size:11px;line-height:1.25;'>"
+        "<thead><tr>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>지표</th>"
+        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>선택</th>"
+        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>플래그</th>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>최신날짜</th>"
+        "<th style='width:12px;border-bottom:1px solid rgba(255,255,255,0.08);'></th>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>지표</th>"
+        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>선택</th>"
+        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>플래그</th>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>최신날짜</th>"
+        f"</tr></thead><tbody>{''.join(rows_html)}</tbody></table>"
+    )
+    return summary_html, table_html
+
+
+@st.cache_data(show_spinner=False)
+def _compute_macro3_preset_current_state_cached(preset_cfg: dict, years: int, sync_bucket: str | None = None):
+    benchmark_name = preset_cfg.get("benchmark", "S&P500")
+    benchmark = _get_macro_benchmark(benchmark_name)
+    spx_s = _yf_close(benchmark["code"], years, sync_bucket=sync_bucket)
+    if spx_s is None or spx_s.empty:
+        return None
+    combo, active_indicators = _compute_macro3_combo_signal_frame(
+        spx_s=spx_s,
+        benchmark_name=benchmark_name,
+        selected_indicators=preset_cfg.get("selected_indicators", []),
+        cfgs=preset_cfg.get("cfgs", {}),
+        combo_k=int(preset_cfg.get("combo_k", 1)),
+        combo_l=int(preset_cfg.get("combo_l", 0)),
+        sync_bucket=sync_bucket,
+    )
+    if combo.empty:
+        return None
+    latest = combo.sort_index().iloc[-1]
+    return {"is_on": bool(latest.get("combo_risk_state", False)), "on_count": int(latest.get("active_count", 0)), "total_count": len(active_indicators)}
+
+
+def _compute_macro3_preset_current_state(preset_cfg: dict, years: int, sync_bucket: str | None = None):
+    return _compute_macro3_preset_current_state_cached(preset_cfg=preset_cfg, years=years, sync_bucket=sync_bucket)
+
+
+def _build_macro3_backtest_panel(preset_key: str, preset_defs: dict, years: int = 3, sync_bucket: str | None = None) -> tuple[str, str]:
+    selected = preset_defs.get(preset_key)
+    if not selected:
+        return "", ""
+    compare_rows = [
+        ("sp500_buyhold", _MACRO_META_BACKTEST_COMPARE["sp500_buyhold"]["label"], _MACRO_META_BACKTEST_COMPARE["sp500_buyhold"]["metrics"], "legacy"),
+        ("snp", _MACRO_META_BACKTEST_COMPARE["snp"]["label"], _MACRO_META_BACKTEST_COMPARE["snp"]["metrics"], "legacy"),
+        ("common", _MACRO_META_BACKTEST_COMPARE["common"]["label"], _MACRO_META_BACKTEST_COMPARE["common"]["metrics"], "legacy"),
+        ("snp_meta_1", _MACRO_META_BACKTEST_COMPARE["snp_meta_1"]["label"], _MACRO_META_BACKTEST_COMPARE["snp_meta_1"]["metrics"], "legacy"),
+        ("snp_meta_2", _MACRO_META_BACKTEST_COMPARE["snp_meta_2"]["label"], _MACRO_META_BACKTEST_COMPARE["snp_meta_2"]["metrics"], "legacy"),
+    ] + [(key, cfg["label"], cfg["metrics"], "final8") for key, cfg in preset_defs.items()]
+    hold_metrics = _MACRO_META_BACKTEST_COMPARE["sp500_buyhold"]["metrics"]
+    hold_10y = _macro_metric_float(hold_metrics.get("10Y 자산"))
+    hold_20y = _macro_metric_float(hold_metrics.get("20Y 자산"))
+    hold_mdd_10y = _macro_metric_float(hold_metrics.get("10Y MDD"))
+    hold_mdd_20y = _macro_metric_float(hold_metrics.get("20Y MDD"))
+
+    def _ratio_span(ratio: float, good: bool) -> str:
+        color = "#7FE7B1" if good else "#8F8F8F"
+        weight = "700" if good else "400"
+        return f"<span style='color:{color};font-size:11px;font-weight:{weight};'>({ratio:.2f}x)</span>"
+
+    current_state_map = {}
+    for key, _label, _metrics, row_type in compare_rows:
+        if row_type == "final8":
+            current_state_map[key] = _compute_macro3_preset_current_state(preset_defs[key], years=years, sync_bucket=sync_bucket)
+        else:
+            current_state_map[key] = None
+    rows_html = []
+    for key, label, summary, _row_type in compare_rows:
+        is_selected = key == preset_key
+        bg = "rgba(120,126,231,0.16)" if is_selected else "transparent"
+        border = "1px solid rgba(120,126,231,0.34)" if is_selected else "1px solid transparent"
+        asset_10y, asset_20y, mdd_10y, mdd_20y = summary["10Y 자산"], summary["20Y 자산"], summary["10Y MDD"], summary["20Y MDD"]
+        asset_10y_num = _macro_metric_float(asset_10y)
+        asset_20y_num = _macro_metric_float(asset_20y)
+        mdd_10y_num = _macro_metric_float(mdd_10y)
+        mdd_20y_num = _macro_metric_float(mdd_20y)
+        if hold_10y and asset_10y_num is not None and key != "sp500_buyhold":
+            asset_10y = f"{asset_10y} {_ratio_span(asset_10y_num / hold_10y, asset_10y_num / hold_10y >= 1.5)}"
+        if hold_20y and asset_20y_num is not None and key != "sp500_buyhold":
+            asset_20y = f"{asset_20y} {_ratio_span(asset_20y_num / hold_20y, asset_20y_num / hold_20y >= 1.5)}"
+        if hold_mdd_10y and mdd_10y_num is not None and key != "sp500_buyhold":
+            ratio = abs(mdd_10y_num) / abs(hold_mdd_10y)
+            mdd_10y = f"{mdd_10y} {_ratio_span(ratio, ratio <= 0.5)}"
+        if hold_mdd_20y and mdd_20y_num is not None and key != "sp500_buyhold":
+            ratio = abs(mdd_20y_num) / abs(hold_mdd_20y)
+            mdd_20y = f"{mdd_20y} {_ratio_span(ratio, ratio <= 0.5)}"
+        current_state = current_state_map.get(key)
+        current_state_html = "-" if current_state is None else _macro_flag_ratio_html(current_state.get("on_count", 0), current_state.get("total_count", 1))
+        rows_html.append(
+            f"<tr style='background:{bg};border-top:{border};border-bottom:{border};'>"
+            f"<td style='padding:7px 8px;color:#EDEDED;font-weight:700;'>{label}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{asset_10y}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{asset_20y}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{mdd_10y}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{mdd_20y}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['20Y Risk-off']}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['20Y Cycle']}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{summary['짧은 Cycle']}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:center;'>{current_state_html}</td></tr>"
+        )
+    compare_html = (
+        "<table style='width:100%;border-collapse:collapse;font-size:12px;'>"
+        "<thead><tr>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>후보</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>10Y 자산</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>20Y 자산</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>10Y MDD</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>20Y MDD</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>20Y Risk-off</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>20Y Cycle</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>짧은 Cycle</th>"
+        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>현재</th>"
+        f"</tr></thead><tbody>{''.join(rows_html)}</tbody></table>"
+    )
+    return "", compare_html
+
+
+def _build_macro3_indicator_chart(
+    indicator: str,
+    years: int,
+    benchmark_name: str,
+    preset_cfg: dict,
+    spx_s: pd.Series,
+    show_raw: bool,
+    sync_bucket: str | None = None,
+):
+    cfg = preset_cfg.get("cfgs", {}).get(indicator)
+    if not cfg or not COMBO1_EXPANDED_SIGNALS_AVAILABLE:
+        return None
+    benchmark_index = spx_s.index if spx_s is not None else pd.DatetimeIndex([])
+    signal_df = _macro3_get_indicator_signal_frame(
+        indicator=indicator,
+        cfg=cfg,
+        benchmark_index=benchmark_index,
+        years=max(years + 2, 5),
+        benchmark_name=benchmark_name,
+        spx_s=spx_s,
+        sync_bucket=sync_bucket,
+    )
+    if signal_df.empty:
+        return None
+    benchmark = _get_macro_benchmark(benchmark_name)
+    title = _MACRO3_INDICATOR_LABELS.get(indicator, indicator)
+    fig = go.Figure()
+    if indicator == "Bollinger Band":
+        ohlc = _macro3_fetch_benchmark_ohlcv(benchmark_name, max(years + 2, 5))
+        if ohlc.empty:
+            return None
+        price = ohlc["Close"].reindex(signal_df.index).dropna()
+        signal_df = signal_df.reindex(price.index)
+        fig.add_trace(go.Scatter(x=price.index, y=price, name=benchmark["label"], line=dict(color="rgba(182,182,182,0.88)", width=1.55)))
+        if show_raw:
+            for col, name, color in [("bb_middle", "BB Middle", "rgba(216,195,106,0.35)"), ("bb_upper", "BB Upper", "rgba(255,140,105,0.50)"), ("bb_lower", "BB Lower", "rgba(120,220,255,0.50)")]:
+                if col in signal_df.columns:
+                    fig.add_trace(go.Scatter(x=signal_df.index, y=signal_df[col], name=name, line=dict(color=color, width=1.1, dash="dot" if col != "bb_middle" else "solid")))
+        start_y = price.reindex(signal_df.index[signal_df["risk_start_signal"].fillna(False)])
+        end_y = price.reindex(signal_df.index[signal_df["risk_end_signal"].fillna(False)])
+        if not start_y.empty:
+            fig.add_trace(go.Scatter(x=start_y.index, y=start_y, mode="markers", name="리스크 시작", marker=dict(symbol="triangle-down", size=9, color="rgba(210,55,55,0.95)")))
+        if not end_y.empty:
+            fig.add_trace(go.Scatter(x=end_y.index, y=end_y, mode="markers", name="리스크 종료", marker=dict(symbol="triangle-up", size=9, color="rgba(80,160,255,0.92)")))
+        fig.update_layout(**_ml(title, height=300))
+        return fig
+
+    raw_series = _macro3_get_indicator_raw_series(indicator, max(years + 2, 5), benchmark_name=benchmark_name, spx_s=spx_s, sync_bucket=sync_bucket)
+    if raw_series is None or raw_series.empty:
+        return None
+    main_s = raw_series.reindex(signal_df.index).dropna()
+    signal_df = signal_df.reindex(main_s.index)
+    fig.add_trace(go.Scatter(x=main_s.index, y=main_s, name=indicator, line=dict(color="rgba(182,182,182,0.88)", width=1.45)))
+    if show_raw:
+        ema_candidates = [col for col in signal_df.columns if col.startswith("ema")]
+        if ema_candidates:
+            ema_col = ema_candidates[0]
+            fig.add_trace(go.Scatter(x=signal_df.index, y=signal_df[ema_col], name=ema_col.upper(), line=dict(color="rgba(216,195,106,0.42)", width=1.1)))
+        if "risk_start_line" in signal_df.columns:
+            fig.add_trace(go.Scatter(x=signal_df.index, y=signal_df["risk_start_line"], name="시작선", line=dict(color="rgba(255,140,105,0.55)", width=1.1, dash="dot")))
+        if "risk_end_line" in signal_df.columns:
+            fig.add_trace(go.Scatter(x=signal_df.index, y=signal_df["risk_end_line"], name="종료선", line=dict(color="rgba(120,220,255,0.60)", width=1.1, dash="dot")))
+    if indicator != "Index":
+        _add_spx_overlay(fig, main_s, spx_s, yaxis="y2", label=benchmark["label"])
+        fig.update_layout(yaxis2=_visible_price_yaxis("y", "right"))
+    _add_price_signal_markers(fig, signal_df.rename(columns={"risk_start_signal": "down_start_signal", "risk_end_signal": "down_end_signal"}), main_s, yaxis="y", prefix=indicator)
+    fig.update_layout(**_ml(title, height=300))
+    return fig
+
+
 def make_macro_combo_dynamic_chart(
     years: int = 5,
     spx_s=None,
@@ -8000,6 +8732,7 @@ def main(page="signal"):
         "macro2": ("MACRO INDICATORS 2", "🧪 매크로 지표 2"),
         "macro3": ("MACRO INDICATORS 3", "🧪 매크로 지표 3"),
         "macro4": ("MACRO INDICATORS 4", "🧪 매크로 지표 4"),
+        "macro5": ("MACRO INDICATORS 5", "🧪 매크로 지표 3"),
         "all": ("TECHNICAL SIGNAL SCANNER", "🎯 기술적 신호 스캐너"),
     }
     _eyebrow, _title = _page_titles.get(page, _page_titles["signal"])
@@ -8031,6 +8764,7 @@ def main(page="signal"):
         _market_macro_sections = [
             ("macro", "🌍 매크로 지표"),
             ("macro4", "🧪 매크로 지표 2"),
+            ("macro5", "🧪 매크로 지표 3"),
             ("market", "🌐 시장 내부지표"),
         ]
         if st.session_state.get("market_macro_section") not in {k for k, _ in _market_macro_sections}:
@@ -8054,6 +8788,8 @@ def main(page="signal"):
     elif page == "macro3":
         tab1, tab2, tab3 = None, None, st.container()
     elif page == "macro4":
+        tab1, tab2, tab3 = None, None, st.container()
+    elif page == "macro5":
         tab1, tab2, tab3 = None, None, st.container()
     else:
         st.error(f"알 수 없는 페이지입니다: {page}")
@@ -9012,6 +9748,213 @@ def main(page="signal"):
                     elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
                 )
 
+    def render_macro5_final8_section(container):
+        with container:
+            _started = time.perf_counter()
+            st.markdown(
+                '<div class="macro2-helper-text">S&P 최종 후보 8개를 기존 매크로지표2와 같은 흐름으로 비교합니다.</div>',
+                unsafe_allow_html=True,
+            )
+            _macro5_sync_bucket = _macro_sync_bucket(60)
+            st.markdown("""
+            <style>
+            .st-key-macro5_preset div[data-baseweb="select"] > div,
+            .st-key-macro5_benchmark div[data-baseweb="select"] > div,
+            .st-key-macro5_selected_codes div[data-baseweb="select"] > div,
+            .st-key-macro5_years div[data-baseweb="slider"] + div,
+            .st-key-macro5_show_raw label,
+            .st-key-macro5_show_raw span,
+            .st-key-macro5_show_raw p {
+                font-size: 13.5px !important;
+                color: rgba(255,255,255,0.92) !important;
+            }
+            .st-key-macro5_preset div[data-baseweb="select"] > div,
+            .st-key-macro5_benchmark div[data-baseweb="select"] > div,
+            .st-key-macro5_selected_codes div[data-baseweb="select"] > div {
+                min-height: 2.55rem;
+                border-color: rgba(95,86,214,0.72) !important;
+                background: rgba(52,44,112,0.22) !important;
+                box-shadow: none !important;
+            }
+            .st-key-macro5_selected_codes [data-baseweb="tag"] {
+                background: rgba(92,79,214,0.96) !important;
+                color: #F6F4FF !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
+            _macro5_presets = _load_macro3_final8_presets()
+            if not _macro5_presets:
+                st.warning("Final8 프리셋 파일을 찾지 못했습니다.")
+                return
+
+            _macro5_preset_order = list(_macro5_presets.keys())
+            if st.session_state.get("macro5_preset") not in _macro5_preset_order:
+                st.session_state["macro5_preset"] = _macro5_preset_order[0]
+
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            _l51, _l52, _l53, _l54 = st.columns([1.8, 1.0, 2.2, 1.0], vertical_alignment="bottom")
+            with _l51:
+                st.markdown('<div class="macro2-control-label">조합 프리셋</div>', unsafe_allow_html=True)
+            with _l52:
+                st.markdown('<div class="macro2-control-label">기준지수</div>', unsafe_allow_html=True)
+            with _l53:
+                st.markdown('<div class="macro2-control-label">기간</div>', unsafe_allow_html=True)
+            with _l54:
+                st.markdown('<div class="macro2-control-label">보조선 표시</div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
+
+            _m51, _m52, _m53, _m54 = st.columns([1.8, 1.0, 2.2, 1.0], vertical_alignment="bottom")
+            with _m51:
+                _macro5_preset = st.selectbox(
+                    "조합 프리셋",
+                    options=_macro5_preset_order,
+                    index=_macro5_preset_order.index(st.session_state["macro5_preset"]),
+                    format_func=lambda x: _macro5_presets[x]["label"],
+                    key="macro5_preset",
+                    label_visibility="collapsed",
+                )
+            _macro5_preset_cfg = _macro5_presets[_macro5_preset]
+            with _m52:
+                st.selectbox(
+                    "기준지수",
+                    options=["S&P500"],
+                    index=0,
+                    key="macro5_benchmark",
+                    label_visibility="collapsed",
+                    disabled=True,
+                )
+            with _m53:
+                _yr_opts5 = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년', 15: '15년', 20: '20년'}
+                _macro5_years = st.select_slider(
+                    "기간",
+                    options=list(_yr_opts5.keys()),
+                    value=5,
+                    format_func=lambda x: _yr_opts5[x],
+                    key="macro5_years",
+                    label_visibility="collapsed",
+                )
+            with _m54:
+                st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
+                _show_raw_macro5 = st.checkbox("보조선 표시", value=False, key="macro5_show_raw", label_visibility="collapsed")
+
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            _l55, _l56 = st.columns([4.4, 1.6], vertical_alignment="bottom")
+            with _l55:
+                st.markdown('<div class="macro2-control-label">조합 지표</div>', unsafe_allow_html=True)
+            with _l56:
+                st.markdown('<div class="macro2-control-label">리스크 기준</div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
+
+            _m55, _m56 = st.columns([4.4, 1.6], vertical_alignment="bottom")
+            with _m55:
+                st.multiselect(
+                    "조합 지표",
+                    options=_MACRO3_INDICATOR_ORDER,
+                    default=_macro5_preset_cfg["selected_indicators"],
+                    format_func=lambda x: _MACRO3_INDICATOR_LABELS.get(x, x),
+                    key="macro5_selected_codes",
+                    label_visibility="collapsed",
+                    disabled=True,
+                )
+            with _m56:
+                st.markdown(
+                    (
+                        "<div style='padding-top:10px;font-size:12px;color:rgba(255,255,255,0.84);'>"
+                        f"시작 {int(_macro5_preset_cfg['combo_k'])}개 이상 ON<br>"
+                        f"종료 {int(_macro5_preset_cfg['combo_l'])}개 이하 ON"
+                        "</div>"
+                    ),
+                    unsafe_allow_html=True,
+                )
+
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            with st.spinner("📡 기준 지수 데이터 로딩 중..."):
+                _spx_s5 = _yf_close("^GSPC", _macro5_years, sync_bucket=_macro5_sync_bucket)
+            if _spx_s5 is None or _spx_s5.empty:
+                st.warning("기준 지수 데이터를 불러오지 못했습니다.")
+                return
+
+            with st.spinner("📡 Final8 후보 데이터 로딩 중..."):
+                _macro5_combo_fig, _macro5_combo_event_df = make_macro3_combo_dynamic_chart(
+                    years=_macro5_years,
+                    benchmark_name="S&P500",
+                    preset_cfg=_macro5_preset_cfg,
+                    return_debug=True,
+                    sync_bucket=_macro5_sync_bucket,
+                )
+                _macro5_indicator_charts = {
+                    _indicator: _build_macro3_indicator_chart(
+                        indicator=_indicator,
+                        years=_macro5_years,
+                        benchmark_name="S&P500",
+                        preset_cfg=_macro5_preset_cfg,
+                        spx_s=_spx_s5,
+                        show_raw=_show_raw_macro5,
+                        sync_bucket=_macro5_sync_bucket,
+                    )
+                    for _indicator in _MACRO3_INDICATOR_ORDER
+                }
+
+            if _macro5_combo_fig is None:
+                st.warning("Final8 후보 차트를 만들지 못했습니다.")
+                return
+
+            _macro5_status_html, _macro5_status_table_html = _build_macro3_status_panel(
+                benchmark_name="S&P500",
+                years=_macro5_years,
+                preset_cfg=_macro5_preset_cfg,
+                combo_event_df=_macro5_combo_event_df,
+                sync_bucket=_macro5_sync_bucket,
+            )
+            if _macro5_status_html:
+                st.markdown(_macro5_status_html, unsafe_allow_html=True)
+
+            _, _macro5_bt_compare_html = _build_macro3_backtest_panel(
+                _macro5_preset,
+                preset_defs=_macro5_presets,
+                years=_macro5_years,
+                sync_bucket=_macro5_sync_bucket,
+            )
+            if _macro5_bt_compare_html:
+                with st.expander("백테스트 비교 보기", expanded=False):
+                    st.markdown(_macro5_bt_compare_html, unsafe_allow_html=True)
+
+            if _macro5_status_table_html:
+                with st.expander("지표별 상태 보기", expanded=False):
+                    st.markdown(_macro5_status_table_html, unsafe_allow_html=True)
+                    if _macro5_preset_cfg.get("selection_reason"):
+                        st.caption(f"선정 이유: {_macro5_preset_cfg['selection_reason']}")
+                    if _macro5_preset_cfg.get("dashboard_review_focus"):
+                        st.caption(f"대시보드 확인 포인트: {_macro5_preset_cfg['dashboard_review_focus']}")
+
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            st.plotly_chart(
+                _macro5_combo_fig,
+                width="stretch",
+                config={"displayModeBar": False},
+                key=f"macro5_combo_{_macro5_preset}_{_macro5_years}",
+            )
+            for _indicator in _MACRO3_INDICATOR_ORDER:
+                _fig = _macro5_indicator_charts.get(_indicator)
+                with st.expander(_MACRO3_INDICATOR_LABELS.get(_indicator, _indicator), expanded=_indicator in _macro5_preset_cfg["selected_indicators"]):
+                    if _fig is not None:
+                        st.plotly_chart(
+                            _fig,
+                            width="stretch",
+                            config={"displayModeBar": False},
+                            key=f"macro5_chart_{_macro5_preset}_{_macro5_years}_{_macro3_indicator_key(_indicator)}",
+                        )
+                    else:
+                        st.caption("이 후보에서는 사용되지 않거나 차트 데이터가 없습니다.")
+
+            _macro_debug_log(
+                "render_macro5_final8_section",
+                preset_key=_macro5_preset,
+                years=_macro5_years,
+                elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+            )
+
     def render_market_macro_main_section(container):
         with container:
             st.markdown("""
@@ -9618,6 +10561,13 @@ def main(page="signal"):
     if page == "macro4" or (page == "market_macro" and _market_macro_section == "macro4"):
         _macro4_container = tab6 if page == "market_macro" else tab3
         render_macro4_combo_section(_macro4_container)
+
+        # ═══════════════════════════════════════════════════════════
+        # TAB 3D — 매크로 지표 5 (Final8 후보 비교용)
+        # ═══════════════════════════════════════════════════════════
+    if page == "macro5" or (page == "market_macro" and _market_macro_section == "macro5"):
+        _macro5_container = tab5 if page == "market_macro" else tab3
+        render_macro5_final8_section(_macro5_container)
 
         # ═══════════════════════════════════════════════════════════
         # TAB 3 — 매크로 지표
