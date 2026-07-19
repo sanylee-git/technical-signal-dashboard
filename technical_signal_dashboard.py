@@ -9378,7 +9378,7 @@ def main(page="signal"):
             ("market", "🌐 시장 내부지표"),
         ]
         if st.session_state.get("market_macro_section") not in {k for k, _ in _market_macro_sections}:
-            st.session_state["market_macro_section"] = "macro4"
+            st.session_state["market_macro_section"] = "macro5"
         _market_macro_section = st.radio(
             "섹션 선택",
             options=[k for k, _ in _market_macro_sections],
@@ -10385,7 +10385,20 @@ def main(page="signal"):
                 return
             _macro5_blocking = {key: _macro3_preset_blocking_reasons(value) for key, value in _macro5_presets.items()}
             _macro5_blocked_count = sum(1 for reasons in _macro5_blocking.values() if reasons)
-            st.caption(f"계산 가능 {len(_macro5_presets) - _macro5_blocked_count} / {len(_macro5_presets)} · 계산 불가 {_macro5_blocked_count}")
+            _macro5_available_count = len(_macro5_presets) - _macro5_blocked_count
+            _macro5_available_color = "#54F2A3" if _macro5_blocked_count == 0 else "rgba(255,255,255,0.92)"
+            _macro5_blocked_color = "#FF6B6B" if _macro5_blocked_count > 0 else "rgba(255,255,255,0.72)"
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            st.markdown(
+                f"""
+                <div class="macro2-helper-text">
+                    <span style="color:{_macro5_available_color}; font-weight:700;">계산 가능 {_macro5_available_count} / {len(_macro5_presets)}</span>
+                    <span style="color:rgba(255,255,255,0.55);"> · </span>
+                    <span style="color:{_macro5_blocked_color}; font-weight:700;">계산 불가 {_macro5_blocked_count}</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
             _macro5_preset_order = list(_macro5_presets.keys())
             if st.session_state.get("macro5_preset") not in _macro5_preset_order:
