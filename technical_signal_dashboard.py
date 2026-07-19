@@ -6368,6 +6368,26 @@ _MACRO3_PARITY_OUTPUT_DIR = os.path.join(
     "sp500",
     "macro3_dashboard_validation_v1",
 )
+_MACRO3_BACKTEST_GROUP_SA = (
+    "macro5_combo2_final8_1",
+    "macro5_combo2_final8_2",
+    "macro5_combo2_final8_5",
+    "macro5_combo2_final8_7",
+    "macro5_combo2_final8_4",
+    "macro5_combo2_final8_6",
+    "macro5_combo2_final8_3",
+)
+_MACRO3_BACKTEST_GROUP_BCD = (
+    "macro5_combo1_final8_1",
+    "macro5_combo1_final8_8",
+    "macro5_combo1_final8_3",
+    "macro5_combo2_final8_8",
+    "macro5_combo1_final8_2",
+    "macro5_combo1_final8_4",
+    "macro5_combo1_final8_6",
+    "macro5_combo1_final8_5",
+    "macro5_combo1_final8_7",
+)
 _MACRO3_INDICATOR_ORDER = [
     "Index",
     "HY",
@@ -7343,17 +7363,38 @@ def _compute_macro3_preset_current_state(preset_cfg: dict, years: int, sync_buck
     return _compute_macro3_preset_current_state_cached(preset_cfg=preset_cfg, years=years, sync_bucket=sync_bucket)
 
 
-def _build_macro3_backtest_panel(preset_key: str, preset_defs: dict, years: int = 3, sync_bucket: str | None = None) -> tuple[str, str]:
+def _macro3_group_availability_html(label: str, preset_keys, preset_defs: dict, blocking_map: dict) -> str:
+    keys = list(preset_keys)
+    total = len(keys)
+    blocked = sum(1 for key in keys if key not in preset_defs or blocking_map.get(key))
+    available = max(0, total - blocked)
+    available_color = "#54F2A3" if blocked == 0 else "rgba(255,255,255,0.92)"
+    blocked_color = "#FF8C69" if blocked > 0 else "rgba(255,255,255,0.72)"
+    return (
+        f"<span style='color:{available_color};font-weight:700;'>{label} 계산 가능 {available} / {total}</span>"
+        f"<span style='color:rgba(255,255,255,0.55);'> · </span>"
+        f"<span style='color:{blocked_color};font-weight:700;'>계산 불가 {blocked}</span>"
+    )
+
+
+def _build_macro3_backtest_panel(
+    preset_key: str,
+    preset_defs: dict,
+    years: int = 3,
+    sync_bucket: str | None = None,
+    preset_order: tuple[str, ...] | list[str] | None = None,
+) -> tuple[str, str]:
     selected = preset_defs.get(preset_key)
     if not selected:
         return "", ""
+    final8_keys = list(preset_defs.keys()) if preset_order is None else [key for key in preset_order if key in preset_defs]
     compare_rows = [
         ("sp500_buyhold", _MACRO_META_BACKTEST_COMPARE["sp500_buyhold"]["label"], _MACRO_META_BACKTEST_COMPARE["sp500_buyhold"]["metrics"], "legacy"),
         ("snp", _MACRO_META_BACKTEST_COMPARE["snp"]["label"], _MACRO_META_BACKTEST_COMPARE["snp"]["metrics"], "legacy"),
         ("common", _MACRO_META_BACKTEST_COMPARE["common"]["label"], _MACRO_META_BACKTEST_COMPARE["common"]["metrics"], "legacy"),
         ("snp_meta_1", _MACRO_META_BACKTEST_COMPARE["snp_meta_1"]["label"], _MACRO_META_BACKTEST_COMPARE["snp_meta_1"]["metrics"], "legacy"),
         ("snp_meta_2", _MACRO_META_BACKTEST_COMPARE["snp_meta_2"]["label"], _MACRO_META_BACKTEST_COMPARE["snp_meta_2"]["metrics"], "legacy"),
-    ] + [(key, cfg["label"], cfg["metrics"], "final8") for key, cfg in preset_defs.items()]
+    ] + [(key, preset_defs[key]["label"], preset_defs[key]["metrics"], "final8") for key in final8_keys]
     hold_metrics = _MACRO_META_BACKTEST_COMPARE["sp500_buyhold"]["metrics"]
     hold_10y = _macro_metric_float(hold_metrics.get("10Y 자산"))
     hold_20y = _macro_metric_float(hold_metrics.get("20Y 자산"))
@@ -10387,17 +10428,25 @@ def main(page="signal"):
                 st.warning("Final8 프리셋 파일을 찾지 못했습니다.")
                 return
             _macro5_blocking = {key: _macro3_preset_blocking_reasons(value) for key, value in _macro5_presets.items()}
-            _macro5_blocked_count = sum(1 for reasons in _macro5_blocking.values() if reasons)
-            _macro5_available_count = len(_macro5_presets) - _macro5_blocked_count
-            _macro5_available_color = "#54F2A3" if _macro5_blocked_count == 0 else "rgba(255,255,255,0.92)"
-            _macro5_blocked_color = "#FF8C69" if _macro5_blocked_count > 0 else "rgba(255,255,255,0.72)"
+            _macro5_group_status_sa = _macro3_group_availability_html(
+                "S·A급",
+                _MACRO3_BACKTEST_GROUP_SA,
+                _macro5_presets,
+                _macro5_blocking,
+            )
+            _macro5_group_status_bcd = _macro3_group_availability_html(
+                "B·C·D급",
+                _MACRO3_BACKTEST_GROUP_BCD,
+                _macro5_presets,
+                _macro5_blocking,
+            )
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
             st.markdown(
                 f"""
                 <div class="macro2-helper-text">
-                    <span style="color:{_macro5_available_color}; font-weight:700;">계산 가능 {_macro5_available_count} / {len(_macro5_presets)}</span>
-                    <span style="color:rgba(255,255,255,0.55);"> · </span>
-                    <span style="color:{_macro5_blocked_color}; font-weight:700;">계산 불가 {_macro5_blocked_count}</span>
+                    {_macro5_group_status_sa}
+                    <span style="color:rgba(255,255,255,0.36);padding:0 8px;">|</span>
+                    {_macro5_group_status_bcd}
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -10551,15 +10600,26 @@ def main(page="signal"):
             if _macro5_status_html:
                 st.markdown(_macro5_status_html, unsafe_allow_html=True)
 
-            _, _macro5_bt_compare_html = _build_macro3_backtest_panel(
+            _, _macro5_bt_compare_sa_html = _build_macro3_backtest_panel(
                 _macro5_preset,
                 preset_defs=_macro5_presets,
                 years=_macro5_years,
                 sync_bucket=_macro5_sync_bucket,
+                preset_order=_MACRO3_BACKTEST_GROUP_SA,
             )
-            if _macro5_bt_compare_html:
-                with st.expander("백테스트 비교 보기", expanded=False):
-                    st.markdown(_macro5_bt_compare_html, unsafe_allow_html=True)
+            _, _macro5_bt_compare_bcd_html = _build_macro3_backtest_panel(
+                _macro5_preset,
+                preset_defs=_macro5_presets,
+                years=_macro5_years,
+                sync_bucket=_macro5_sync_bucket,
+                preset_order=_MACRO3_BACKTEST_GROUP_BCD,
+            )
+            if _macro5_bt_compare_sa_html:
+                with st.expander("백테스트 비교 보기 S·A급", expanded=False):
+                    st.markdown(_macro5_bt_compare_sa_html, unsafe_allow_html=True)
+            if _macro5_bt_compare_bcd_html:
+                with st.expander("백테스트 비교 보기 B·C·D급", expanded=False):
+                    st.markdown(_macro5_bt_compare_bcd_html, unsafe_allow_html=True)
 
             if _macro5_status_table_html:
                 with st.expander("지표별 상태 보기", expanded=False):
