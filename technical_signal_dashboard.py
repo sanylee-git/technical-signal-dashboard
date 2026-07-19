@@ -5961,15 +5961,13 @@ def _macro_date_text(value) -> str:
         return str(value)
 
 
-def _macro_flag_ratio_html(on_count: int, total_count: int) -> str:
+def _macro_flag_ratio_html(on_count: int, total_count: int, is_on: bool | None = None) -> str:
     total = max(1, int(total_count))
     on = max(0, min(int(on_count), total))
-    if on == total:
-        color = "#FF6B6B"
-    elif on > (total / 2):
-        color = "#E6C15A"
+    if is_on is not None:
+        color = "#FF8C69" if bool(is_on) else "#66D9B8"
     else:
-        color = "#66D9B8"
+        color = "#FF8C69" if on > (total / 2) else "#66D9B8"
     return (
         f"<span style='color:{color};font-weight:700;font-variant-numeric:tabular-nums;'>"
         f"{on}/{total}</span>"
@@ -6287,6 +6285,7 @@ def _build_macro_meta_backtest_panel(
             current_state_html = _macro_flag_ratio_html(
                 current_state.get("on_count", 0),
                 current_state.get("total_count", 1),
+                current_state.get("is_on"),
             )
         rows.append(
             f"<tr style='background:{bg};border-top:{border};border-bottom:{border};'>"
@@ -7393,7 +7392,11 @@ def _build_macro3_backtest_panel(preset_key: str, preset_defs: dict, years: int 
             ratio = abs(mdd_20y_num) / abs(hold_mdd_20y)
             mdd_20y = f"{mdd_20y} {_ratio_span(ratio, ratio <= 0.5)}"
         current_state = current_state_map.get(key)
-        current_state_html = "-" if current_state is None else _macro_flag_ratio_html(current_state.get("on_count", 0), current_state.get("total_count", 1))
+        current_state_html = "-" if current_state is None else _macro_flag_ratio_html(
+            current_state.get("on_count", 0),
+            current_state.get("total_count", 1),
+            current_state.get("is_on"),
+        )
         rows_html.append(
             f"<tr style='background:{bg};border-top:{border};border-bottom:{border};'>"
             f"<td style='padding:7px 8px;color:#EDEDED;font-weight:700;'>{label}</td>"
@@ -10387,7 +10390,7 @@ def main(page="signal"):
             _macro5_blocked_count = sum(1 for reasons in _macro5_blocking.values() if reasons)
             _macro5_available_count = len(_macro5_presets) - _macro5_blocked_count
             _macro5_available_color = "#54F2A3" if _macro5_blocked_count == 0 else "rgba(255,255,255,0.92)"
-            _macro5_blocked_color = "#FF6B6B" if _macro5_blocked_count > 0 else "rgba(255,255,255,0.72)"
+            _macro5_blocked_color = "#FF8C69" if _macro5_blocked_count > 0 else "rgba(255,255,255,0.72)"
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
             st.markdown(
                 f"""
