@@ -5963,7 +5963,7 @@ def _macro_date_text(value) -> str:
 
 def _macro_flag_ratio_html(on_count: int, total_count: int, is_on: bool | None = None) -> str:
     total = max(1, int(total_count))
-    on = max(0, min(int(on_count), total))
+    on = max(0, int(on_count))
     if is_on is not None:
         color = "#FF8C69" if bool(is_on) else "#66D9B8"
     else:
@@ -7356,7 +7356,12 @@ def _compute_macro3_preset_current_state_cached(preset_cfg: dict, years: int, sy
     if combo.empty:
         return None
     latest = combo.sort_index().iloc[-1]
-    return {"is_on": bool(latest.get("combo_risk_state", False)), "on_count": int(latest.get("active_count", 0)), "total_count": len(active_indicators)}
+    return {
+        "is_on": bool(latest.get("combo_risk_state", False)),
+        "on_count": int(latest.get("active_count", 0)),
+        "total_count": len(active_indicators),
+        "start_count": int(preset_cfg.get("combo_k", len(active_indicators))),
+    }
 
 
 def _compute_macro3_preset_current_state(preset_cfg: dict, years: int, sync_bucket: str | None = None):
@@ -7390,9 +7395,6 @@ def _build_macro3_backtest_panel(
     final8_keys = list(preset_defs.keys()) if preset_order is None else [key for key in preset_order if key in preset_defs]
     compare_rows = [
         ("sp500_buyhold", _MACRO_META_BACKTEST_COMPARE["sp500_buyhold"]["label"], _MACRO_META_BACKTEST_COMPARE["sp500_buyhold"]["metrics"], "legacy"),
-        ("snp", _MACRO_META_BACKTEST_COMPARE["snp"]["label"], _MACRO_META_BACKTEST_COMPARE["snp"]["metrics"], "legacy"),
-        ("common", _MACRO_META_BACKTEST_COMPARE["common"]["label"], _MACRO_META_BACKTEST_COMPARE["common"]["metrics"], "legacy"),
-        ("snp_meta_1", _MACRO_META_BACKTEST_COMPARE["snp_meta_1"]["label"], _MACRO_META_BACKTEST_COMPARE["snp_meta_1"]["metrics"], "legacy"),
         ("snp_meta_2", _MACRO_META_BACKTEST_COMPARE["snp_meta_2"]["label"], _MACRO_META_BACKTEST_COMPARE["snp_meta_2"]["metrics"], "legacy"),
     ] + [(key, preset_defs[key]["label"], preset_defs[key]["metrics"], "final8") for key in final8_keys]
     hold_metrics = _MACRO_META_BACKTEST_COMPARE["sp500_buyhold"]["metrics"]
@@ -7435,7 +7437,7 @@ def _build_macro3_backtest_panel(
         current_state = current_state_map.get(key)
         current_state_html = "-" if current_state is None else _macro_flag_ratio_html(
             current_state.get("on_count", 0),
-            current_state.get("total_count", 1),
+            current_state.get("start_count", current_state.get("total_count", 1)),
             current_state.get("is_on"),
         )
         rows_html.append(
