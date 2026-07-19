@@ -7310,36 +7310,41 @@ def _build_macro3_indicator_chart(
     raw_series = _macro3_get_indicator_raw_series(indicator, max(years + 2, 5), benchmark_name=benchmark_name, spx_s=spx_s, sync_bucket=sync_bucket)
     if raw_series is None or raw_series.empty:
         return None
-    main_s = raw_series.reindex(signal_df.index).dropna()
+    display_s = signal_df["value"].dropna() if "value" in signal_df.columns else raw_series.reindex(signal_df.index).dropna()
+    signal_df = signal_df.reindex(display_s.index)
+    ema_candidates = [col for col in signal_df.columns if col.startswith("ema")]
+    ema_col = ema_candidates[0] if ema_candidates else None
+    main_s = signal_df[ema_col].dropna() if ema_col else display_s
     signal_df = signal_df.reindex(main_s.index)
+    if show_raw and ema_col:
+        raw_display = display_s.reindex(main_s.index).dropna()
+        if not raw_display.empty:
+            fig.add_trace(go.Scatter(
+                x=raw_display.index,
+                y=raw_display,
+                name=f"{indicator} 원본",
+                line=dict(color="rgba(182,182,182,0.22)", width=0.85),
+                hovertemplate=f"<b>%{{x|%Y-%m-%d}}</b><br>{indicator} 원본  %{{y:.2f}}<extra></extra>",
+            ))
     fig.add_trace(go.Scatter(
         x=main_s.index,
         y=main_s,
-        name=indicator,
-        line=dict(color="rgba(216,195,106,0.76)", width=1.35),
+        name=ema_col.upper() if ema_col else indicator,
+        line=dict(color="rgba(216,195,106,0.32)", width=1.1),
     ))
-    ema_candidates = [col for col in signal_df.columns if col.startswith("ema")]
-    if show_raw and ema_candidates:
-        ema_col = ema_candidates[0]
-        fig.add_trace(go.Scatter(
-            x=signal_df.index,
-            y=signal_df[ema_col],
-            name=ema_col.upper(),
-            line=dict(color="rgba(216,195,106,0.46)", width=1.05),
-        ))
     if "risk_start_line" in signal_df.columns:
         fig.add_trace(go.Scatter(
             x=signal_df.index,
             y=signal_df["risk_start_line"],
             name="시작선",
-            line=dict(color="rgba(255,140,105,0.68)", width=1.15, dash="dot"),
+            line=dict(color="rgba(255,140,105,0.55)", width=1.2, dash="dot"),
         ))
     if "risk_end_line" in signal_df.columns:
         fig.add_trace(go.Scatter(
             x=signal_df.index,
             y=signal_df["risk_end_line"],
             name="종료선",
-            line=dict(color="rgba(120,220,255,0.72)", width=1.15, dash="dot"),
+            line=dict(color="rgba(120,220,255,0.60)", width=1.2, dash="dot"),
         ))
     if indicator != "Index":
         _add_spx_overlay(fig, main_s, spx_s, yaxis="y2", label=benchmark["label"])
