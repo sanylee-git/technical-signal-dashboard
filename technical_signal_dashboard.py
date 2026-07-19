@@ -6405,6 +6405,122 @@ _MACRO3_INDICATOR_LABELS = {
 }
 
 
+def _macro3_eastern_now() -> pd.Timestamp:
+    return pd.Timestamp.now(tz=ZoneInfo("America/New_York"))
+
+
+def _macro3_last_confirmed_us_date(now_et: pd.Timestamp | None = None) -> pd.Timestamp:
+    now_et = now_et or _macro3_eastern_now()
+    today = pd.Timestamp(now_et.date())
+    if now_et.weekday() < 5 and now_et.time() < datetime.strptime("18:00", "%H:%M").time():
+        return today - pd.Timedelta(days=1)
+    return today
+
+
+def _macro3_filter_confirmed_us_daily(data):
+    if data is None or getattr(data, "empty", True):
+        return data
+    out = data.copy()
+    out.index = pd.DatetimeIndex(_strip_tz(out.index)).normalize()
+    cutoff = _macro3_last_confirmed_us_date()
+    return out[out.index <= cutoff]
+
+
+def _macro3_next_execution_date(signal_date, benchmark_index) -> pd.Timestamp | None:
+    try:
+        signal_date = pd.Timestamp(signal_date).normalize()
+    except Exception:
+        return None
+    try:
+        idx = pd.DatetimeIndex(pd.to_datetime(benchmark_index)).normalize().sort_values().unique()
+        future = idx[idx > signal_date]
+        if len(future):
+            return pd.Timestamp(future[0]).normalize()
+    except Exception:
+        pass
+    try:
+        import pandas_market_calendars as mcal
+        nyse = mcal.get_calendar("NYSE")
+        schedule = nyse.schedule(
+            start_date=(signal_date + pd.Timedelta(days=1)).date(),
+            end_date=(signal_date + pd.Timedelta(days=10)).date(),
+        )
+        if not schedule.empty:
+            return pd.Timestamp(schedule.index[0]).normalize()
+    except Exception:
+        return None
+    return None
+
+
+def _macro3_indicator_needs_availability(indicator: str) -> bool:
+    return indicator in _MACRO3_LAGGED_INDICATORS or indicator == "Credit Stress"
+
+
+def _macro3_preset_indicators(preset_cfg: dict) -> list[str]:
+    if preset_cfg.get("kind") == "combo2_final8":
+        indicators = []
+        for component_cfg in preset_cfg.get("component_cfgs", {}).values():
+            indicators.extend(component_cfg.get("selected_indicators", []))
+        return list(dict.fromkeys(indicators))
+    return list(preset_cfg.get("selected_indicators", []))
+
+
+def _macro3_preset_blocking_reasons(preset_cfg: dict) -> list[str]:
+    if preset_cfg.get("kind") == "unavailable":
+        return [str(preset_cfg.get("unavailable_reason", "후보 정의를 불러오지 못했습니다."))]
+    indicators = _macro3_preset_indicators(preset_cfg)
+    reasons = []
+    if not COMBO1_EXPANDED_SIGNALS_AVAILABLE:
+        reasons.append("공통 신호 계산 함수를 불러오지 못했습니다.")
+    if any(_macro3_indicator_needs_availability(name) for name in indicators) and (
+        not COMBO1_EXPANDED_AVAILABILITY_AVAILABLE or _MACRO3_AVAILABILITY_CONFIG is None
+    ):
+        reasons.append("백테스트 availability 정책 모듈을 불러오지 못했습니다.")
+    if "Credit Stress" in indicators and (
+        not COMBO1_EXPANDED_AVAILABILITY_AVAILABLE or _MACRO3_AVAILABILITY_CONFIG is None
+    ):
+        reasons.append("Credit Stress 구성요소별 availability 계산을 사용할 수 없습니다.")
+    return list(dict.fromkeys(reasons))
+
+
+def _macro3_freshness_note(indicator: str, latest_date) -> str:
+    if latest_date is None or pd.isna(latest_date):
+        return "확인 불가"
+    latest = pd.Timestamp(latest_date).normalize()
+    now_date = pd.Timestamp.now(tz=ZoneInfo("Asia/Seoul")).tz_localize(None).normalize()
+    age_days = int(max(0, (now_date - latest).days))
+    if indicator == "Credit Stress":
+        return "지연" if age_days > 10 else "정상"
+    if indicator in {"Index", "VIX", "VIX Spread", "Bollinger Band"}:
+        return "지연" if age_days > 5 else "정상"
+    return "지연" if age_days > 7 else "정상"
+
+
+def _macro3_component_data_status(
+    component_cfg: dict,
+    years: int,
+    benchmark_name: str = "S&P500",
+    sync_bucket: str | None = None,
+) -> dict:
+    rows = []
+    for indicator in component_cfg.get("selected_indicators", []):
+        latest_date = _get_macro3_signal_latest_date(
+            indicator,
+            years,
+            benchmark_name=benchmark_name,
+            sync_bucket=sync_bucket,
+        )
+        rows.append({
+            "indicator": indicator,
+            "label": _MACRO3_INDICATOR_LABELS.get(indicator, indicator),
+            "latest_date": latest_date,
+            "note": _macro3_freshness_note(indicator, latest_date),
+        })
+    valid_rows = [row for row in rows if row["latest_date"] is not None and not pd.isna(row["latest_date"])]
+    bottleneck = min(valid_rows, key=lambda row: pd.Timestamp(row["latest_date"])) if valid_rows else None
+    return {"rows": rows, "bottleneck": bottleneck}
+
+
 def _macro3_indicator_key(name: str) -> str:
     text = re.sub(r"[^a-z0-9]+", "_", str(name).strip().lower())
     return text.strip("_")
@@ -6487,6 +6603,8 @@ def _macro3_apply_indicator_availability(indicator: str, series: pd.Series) -> p
         or series is None
         or series.empty
     ):
+        if _macro3_indicator_needs_availability(indicator):
+            return pd.Series(dtype=float)
         return series
     return _combo1_apply_availability_lag(series.dropna(), indicator, _MACRO3_AVAILABILITY_CONFIG)
 
@@ -6544,13 +6662,26 @@ def _load_macro3_final8_presets():
             how="left",
         ).sort_values("dashboard_priority").reset_index(drop=True)
         for row in merged.to_dict("records"):
-            parsed = _parse_macro3_combo_key(row.get("reconstructed_combo_key", ""))
-            if not parsed["selected_indicators"] or parsed["start_k"] is None or parsed["end_l"] is None:
-                continue
-            short_cycle_count = int(round(float(row["cycle_count_20y"]) * float(row["short_cycle_ratio_20y"])))
             preset_key = f"macro5_combo1_final8_{int(row['dashboard_priority'])}"
             role = str(row.get("role_tags", "")).strip()
             label = f"조합1 Final {int(row['dashboard_priority'])}. {role}" if role else f"조합1 Final {int(row['dashboard_priority'])}"
+            parsed = _parse_macro3_combo_key(row.get("reconstructed_combo_key", ""))
+            if not parsed["selected_indicators"] or parsed["start_k"] is None or parsed["end_l"] is None:
+                presets[preset_key] = {
+                    "kind": "unavailable",
+                    "label": f"{label} (계산 불가)",
+                    "benchmark": "S&P500",
+                    "candidate_key": str(row.get("candidate_key", "")),
+                    "combo_id": row.get("combo_id", ""),
+                    "combo_k": 1,
+                    "combo_l": 0,
+                    "selected_indicators": [],
+                    "cfgs": {},
+                    "metrics": {},
+                    "unavailable_reason": "조합1 후보 정의 또는 reconstructed_combo_key를 해석하지 못했습니다.",
+                }
+                continue
+            short_cycle_count = int(round(float(row["cycle_count_20y"]) * float(row["short_cycle_ratio_20y"])))
             presets[preset_key] = {
                 "kind": "combo1_final8",
                 "label": label,
@@ -6582,20 +6713,44 @@ def _load_macro3_final8_presets():
         for row in combo2.to_dict("records"):
             components = [str(row.get(col)).strip() for col in component_cols if pd.notna(row.get(col)) and str(row.get(col)).strip()]
             missing = [key for key in components if key not in component_presets]
-            if missing or not components:
-                continue
             m = int(row["m"])
             combo_k = int(row["k"])
             combo_l = int(row["l"])
-            if len(components) != m or not (0 <= combo_l < combo_k <= m):
-                continue
             order = int(row["최종선정순서"])
             role = str(row.get("역할", "")).strip()
-            short_cycle_count = int(round(float(row.get("사이클수_20Y", 0)) * float(row.get("짧은사이클비율_20Y", 0))))
             preset_key = f"macro5_combo2_final8_{order}"
+            label = f"조합2 Final {order}. {role}" if role else f"조합2 Final {order}"
+            if missing or not components or len(components) != m or not (0 <= combo_l < combo_k <= m):
+                reason_parts = []
+                if missing:
+                    reason_parts.append(f"component 정의 누락: {', '.join(missing)}")
+                if not components:
+                    reason_parts.append("component 목록이 비어 있습니다.")
+                if len(components) != m:
+                    reason_parts.append(f"component 수 불일치: {len(components)} / {m}")
+                if not (0 <= combo_l < combo_k <= m):
+                    reason_parts.append("k/l 조건이 유효하지 않습니다.")
+                presets[preset_key] = {
+                    "kind": "unavailable",
+                    "label": f"{label} (계산 불가)",
+                    "benchmark": "S&P500",
+                    "candidate_key": str(row.get("후보ID", "")),
+                    "combo_id": str(row.get("후보ID", "")),
+                    "selected_indicators": components,
+                    "components": components,
+                    "component_cfgs": {},
+                    "combo_k": max(1, combo_k),
+                    "combo_l": max(0, combo_l),
+                    "combo_m": m,
+                    "cfgs": {},
+                    "metrics": {},
+                    "unavailable_reason": " · ".join(reason_parts),
+                }
+                continue
+            short_cycle_count = int(round(float(row.get("사이클수_20Y", 0)) * float(row.get("짧은사이클비율_20Y", 0))))
             presets[preset_key] = {
                 "kind": "combo2_final8",
-                "label": f"조합2 Final {order}. {role}" if role else f"조합2 Final {order}",
+                "label": label,
                 "benchmark": "S&P500",
                 "candidate_key": str(row["후보ID"]),
                 "combo_id": str(row["후보ID"]),
@@ -6630,13 +6785,15 @@ def _macro3_fetch_benchmark_ohlcv(benchmark_name: str, years: int) -> pd.DataFra
     end = (pd.Timestamp.now() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
     start = (pd.Timestamp.now() - pd.DateOffset(years=years)).strftime("%Y-%m-%d")
     df = fetch_ohlcv(benchmark["code"], start, end, interval="1d")
-    return pd.DataFrame() if df is None else df.sort_index()
+    return pd.DataFrame() if df is None else _macro3_filter_confirmed_us_daily(df.sort_index())
 
 
 def _macro3_credit_stress_series(years: int, sync_bucket: str | None = None) -> pd.Series:
+    if not COMBO1_EXPANDED_AVAILABILITY_AVAILABLE or _MACRO3_AVAILABILITY_CONFIG is None:
+        return pd.Series(dtype=float)
     hy = _credit_spread_series("BAMLH0A0HYM2", years + 1, sync_bucket=sync_bucket)
     nfci = _fred("NFCI", years + 1, sync_bucket=sync_bucket)
-    vix = _yf_close("^VIX", years + 1, sync_bucket=sync_bucket)
+    vix = _macro3_filter_confirmed_us_daily(_yf_close("^VIX", years + 1, sync_bucket=sync_bucket))
     if COMBO1_EXPANDED_AVAILABILITY_AVAILABLE and _MACRO3_AVAILABILITY_CONFIG is not None:
         snapshot = pd.concat(
             [
@@ -6655,16 +6812,7 @@ def _macro3_credit_stress_series(years: int, sync_bucket: str | None = None) -> 
                 ).dropna()
             except Exception:
                 return pd.Series(dtype=float)
-    parts = []
-    if hy is not None and not hy.empty:
-        parts.append(_zscore(hy).rename("HY"))
-    if nfci is not None and not nfci.empty:
-        parts.append(_zscore(nfci).rename("NFCI"))
-    if vix is not None and not vix.empty:
-        parts.append(_zscore(vix).rename("VIX"))
-    if not parts:
-        return pd.Series(dtype=float)
-    return (-pd.concat(parts, axis=1).mean(axis=1).dropna()).dropna()
+    return pd.Series(dtype=float)
 
 
 def _macro3_get_indicator_raw_series(
@@ -6678,7 +6826,7 @@ def _macro3_get_indicator_raw_series(
     if indicator == "Index":
         if spx_s is None or spx_s.empty:
             spx_s = _yf_close(benchmark["code"], years, sync_bucket=sync_bucket)
-        return spx_s.dropna() if spx_s is not None else pd.Series(dtype=float)
+        return _macro3_filter_confirmed_us_daily(spx_s).dropna() if spx_s is not None else pd.Series(dtype=float)
     if indicator == "HY":
         return _macro3_apply_indicator_availability(
             "HY",
@@ -6692,15 +6840,15 @@ def _macro3_get_indicator_raw_series(
     if indicator == "Credit Stress":
         return _macro3_credit_stress_series(years, sync_bucket=sync_bucket)
     if indicator == "VIX":
-        return (-_yf_close("^VIX", years, sync_bucket=sync_bucket)).dropna()
+        return (-_macro3_filter_confirmed_us_daily(_yf_close("^VIX", years, sync_bucket=sync_bucket))).dropna()
     if indicator == "VIX Spread":
-        vix = _yf_close("^VIX", years, sync_bucket=sync_bucket)
-        vix3m = _yf_close("^VIX3M", years, sync_bucket=sync_bucket)
+        vix = _macro3_filter_confirmed_us_daily(_yf_close("^VIX", years, sync_bucket=sync_bucket))
+        vix3m = _macro3_filter_confirmed_us_daily(_yf_close("^VIX3M", years, sync_bucket=sync_bucket))
         if vix.empty or vix3m.empty:
             return pd.Series(dtype=float)
         return (-(vix - vix3m.reindex(vix.index))).dropna()
 
-    bundle = _get_macro_yield_bundle(years, benchmark_name)
+    bundle = _get_macro_yield_bundle(years, benchmark_name, sync_bucket=sync_bucket)
     if indicator == "10Y Real Yield":
         return _macro3_apply_indicator_availability(
             "10Y Real Yield",
@@ -6977,11 +7125,11 @@ def make_macro3_combo_dynamic_chart(
     sync_bucket: str | None = None,
 ):
     benchmark = _get_macro_benchmark(benchmark_name)
-    visible_spx = _yf_close(benchmark["code"], years, sync_bucket=sync_bucket)
+    visible_spx = _macro3_filter_confirmed_us_daily(_yf_close(benchmark["code"], years, sync_bucket=sync_bucket))
     if visible_spx is None or visible_spx.empty:
         return (None, pd.DataFrame()) if return_debug else None
     warmup_years = max(years + 2, 5)
-    combo_spx = _yf_close(benchmark["code"], warmup_years, sync_bucket=sync_bucket)
+    combo_spx = _macro3_filter_confirmed_us_daily(_yf_close(benchmark["code"], warmup_years, sync_bucket=sync_bucket))
     if combo_spx is None or combo_spx.empty:
         combo_spx = visible_spx
     combo, active_indicators = _compute_macro3_preset_signal_frame(
@@ -7066,7 +7214,8 @@ def _build_macro3_status_panel(
     active_count = int(latest.get("active_count", 0))
     combo_n = int(latest.get("combo_n", len(preset_cfg.get("selected_indicators", []))))
     basis_date = _macro_date_text(latest.get("date"))
-    next_exec_date = _macro_date_text(pd.Timestamp(latest.get("date")) + pd.offsets.BDay(1))
+    next_exec = _macro3_next_execution_date(latest.get("date"), combo_event_df.get("date", []))
+    next_exec_date = _macro_date_text(next_exec) if next_exec is not None else "확인 필요"
     status_text = "리스크 사이클 ON" if combo_state else "리스크 사이클 OFF"
     status_color = "#FF8C69" if combo_state else "#4BFFB3"
     if bool(latest.get("combo_start_signal", False)):
@@ -7085,11 +7234,26 @@ def _build_macro3_status_panel(
             label = _macro3_component_label(component_key, component_cfgs.get(component_key))
             if is_on:
                 active_labels.append(label)
+            data_status = _macro3_component_data_status(
+                component_cfgs.get(component_key, {}),
+                years,
+                benchmark_name=benchmark_name,
+                sync_bucket=sync_bucket,
+            )
+            bottleneck = data_status.get("bottleneck")
+            if bottleneck:
+                latest_text = (
+                    f"병목 {bottleneck['label']} "
+                    f"{_macro_date_text(bottleneck['latest_date'])}"
+                    f"{' · 지연' if bottleneck.get('note') == '지연' else ''}"
+                )
+            else:
+                latest_text = "확인 불가"
             entries.append({
                 "label": label,
                 "selected": True,
                 "flag": is_on,
-                "latest_date": basis_date,
+                "latest_date": latest_text,
             })
     else:
         selected = set(preset_cfg.get("selected_indicators", []))
@@ -7098,11 +7262,18 @@ def _build_macro3_status_panel(
             is_on = bool(latest.get(f"{key}_flag", False))
             if is_on:
                 active_labels.append(_MACRO3_INDICATOR_LABELS.get(indicator, indicator))
+            latest_date = _get_macro3_signal_latest_date(indicator, years, benchmark_name=benchmark_name, sync_bucket=sync_bucket)
+            freshness = _macro3_freshness_note(indicator, latest_date)
+            latest_text = _macro_date_text(latest_date)
+            if freshness == "지연":
+                latest_text = f"{latest_text} · 지연"
+            elif freshness == "확인 불가":
+                latest_text = "확인 불가"
             entries.append({
                 "label": _MACRO3_INDICATOR_LABELS.get(indicator, indicator),
                 "selected": indicator in selected,
                 "flag": is_on,
-                "latest_date": _macro_date_text(_get_macro3_signal_latest_date(indicator, years, benchmark_name=benchmark_name, sync_bucket=sync_bucket)),
+                "latest_date": latest_text,
             })
     active_flags_text = ", ".join(active_labels) if active_labels else "없음"
     summary_html = (
@@ -8301,7 +8472,7 @@ def make_macro_liquidity_chart(years: int = 5, spx_s=None, benchmark_name='S&P50
     return fig
 
 
-def _get_macro_yield_bundle(years: int, benchmark_name='S&P500') -> dict:
+def _get_macro_yield_bundle(years: int, benchmark_name='S&P500', sync_bucket: str | None = None) -> dict:
     benchmark = _get_macro_benchmark(benchmark_name)
     if benchmark['kind'] == 'kr':
         spread, bond_3y, bond_10y = _korean_yield_curve_proxy_bundle(years)
@@ -8318,12 +8489,12 @@ def _get_macro_yield_bundle(years: int, benchmark_name='S&P500') -> dict:
             "dtb3": pd.Series(dtype=float),
         }
 
-    t3m = _fred('T10Y3M', years)
-    t2y = _fred('T10Y2Y', years)
-    dgs10 = _fred('DGS10', years)
-    dfii10 = _fred('DFII10', years)
-    dgs2 = _fred('DGS2', years)
-    dtb3 = _fred('DTB3', years)
+    t3m = _fred('T10Y3M', years, sync_bucket=sync_bucket)
+    t2y = _fred('T10Y2Y', years, sync_bucket=sync_bucket)
+    dgs10 = _fred('DGS10', years, sync_bucket=sync_bucket)
+    dfii10 = _fred('DFII10', years, sync_bucket=sync_bucket)
+    dgs2 = _fred('DGS2', years, sync_bucket=sync_bucket)
+    dtb3 = _fred('DTB3', years, sync_bucket=sync_bucket)
 
     if t3m.empty:
         if not dgs10.empty and not dtb3.empty:
@@ -10212,6 +10383,9 @@ def main(page="signal"):
             if not _macro5_presets:
                 st.warning("Final8 프리셋 파일을 찾지 못했습니다.")
                 return
+            _macro5_blocking = {key: _macro3_preset_blocking_reasons(value) for key, value in _macro5_presets.items()}
+            _macro5_blocked_count = sum(1 for reasons in _macro5_blocking.values() if reasons)
+            st.caption(f"계산 가능 {len(_macro5_presets) - _macro5_blocked_count} / {len(_macro5_presets)} · 계산 불가 {_macro5_blocked_count}")
 
             _macro5_preset_order = list(_macro5_presets.keys())
             if st.session_state.get("macro5_preset") not in _macro5_preset_order:
@@ -10240,7 +10414,7 @@ def main(page="signal"):
                     label_visibility="collapsed",
                 )
             _macro5_preset_cfg = _macro5_presets[_macro5_preset]
-            _macro5_is_combo2 = _macro5_preset_cfg.get("kind") == "combo2_final8"
+            _macro5_is_combo2 = _macro5_preset_cfg.get("kind") == "combo2_final8" or bool(_macro5_preset_cfg.get("components"))
             with _m52:
                 st.selectbox(
                     "기준지수",
@@ -10291,16 +10465,24 @@ def main(page="signal"):
                 st.markdown(
                     (
                         "<div style='padding-top:8px;font-size:11.5px;line-height:1.42;color:rgba(255,255,255,0.84);'>"
-                        f"시작 {int(_macro5_preset_cfg['combo_k'])}개 이상 ON<br>"
-                        f"종료 {int(_macro5_preset_cfg['combo_l'])}개 이하 ON"
+                        f"시작 {int(_macro5_preset_cfg.get('combo_k', 1))}개 이상 ON<br>"
+                        f"종료 {int(_macro5_preset_cfg.get('combo_l', 0))}개 이하 ON"
                         "</div>"
                     ),
                     unsafe_allow_html=True,
                 )
 
+            _macro5_selected_blocking = _macro5_blocking.get(_macro5_preset, [])
+            if _macro5_selected_blocking:
+                st.warning("선택한 후보는 계산 불가 상태입니다.")
+                with st.expander("계산 불가 사유", expanded=True):
+                    for _reason in _macro5_selected_blocking:
+                        st.write(f"- {_reason}")
+                return
+
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
             with st.spinner("📡 기준 지수 데이터 로딩 중..."):
-                _spx_s5 = _yf_close("^GSPC", _macro5_years, sync_bucket=_macro5_sync_bucket)
+                _spx_s5 = _macro3_filter_confirmed_us_daily(_yf_close("^GSPC", _macro5_years, sync_bucket=_macro5_sync_bucket))
             if _spx_s5 is None or _spx_s5.empty:
                 st.warning("기준 지수 데이터를 불러오지 못했습니다.")
                 return
@@ -10340,7 +10522,7 @@ def main(page="signal"):
                     }
 
             if _macro5_combo_fig is None:
-                st.warning("Final8 후보 차트를 만들지 못했습니다.")
+                st.warning("선택한 Final8 후보 차트를 만들지 못했습니다. 데이터 지연 또는 필수 지표 누락 여부를 확인해 주세요.")
                 return
 
             _macro5_status_html, _macro5_status_table_html = _build_macro3_status_panel(
