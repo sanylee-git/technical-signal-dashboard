@@ -6747,7 +6747,14 @@ def _macro3_get_indicator_signal_frame(
             window=int(cfg["window"]),
             std_multiplier=float(cfg["std"]),
         )
-        return _combo1_align_signal_to_benchmark(signal, benchmark_index)
+        aligned = _combo1_align_signal_to_benchmark(signal, benchmark_index)
+        for col in ["bb_middle", "bb_upper", "bb_lower"]:
+            if col in signal.columns:
+                source = signal.copy()
+                source.index = pd.DatetimeIndex(pd.to_datetime(source.index)).normalize()
+                source = source.sort_index().loc[~source.index.duplicated(keep="last")]
+                aligned[col] = source[col].reindex(aligned.index).ffill()
+        return aligned
 
     raw_series = _macro3_get_indicator_raw_series(
         indicator=indicator,
@@ -6775,7 +6782,14 @@ def _macro3_get_indicator_signal_frame(
             end_quantile=float(cfg["end"]),
             ema_span=int(cfg["ema"]),
         )
-    return _combo1_align_signal_to_benchmark(signal, benchmark_index)
+    aligned = _combo1_align_signal_to_benchmark(signal, benchmark_index)
+    source = signal.copy()
+    source.index = pd.DatetimeIndex(pd.to_datetime(source.index)).normalize()
+    source = source.sort_index().loc[~source.index.duplicated(keep="last")]
+    for col in [c for c in source.columns if c.startswith("ema")] + ["value", "risk_start_line", "risk_end_line"]:
+        if col in source.columns:
+            aligned[col] = source[col].reindex(aligned.index).ffill()
+    return aligned
 
 
 def _compute_macro3_combo_signal_frame(
@@ -7092,7 +7106,7 @@ def _build_macro3_status_panel(
             })
     active_flags_text = ", ".join(active_labels) if active_labels else "없음"
     summary_html = (
-        '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;padding:0 0 18px 0;color:#CFCFCF;font-size:13px;">'
+        '<div style="display:flex;gap:12px 16px;align-items:center;flex-wrap:wrap;padding:0 0 14px 0;color:#CFCFCF;font-size:12px;line-height:1.42;">'
         f"<span><b>기준일</b> {basis_date}</span>"
         f"<span><b>현재 플래그</b> {active_count} / {combo_n} ON ({active_flags_text})</span>"
         f"<span><b>상태</b> <span style='color:{status_color};font-weight:700;'>{status_text}</span></span>"
@@ -7108,10 +7122,10 @@ def _build_macro3_status_panel(
         if not entry:
             return "<td style='padding:6px 8px;'></td>" * 4
         return (
-            f"<td style='padding:6px 8px;color:#D6D6D6;'>{entry['label']}</td>"
-            f"<td style='padding:6px 8px;text-align:center;'>{_macro_status_circle(entry['selected'], color_on='#7C7CF7')}</td>"
-            f"<td style='padding:6px 8px;text-align:center;'>{_macro_status_circle(entry['flag'], color_on='#4BFFB3')}</td>"
-            f"<td style='padding:6px 8px;color:#AFAFAF;'>{entry['latest_date']}</td>"
+            f"<td style='padding:5px 8px;color:#D6D6D6;line-height:1.32;'>{entry['label']}</td>"
+            f"<td style='padding:5px 8px;text-align:center;line-height:1.32;'>{_macro_status_circle(entry['selected'], color_on='#7C7CF7')}</td>"
+            f"<td style='padding:5px 8px;text-align:center;line-height:1.32;'>{_macro_status_circle(entry['flag'], color_on='#4BFFB3')}</td>"
+            f"<td style='padding:5px 8px;color:#AFAFAF;line-height:1.32;'>{entry['latest_date']}</td>"
         )
 
     rows_html = []
@@ -7120,7 +7134,7 @@ def _build_macro3_status_panel(
         right = right_entries[idx] if idx < len(right_entries) else None
         rows_html.append(f"<tr>{_entry_cells(left)}<td style='width:12px;'></td>{_entry_cells(right)}</tr>")
     table_html = (
-        "<table style='width:100%;border-collapse:collapse;font-size:11px;line-height:1.25;'>"
+        "<table style='width:100%;border-collapse:collapse;font-size:11px;line-height:1.32;'>"
         "<thead><tr>"
         "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>지표</th>"
         "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>선택</th>"
@@ -7272,10 +7286,18 @@ def _build_macro3_indicator_chart(
         price = ohlc["Close"].reindex(signal_df.index).dropna()
         signal_df = signal_df.reindex(price.index)
         fig.add_trace(go.Scatter(x=price.index, y=price, name=benchmark["label"], line=dict(color="rgba(182,182,182,0.88)", width=1.55)))
-        if show_raw:
-            for col, name, color in [("bb_middle", "BB Middle", "rgba(216,195,106,0.35)"), ("bb_upper", "BB Upper", "rgba(255,140,105,0.50)"), ("bb_lower", "BB Lower", "rgba(120,220,255,0.50)")]:
-                if col in signal_df.columns:
-                    fig.add_trace(go.Scatter(x=signal_df.index, y=signal_df[col], name=name, line=dict(color=color, width=1.1, dash="dot" if col != "bb_middle" else "solid")))
+        for col, name, color, dash in [
+            ("bb_middle", "BB Middle", "rgba(216,195,106,0.74)", "solid"),
+            ("bb_upper", "BB Upper", "rgba(255,140,105,0.68)", "dot"),
+            ("bb_lower", "BB Lower", "rgba(120,220,255,0.72)", "dot"),
+        ]:
+            if col in signal_df.columns:
+                fig.add_trace(go.Scatter(
+                    x=signal_df.index,
+                    y=signal_df[col],
+                    name=name,
+                    line=dict(color=color, width=1.15, dash=dash),
+                ))
         start_y = price.reindex(signal_df.index[signal_df["risk_start_signal"].fillna(False)])
         end_y = price.reindex(signal_df.index[signal_df["risk_end_signal"].fillna(False)])
         if not start_y.empty:
@@ -7290,20 +7312,50 @@ def _build_macro3_indicator_chart(
         return None
     main_s = raw_series.reindex(signal_df.index).dropna()
     signal_df = signal_df.reindex(main_s.index)
-    fig.add_trace(go.Scatter(x=main_s.index, y=main_s, name=indicator, line=dict(color="rgba(182,182,182,0.88)", width=1.45)))
-    if show_raw:
-        ema_candidates = [col for col in signal_df.columns if col.startswith("ema")]
-        if ema_candidates:
-            ema_col = ema_candidates[0]
-            fig.add_trace(go.Scatter(x=signal_df.index, y=signal_df[ema_col], name=ema_col.upper(), line=dict(color="rgba(216,195,106,0.42)", width=1.1)))
-        if "risk_start_line" in signal_df.columns:
-            fig.add_trace(go.Scatter(x=signal_df.index, y=signal_df["risk_start_line"], name="시작선", line=dict(color="rgba(255,140,105,0.55)", width=1.1, dash="dot")))
-        if "risk_end_line" in signal_df.columns:
-            fig.add_trace(go.Scatter(x=signal_df.index, y=signal_df["risk_end_line"], name="종료선", line=dict(color="rgba(120,220,255,0.60)", width=1.1, dash="dot")))
+    fig.add_trace(go.Scatter(
+        x=main_s.index,
+        y=main_s,
+        name=indicator,
+        line=dict(color="rgba(216,195,106,0.76)", width=1.35),
+    ))
+    ema_candidates = [col for col in signal_df.columns if col.startswith("ema")]
+    if show_raw and ema_candidates:
+        ema_col = ema_candidates[0]
+        fig.add_trace(go.Scatter(
+            x=signal_df.index,
+            y=signal_df[ema_col],
+            name=ema_col.upper(),
+            line=dict(color="rgba(216,195,106,0.46)", width=1.05),
+        ))
+    if "risk_start_line" in signal_df.columns:
+        fig.add_trace(go.Scatter(
+            x=signal_df.index,
+            y=signal_df["risk_start_line"],
+            name="시작선",
+            line=dict(color="rgba(255,140,105,0.68)", width=1.15, dash="dot"),
+        ))
+    if "risk_end_line" in signal_df.columns:
+        fig.add_trace(go.Scatter(
+            x=signal_df.index,
+            y=signal_df["risk_end_line"],
+            name="종료선",
+            line=dict(color="rgba(120,220,255,0.72)", width=1.15, dash="dot"),
+        ))
     if indicator != "Index":
         _add_spx_overlay(fig, main_s, spx_s, yaxis="y2", label=benchmark["label"])
         fig.update_layout(yaxis2=_visible_price_yaxis("y", "right"))
-    _add_price_signal_markers(fig, signal_df.rename(columns={"risk_start_signal": "down_start_signal", "risk_end_signal": "down_end_signal"}), main_s, yaxis="y", prefix=indicator)
+        marker_price = spx_s.reindex(signal_df.index).dropna() if spx_s is not None else pd.Series(dtype=float)
+        marker_axis = "y2"
+    else:
+        marker_price = main_s
+        marker_axis = "y"
+    _add_price_signal_markers(
+        fig,
+        signal_df.rename(columns={"risk_start_signal": "down_start_signal", "risk_end_signal": "down_end_signal"}),
+        marker_price,
+        yaxis=marker_axis,
+        prefix=indicator,
+    )
     fig.update_layout(**_ml(title, height=300))
     return fig
 
@@ -7343,26 +7395,26 @@ def _build_macro3_component_chart(
         x=price.index,
         y=price,
         name=benchmark["label"],
-        line=dict(color="rgba(182,182,182,0.88)", width=1.45),
+        line=dict(color="rgba(182,182,182,0.88)", width=1.55),
     ))
     start_y = price.reindex(combo.index[combo["combo_start_signal"].fillna(False)])
     end_y = price.reindex(combo.index[combo["combo_end_signal"].fillna(False)])
     if not start_y.empty:
         fig.add_trace(go.Scatter(
             x=start_y.index, y=start_y, mode="markers", name="component 시작",
-            marker=dict(symbol="triangle-down", size=8, color="rgba(210,55,55,0.88)"),
+            marker=dict(symbol="triangle-down", size=9, color="rgba(210,55,55,0.95)"),
         ))
     if not end_y.empty:
         fig.add_trace(go.Scatter(
             x=end_y.index, y=end_y, mode="markers", name="component 종료",
-            marker=dict(symbol="triangle-up", size=8, color="rgba(80,160,255,0.88)"),
+            marker=dict(symbol="triangle-up", size=9, color="rgba(80,160,255,0.92)"),
         ))
     selected_labels = " + ".join([_MACRO3_INDICATOR_LABELS.get(name, name) for name in active_indicators])
     fig.update_layout(**_ml(_macro3_component_label(component_key, component_cfg), height=260))
     fig.add_annotation(
         xref="paper", yref="paper", x=0.01, y=0.97, showarrow=False,
         text=f"{int(component_cfg.get('combo_k', 1))}/{len(active_indicators)} · 종료≤{int(component_cfg.get('combo_l', 0))}<br>{selected_labels}",
-        font=dict(size=10, color="#C8C8C8"),
+        font=dict(size=10, color="#C8C8C8", family="Arial, sans-serif"),
         align="left",
         bgcolor="rgba(0,0,0,0.18)",
         bordercolor="rgba(255,255,255,0.08)",
@@ -10120,20 +10172,24 @@ def main(page="signal"):
             .st-key-macro5_show_raw label,
             .st-key-macro5_show_raw span,
             .st-key-macro5_show_raw p {
-                font-size: 13.5px !important;
+                font-size: 12px !important;
+                line-height: 1.35 !important;
                 color: rgba(255,255,255,0.92) !important;
             }
             .st-key-macro5_preset div[data-baseweb="select"] > div,
             .st-key-macro5_benchmark div[data-baseweb="select"] > div,
             .st-key-macro5_selected_codes div[data-baseweb="select"] > div {
-                min-height: 2.55rem;
+                min-height: 2.35rem;
                 border-color: rgba(95,86,214,0.72) !important;
                 background: rgba(52,44,112,0.22) !important;
                 box-shadow: none !important;
+                line-height: 1.32 !important;
             }
             .st-key-macro5_selected_codes [data-baseweb="tag"] {
                 background: rgba(92,79,214,0.96) !important;
                 color: #F6F4FF !important;
+                font-size: 11px !important;
+                line-height: 1.25 !important;
             }
             </style>
             """, unsafe_allow_html=True)
@@ -10220,7 +10276,7 @@ def main(page="signal"):
             with _m56:
                 st.markdown(
                     (
-                        "<div style='padding-top:10px;font-size:12px;color:rgba(255,255,255,0.84);'>"
+                        "<div style='padding-top:8px;font-size:11.5px;line-height:1.42;color:rgba(255,255,255,0.84);'>"
                         f"시작 {int(_macro5_preset_cfg['combo_k'])}개 이상 ON<br>"
                         f"종료 {int(_macro5_preset_cfg['combo_l'])}개 이하 ON"
                         "</div>"
