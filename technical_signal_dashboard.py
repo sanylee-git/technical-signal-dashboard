@@ -8826,6 +8826,33 @@ def make_arrow_safe(df):
     return df
 
 
+def _render_macro_combo_common_css():
+    st.markdown("""
+    <style>
+    .macro2-divider {
+        border-top: 1px solid rgba(255,255,255,0.08);
+        margin: 24px 0;
+    }
+    .macro2-helper-text {
+        font-size: 11.5px;
+        line-height: 1.45;
+        color: rgba(255,255,255,0.56);
+        margin: 2px 0 14px 0;
+    }
+    .macro2-control-label {
+        font-size: 11.5px;
+        color: rgba(255,255,255,0.72);
+        font-weight: 600;
+        line-height: 1.2;
+        margin-bottom: 0.7rem;
+    }
+    .macro2-control-spacer {
+        height: 18px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+
 # ============================================================
 # 메인 앱
 # ============================================================
@@ -9494,28 +9521,9 @@ def main(page="signal"):
                 unsafe_allow_html=True,
             )
             _macro4_sync_bucket = _macro_sync_bucket(60)
+            _render_macro_combo_common_css()
             st.markdown("""
             <style>
-            .macro2-divider {
-                border-top: 1px solid rgba(255,255,255,0.08);
-                margin: 24px 0;
-            }
-            .macro2-helper-text {
-                font-size: 11.5px;
-                line-height: 1.45;
-                color: rgba(255,255,255,0.56);
-                margin: 2px 0 14px 0;
-            }
-            .macro2-control-label {
-                font-size: 11.5px;
-                color: rgba(255,255,255,0.72);
-                font-weight: 600;
-                line-height: 1.2;
-                margin-bottom: 0.7rem;
-            }
-            .macro2-control-spacer {
-                height: 18px;
-            }
             .st-key-macro4_preset div[data-baseweb="select"] > div,
             .st-key-macro4_benchmark div[data-baseweb="select"] > div,
             .st-key-macro4_selected_codes div[data-baseweb="select"] > div,
@@ -10168,6 +10176,7 @@ def main(page="signal"):
                 unsafe_allow_html=True,
             )
             _macro5_sync_bucket = _macro_sync_bucket(60)
+            _render_macro_combo_common_css()
             st.markdown("""
             <style>
             .st-key-macro5_preset div[data-baseweb="select"] > div,
