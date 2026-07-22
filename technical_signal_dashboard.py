@@ -7451,11 +7451,13 @@ def make_macro3_combo_dynamic_chart(
         fig.add_trace(go.Scatter(
             x=start_y.index, y=start_y, name="리스크 시작",
             mode="markers", marker=dict(symbol="triangle-down", size=10, color="rgba(210,55,55,0.95)"),
+            hovertemplate="<b>신호발생일 %{x|%Y-%m-%d}</b><br>리스크 시작: %{y:,.2f}<extra></extra>",
         ))
     if not end_rows.empty and not end_y.empty:
         fig.add_trace(go.Scatter(
             x=end_y.index, y=end_y, name="리스크 종료",
             mode="markers", marker=dict(symbol="triangle-up", size=10, color="rgba(80,160,255,0.92)"),
+            hovertemplate="<b>신호발생일 %{x|%Y-%m-%d}</b><br>리스크 종료: %{y:,.2f}<extra></extra>",
         ))
     fig.update_layout(
         **_ml(
@@ -7749,11 +7751,11 @@ def _macro6_state_duration_html(combo_event_df: pd.DataFrame) -> str:
     else:
         start_text = _macro_date_text(ordered.iloc[start_idx].get("date"))
     duration_days = len(ordered) - start_idx
+    color = "#FF8C69" if current_state else "#4BFFB3"
     return (
-        '<div style="display:flex;gap:12px 16px;align-items:center;flex-wrap:wrap;'
-        'padding:0 0 14px 0;color:#CFCFCF;font-size:12px;line-height:1.42;">'
-        f"<span><b>현재 상태 시작일</b> {start_text}</span>"
-        f"<span><b>현재 상태 지속 거래일</b> {duration_days}</span>"
+        '<div style="display:flex;align-items:center;flex-wrap:wrap;'
+        f'padding:0 0 14px 0;color:{color};font-size:12px;line-height:1.42;font-weight:700;">'
+        f"<span><b>현재 상태 시작일</b> {start_text} · <b>지속 거래일</b> {duration_days}</span>"
         "</div>"
     )
 
@@ -7822,14 +7824,52 @@ def _build_macro6_backtest_panel(
     sync_bucket: str | None = None,
 ) -> str:
     rows_html = []
-    for key in [item for item in preset_order if item in preset_defs]:
-        cfg = preset_defs[key]
+    hold_metrics = _MACRO_META_BACKTEST_COMPARE["sp500_buyhold"]["metrics"]
+    hold_10y = _macro_metric_float(hold_metrics.get("10Y 자산"))
+    hold_20y = _macro_metric_float(hold_metrics.get("20Y 자산"))
+    hold_mdd_10y = _macro_metric_float(hold_metrics.get("10Y MDD"))
+    hold_mdd_20y = _macro_metric_float(hold_metrics.get("20Y MDD"))
+
+    def _ratio_span(ratio: float, good: bool) -> str:
+        color = "#7FE7B1" if good else "#8F8F8F"
+        weight = "700" if good else "400"
+        return f"<span style='color:{color};font-size:11px;font-weight:{weight};'>({ratio:.2f}x)</span>"
+
+    def _format_with_ratios(key: str, metrics: dict) -> dict:
+        formatted = dict(metrics)
+        asset_10y_num = _macro_metric_float(formatted.get("10Y 자산"))
+        asset_20y_num = _macro_metric_float(formatted.get("20Y 자산"))
+        mdd_10y_num = _macro_metric_float(formatted.get("10Y MDD"))
+        mdd_20y_num = _macro_metric_float(formatted.get("20Y MDD"))
+        if key != "sp500_buyhold" and hold_10y and asset_10y_num is not None:
+            formatted["10Y 자산"] = f"{formatted.get('10Y 자산', '-')} {_ratio_span(asset_10y_num / hold_10y, asset_10y_num / hold_10y >= 1.5)}"
+        if key != "sp500_buyhold" and hold_20y and asset_20y_num is not None:
+            formatted["20Y 자산"] = f"{formatted.get('20Y 자산', '-')} {_ratio_span(asset_20y_num / hold_20y, asset_20y_num / hold_20y >= 1.5)}"
+        if key != "sp500_buyhold" and hold_mdd_10y and mdd_10y_num is not None:
+            ratio = abs(mdd_10y_num) / abs(hold_mdd_10y)
+            formatted["10Y MDD"] = f"{formatted.get('10Y MDD', '-')} {_ratio_span(ratio, ratio <= 0.5)}"
+        if key != "sp500_buyhold" and hold_mdd_20y and mdd_20y_num is not None:
+            ratio = abs(mdd_20y_num) / abs(hold_mdd_20y)
+            formatted["20Y MDD"] = f"{formatted.get('20Y MDD', '-')} {_ratio_span(ratio, ratio <= 0.5)}"
+        return formatted
+
+    try:
+        hold_asset_20y = _macro_metric_float(hold_metrics.get("20Y 자산"))
+        hold_cagr_20y = _macro3_metric_percent((hold_asset_20y / 100.0) ** (1.0 / 20.0) - 1.0) if hold_asset_20y else "-"
+    except Exception:
+        hold_cagr_20y = "-"
+    compare_items = [(
+        "sp500_buyhold",
+        {"label": _MACRO_META_BACKTEST_COMPARE["sp500_buyhold"]["label"], "metrics": {**hold_metrics, "20Y CAGR": hold_cagr_20y}},
+    )] + [(key, preset_defs[key]) for key in preset_order if key in preset_defs]
+
+    for key, cfg in compare_items:
         metrics = cfg.get("metrics", {})
         is_selected = key == preset_key
         bg = "rgba(120,126,231,0.16)" if is_selected else "transparent"
         border = "1px solid rgba(120,126,231,0.34)" if is_selected else "1px solid transparent"
         current_state = None
-        if not _macro3_preset_blocking_reasons(cfg):
+        if key != "sp500_buyhold" and not _macro3_preset_blocking_reasons(cfg):
             current_state = _compute_macro3_preset_current_state(cfg, years=years, sync_bucket=sync_bucket)
         current_state_html = "-" if current_state is None else _macro_flag_ratio_html(
             current_state.get("on_count", 0),
@@ -7838,18 +7878,19 @@ def _build_macro6_backtest_panel(
         )
         role = str(cfg.get("role_tags", "")).strip()
         candidate_key = str(cfg.get("candidate_key", key))
-        label = f"{role}<br><span style='font-size:10.5px;color:rgba(255,255,255,0.55);'>{candidate_key}</span>" if role else cfg.get("label", key)
+        label = f"{role} <span style='font-size:10.5px;color:rgba(255,255,255,0.55);'>({candidate_key})</span>" if role else cfg.get("label", key)
+        display_metrics = _format_with_ratios(key, metrics)
         rows_html.append(
             f"<tr style='background:{bg};border-top:{border};border-bottom:{border};'>"
             f"<td style='padding:7px 8px;color:#EDEDED;font-weight:700;line-height:1.28;'>{label}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{metrics.get('10Y 자산', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{metrics.get('20Y 자산', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{metrics.get('20Y CAGR', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{metrics.get('10Y MDD', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{metrics.get('20Y MDD', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{metrics.get('20Y Risk-off', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{metrics.get('20Y Cycle', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{metrics.get('짧은 Cycle', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{display_metrics.get('10Y 자산', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{display_metrics.get('20Y 자산', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{display_metrics.get('20Y CAGR', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{display_metrics.get('10Y MDD', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{display_metrics.get('20Y MDD', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{display_metrics.get('20Y Risk-off', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{display_metrics.get('20Y Cycle', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{display_metrics.get('짧은 Cycle', '-')}</td>"
             f"<td style='padding:7px 8px;color:#D6D6D6;text-align:center;'>{current_state_html}</td></tr>"
         )
     if not rows_html:
@@ -8027,11 +8068,13 @@ def _build_macro3_component_chart(
         fig.add_trace(go.Scatter(
             x=start_y.index, y=start_y, mode="markers", name="component 시작",
             marker=dict(symbol="triangle-down", size=9, color="rgba(210,55,55,0.95)"),
+            hovertemplate="<b>신호발생일 %{x|%Y-%m-%d}</b><br>component 시작: %{y:,.2f}<extra></extra>",
         ))
     if not end_y.empty:
         fig.add_trace(go.Scatter(
             x=end_y.index, y=end_y, mode="markers", name="component 종료",
             marker=dict(symbol="triangle-up", size=9, color="rgba(80,160,255,0.92)"),
+            hovertemplate="<b>신호발생일 %{x|%Y-%m-%d}</b><br>component 종료: %{y:,.2f}<extra></extra>",
         ))
     selected_labels = " + ".join([_MACRO3_INDICATOR_LABELS.get(name, name) for name in active_indicators])
     fig.update_layout(**_ml(_macro3_component_label(component_key, component_cfg), height=260))
@@ -11157,13 +11200,20 @@ def main(page="signal"):
                 unsafe_allow_html=True,
             )
 
-            _macro6_preset_order = list(_MACRO6_COMBO2_ORDER) + list(_MACRO6_COMBO1_ORDER)
+            _macro6_separator_key = "macro6_group_separator"
+            _macro6_preset_order = list(_MACRO6_COMBO2_ORDER) + [_macro6_separator_key] + list(_MACRO6_COMBO1_ORDER)
             _macro6_preset_order = [key for key in _macro6_preset_order if key in _macro6_presets]
+            _macro6_preset_options = list(_MACRO6_COMBO2_ORDER) + [_macro6_separator_key] + list(_MACRO6_COMBO1_ORDER)
             if not _macro6_preset_order:
                 st.warning("표시 가능한 Proxy-only 후보가 없습니다.")
                 return
             if st.session_state.get("macro6_preset") not in _macro6_preset_order:
                 st.session_state["macro6_preset"] = _macro6_preset_order[0]
+            if st.session_state.get("macro6_preset_picker") == _macro6_separator_key:
+                st.session_state["macro6_preset_picker"] = _MACRO6_COMBO1_ORDER[0]
+            _macro6_current_preset = st.session_state.get("macro6_preset_picker", st.session_state["macro6_preset"])
+            if _macro6_current_preset not in _macro6_preset_options:
+                _macro6_current_preset = st.session_state["macro6_preset"]
 
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
             _l61, _l62, _l63, _l64 = st.columns([1.8, 1.0, 2.2, 1.0], vertical_alignment="bottom")
@@ -11181,12 +11231,15 @@ def main(page="signal"):
             with _m61:
                 _macro6_preset = st.selectbox(
                     "조합 프리셋",
-                    options=_macro6_preset_order,
-                    index=_macro6_preset_order.index(st.session_state["macro6_preset"]),
-                    format_func=lambda x: _macro6_presets[x]["label"],
-                    key="macro6_preset",
+                    options=_macro6_preset_options,
+                    index=_macro6_preset_options.index(_macro6_current_preset),
+                    format_func=lambda x: "──────── 조합1 ────────" if x == _macro6_separator_key else _macro6_presets[x]["label"],
+                    key="macro6_preset_picker",
                     label_visibility="collapsed",
                 )
+            if _macro6_preset == _macro6_separator_key:
+                _macro6_preset = _MACRO6_COMBO1_ORDER[0]
+            st.session_state["macro6_preset"] = _macro6_preset
             _macro6_preset_cfg = _macro6_presets[_macro6_preset]
             _macro6_is_combo2 = _macro6_preset_cfg.get("kind") == "combo2_final8" or bool(_macro6_preset_cfg.get("components"))
             with _m62:
@@ -11307,7 +11360,10 @@ def main(page="signal"):
                 sync_bucket=_macro6_sync_bucket,
             )
             if _macro6_status_html:
-                st.markdown(_macro6_status_html, unsafe_allow_html=True)
+                st.markdown(
+                    _macro6_status_html.replace("신규 전환 신호 없음", "기준일 신규 시작/종료 신호 없음"),
+                    unsafe_allow_html=True,
+                )
             _macro6_duration_html = _macro6_state_duration_html(_macro6_combo_event_df)
             if _macro6_duration_html:
                 st.markdown(_macro6_duration_html, unsafe_allow_html=True)
