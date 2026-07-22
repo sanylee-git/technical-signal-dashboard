@@ -7157,6 +7157,151 @@ def _macro3_get_indicator_raw_series(
     return pd.Series(dtype=float)
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def _macro6_proxy_credit_spread_series(kind: str, years: int = 5, sync_bucket: str | None = None) -> pd.Series:
+    """Proxy-only credit spread: DBAA/DAAA - DGS10, same-date observations only."""
+    mapping = {
+        "HY": ("DBAA", "DGS10", "hy_proxy_only"),
+        "IG": ("DAAA", "DGS10", "ig_proxy_only"),
+    }
+    corp_id, treasury_id, name = mapping.get(str(kind).upper(), (None, None, None))
+    if corp_id is None:
+        return pd.Series(dtype=float)
+    fetch_years = max(int(years) + 2, 6)
+    corp = _fred(corp_id, fetch_years, sync_bucket=sync_bucket)
+    treasury = _fred(treasury_id, fetch_years, sync_bucket=sync_bucket)
+    if corp is None or treasury is None or corp.empty or treasury.empty:
+        return pd.Series(dtype=float, name=name)
+    joined = pd.concat([corp.rename("corp"), treasury.rename("dgs10")], axis=1, join="inner").dropna().sort_index()
+    if joined.empty:
+        return pd.Series(dtype=float, name=name)
+    cutoff = pd.Timestamp.now().normalize() - pd.DateOffset(years=int(years))
+    spread = (joined["corp"] - joined["dgs10"]).rename(name)
+    return spread.loc[spread.index >= cutoff].dropna()
+
+
+def _macro6_credit_stress_series(years: int, sync_bucket: str | None = None) -> pd.Series:
+    if not COMBO1_EXPANDED_AVAILABILITY_AVAILABLE or _MACRO3_AVAILABILITY_CONFIG is None:
+        return pd.Series(dtype=float)
+    hy = _macro6_proxy_credit_spread_series("HY", years + 1, sync_bucket=sync_bucket)
+    nfci = _fred("NFCI", years + 1, sync_bucket=sync_bucket)
+    vix = _macro3_filter_confirmed_us_daily(_yf_close("^VIX", years + 1, sync_bucket=sync_bucket))
+    snapshot = pd.concat(
+        [
+            hy.rename("hy_raw") if hy is not None else pd.Series(dtype=float, name="hy_raw"),
+            nfci.rename("nfci_raw") if nfci is not None else pd.Series(dtype=float, name="nfci_raw"),
+            vix.rename("vix_raw") if vix is not None else pd.Series(dtype=float, name="vix_raw"),
+        ],
+        axis=1,
+    )
+    if not {"hy_raw", "nfci_raw", "vix_raw"}.issubset(set(snapshot.columns)):
+        return pd.Series(dtype=float)
+    try:
+        return _combo1_build_credit_stress_safe_from_components(
+            snapshot,
+            _MACRO3_AVAILABILITY_CONFIG,
+            require_all_components=True,
+        ).dropna()
+    except Exception:
+        return pd.Series(dtype=float)
+
+
+def _macro6_get_indicator_raw_series(
+    indicator: str,
+    years: int,
+    benchmark_name: str = "S&P500",
+    spx_s: pd.Series | None = None,
+    sync_bucket: str | None = None,
+):
+    if indicator == "HY":
+        return _macro3_apply_indicator_availability(
+            "HY",
+            (-_macro6_proxy_credit_spread_series("HY", years, sync_bucket=sync_bucket)).dropna(),
+        ).dropna()
+    if indicator == "IG":
+        return _macro3_apply_indicator_availability(
+            "IG",
+            (-_macro6_proxy_credit_spread_series("IG", years, sync_bucket=sync_bucket)).dropna(),
+        ).dropna()
+    if indicator == "Credit Stress":
+        return _macro6_credit_stress_series(years, sync_bucket=sync_bucket)
+    return _macro3_get_indicator_raw_series(
+        indicator=indicator,
+        years=years,
+        benchmark_name=benchmark_name,
+        spx_s=spx_s,
+        sync_bucket=sync_bucket,
+    )
+
+
+def _macro6_get_indicator_signal_frame(
+    indicator: str,
+    cfg: dict,
+    benchmark_index: pd.DatetimeIndex,
+    years: int,
+    benchmark_name: str = "S&P500",
+    spx_s: pd.Series | None = None,
+    sync_bucket: str | None = None,
+):
+    if not COMBO1_EXPANDED_SIGNALS_AVAILABLE:
+        return pd.DataFrame()
+    kind = cfg.get("kind", "level")
+    if kind == "bollinger":
+        ohlc = _macro3_fetch_benchmark_ohlcv(benchmark_name, years)
+        if ohlc.empty:
+            return pd.DataFrame()
+        signal = _combo1_compute_bollinger_signal_frame(
+            close=ohlc["Close"],
+            high=ohlc["High"],
+            low=ohlc["Low"],
+            window=int(cfg["window"]),
+            std_multiplier=float(cfg["std"]),
+        )
+        aligned = _combo1_align_signal_to_benchmark(signal, benchmark_index)
+        for col in ["bb_middle", "bb_upper", "bb_lower"]:
+            if col in signal.columns:
+                source = signal.copy()
+                source.index = pd.DatetimeIndex(pd.to_datetime(source.index)).normalize()
+                source = source.sort_index().loc[~source.index.duplicated(keep="last")]
+                aligned[col] = source[col].reindex(aligned.index).ffill()
+        return aligned
+
+    raw_series = _macro6_get_indicator_raw_series(
+        indicator=indicator,
+        years=years,
+        benchmark_name=benchmark_name,
+        spx_s=spx_s,
+        sync_bucket=sync_bucket,
+    )
+    if raw_series is None or raw_series.empty:
+        return pd.DataFrame()
+    if kind == "yield_slope":
+        signal = _combo1_compute_yield_slope_signal_frame(
+            dgs10=raw_series,
+            slope_window=int(cfg["slope_window"]),
+            ema_span=int(cfg["ema"]),
+            threshold_window=int(cfg["window"]),
+            start_quantile=float(cfg["start"]),
+            end_quantile=float(cfg["end"]),
+        )
+    else:
+        signal = _combo1_compute_dynamic_quantile_signal_frame(
+            series=raw_series,
+            window=int(cfg["window"]),
+            start_quantile=float(cfg["start"]),
+            end_quantile=float(cfg["end"]),
+            ema_span=int(cfg["ema"]),
+        )
+    aligned = _combo1_align_signal_to_benchmark(signal, benchmark_index)
+    source = signal.copy()
+    source.index = pd.DatetimeIndex(pd.to_datetime(source.index)).normalize()
+    source = source.sort_index().loc[~source.index.duplicated(keep="last")]
+    for col in [c for c in source.columns if c.startswith("ema")] + ["value", "risk_start_line", "risk_end_line"]:
+        if col in source.columns:
+            aligned[col] = source[col].reindex(aligned.index).ffill()
+    return aligned
+
+
 def _macro3_get_indicator_signal_frame(
     indicator: str,
     cfg: dict,
@@ -7358,6 +7503,139 @@ def _compute_macro3_preset_signal_frame(
     )
 
 
+def _compute_macro6_combo_signal_frame(
+    spx_s: pd.Series,
+    benchmark_name: str,
+    selected_indicators,
+    cfgs: dict,
+    combo_k: int,
+    combo_l: int,
+    sync_bucket: str | None = None,
+):
+    if spx_s is None or spx_s.empty or not COMBO1_EXPANDED_SIGNALS_AVAILABLE:
+        return pd.DataFrame(), []
+    selected_indicators = list(selected_indicators or [])
+    if not selected_indicators:
+        return pd.DataFrame(), []
+    frames = {}
+    active_indicators = []
+    fetch_years = max(3, int(np.ceil(len(spx_s.dropna()) / 252.0)) + 2)
+    for indicator in selected_indicators:
+        cfg = cfgs.get(indicator)
+        if not cfg:
+            return pd.DataFrame(), []
+        signal_df = _macro6_get_indicator_signal_frame(
+            indicator=indicator,
+            cfg=cfg,
+            benchmark_index=spx_s.index,
+            years=fetch_years,
+            benchmark_name=benchmark_name,
+            spx_s=spx_s,
+            sync_bucket=sync_bucket,
+        )
+        if signal_df.empty:
+            return pd.DataFrame(), []
+        key = _macro3_indicator_key(indicator)
+        frames[indicator] = signal_df.rename(columns={
+            "risk_state": f"{key}_flag",
+            "risk_start_signal": f"{key}_start_signal",
+            "risk_end_signal": f"{key}_end_signal",
+        })[[f"{key}_flag", f"{key}_start_signal", f"{key}_end_signal"]]
+        active_indicators.append(indicator)
+    if not frames:
+        return pd.DataFrame(), []
+    combo = pd.concat(frames.values(), axis=1).reindex(spx_s.index).fillna(False)
+    flag_cols = [f"{_macro3_indicator_key(name)}_flag" for name in active_indicators]
+    combo["active_count"] = combo[flag_cols].sum(axis=1).astype(int)
+    state, starts, ends = _combo1_build_hysteresis_combo_state(combo["active_count"].to_numpy(), int(combo_k), int(combo_l))
+    combo["combo_risk_state"] = state.astype(bool)
+    combo["combo_start_signal"] = starts.astype(bool)
+    combo["combo_end_signal"] = ends.astype(bool)
+    combo[flag_cols + [c for c in combo.columns if c.endswith("_signal")]] = combo[
+        flag_cols + [c for c in combo.columns if c.endswith("_signal")]
+    ].astype(bool)
+    return combo, active_indicators
+
+
+def _compute_macro6_combo2_signal_frame(
+    spx_s: pd.Series,
+    benchmark_name: str,
+    preset_cfg: dict,
+    sync_bucket: str | None = None,
+):
+    if spx_s is None or spx_s.empty or not COMBO1_EXPANDED_SIGNALS_AVAILABLE:
+        return pd.DataFrame(), []
+    components = list(preset_cfg.get("components", []))
+    component_cfgs = dict(preset_cfg.get("component_cfgs", {}))
+    if not components:
+        return pd.DataFrame(), []
+    frames = {}
+    active_components = []
+    for component_key in components:
+        component_cfg = component_cfgs.get(component_key)
+        if not component_cfg:
+            return pd.DataFrame(), []
+        component_combo, component_active = _compute_macro6_combo_signal_frame(
+            spx_s=spx_s,
+            benchmark_name=benchmark_name,
+            selected_indicators=component_cfg.get("selected_indicators", []),
+            cfgs=component_cfg.get("cfgs", {}),
+            combo_k=int(component_cfg.get("combo_k", 1)),
+            combo_l=int(component_cfg.get("combo_l", 0)),
+            sync_bucket=sync_bucket,
+        )
+        if component_combo.empty or not component_active:
+            return pd.DataFrame(), []
+        key = _macro3_indicator_key(component_key)
+        frames[component_key] = component_combo.rename(columns={
+            "combo_risk_state": f"{key}_flag",
+            "combo_start_signal": f"{key}_start_signal",
+            "combo_end_signal": f"{key}_end_signal",
+        })[[f"{key}_flag", f"{key}_start_signal", f"{key}_end_signal"]]
+        active_components.append(component_key)
+    if not frames:
+        return pd.DataFrame(), []
+    combo = pd.concat(frames.values(), axis=1).reindex(spx_s.index).fillna(False)
+    flag_cols = [f"{_macro3_indicator_key(name)}_flag" for name in active_components]
+    combo["active_count"] = combo[flag_cols].sum(axis=1).astype(int)
+    state, starts, ends = _combo1_build_hysteresis_combo_state(
+        combo["active_count"].to_numpy(),
+        int(preset_cfg.get("combo_k", 1)),
+        int(preset_cfg.get("combo_l", 0)),
+    )
+    combo["combo_risk_state"] = state.astype(bool)
+    combo["combo_start_signal"] = starts.astype(bool)
+    combo["combo_end_signal"] = ends.astype(bool)
+    combo[flag_cols + [c for c in combo.columns if c.endswith("_signal")]] = combo[
+        flag_cols + [c for c in combo.columns if c.endswith("_signal")]
+    ].astype(bool)
+    return combo, active_components
+
+
+def _compute_macro6_preset_signal_frame(
+    spx_s: pd.Series,
+    benchmark_name: str,
+    preset_cfg: dict,
+    sync_bucket: str | None = None,
+):
+    if preset_cfg.get("kind") == "combo2_final8":
+        return _compute_macro6_combo2_signal_frame(
+            spx_s=spx_s,
+            benchmark_name=benchmark_name,
+            preset_cfg=preset_cfg,
+            sync_bucket=sync_bucket,
+        )
+    return _compute_macro6_combo_signal_frame(
+        spx_s=spx_s,
+        benchmark_name=benchmark_name,
+        selected_indicators=preset_cfg.get("selected_indicators", []),
+        cfgs=preset_cfg.get("cfgs", {}),
+        combo_k=int(preset_cfg.get("combo_k", 1)),
+        combo_l=int(preset_cfg.get("combo_l", 0)),
+        sync_bucket=sync_bucket,
+    )
+
+
 def _build_macro3_combo_event_df(
     combo: pd.DataFrame,
     active_indicators,
@@ -7478,6 +7756,135 @@ def make_macro3_combo_dynamic_chart(
     return (fig, event_df) if return_debug else fig
 
 
+def _macro6_event_metadata(preset_cfg: dict, active_indicators: list[str]) -> tuple[list[str], dict]:
+    if preset_cfg.get("kind") == "combo2_final8":
+        return list(active_indicators), {}
+    return list(preset_cfg.get("selected_indicators", [])), dict(preset_cfg.get("cfgs", {}))
+
+
+def _macro6_build_event_df(combo: pd.DataFrame, active_indicators, benchmark_name: str, preset_cfg: dict) -> pd.DataFrame:
+    selected, cfgs = _macro6_event_metadata(preset_cfg, list(active_indicators or []))
+    return _build_macro3_combo_event_df(
+        combo=combo,
+        active_indicators=active_indicators,
+        benchmark_name=benchmark_name,
+        selected_indicators=selected,
+        cfgs=cfgs,
+        combo_k=int(preset_cfg.get("combo_k", 1)),
+        combo_l=int(preset_cfg.get("combo_l", 0)),
+    )
+
+
+def _make_macro6_combo_chart_from_snapshot(
+    years: int,
+    benchmark_name: str,
+    preset_cfg: dict,
+    snapshot: dict,
+    return_debug: bool = False,
+):
+    combo_full = snapshot.get("combo_frame", pd.DataFrame()) if snapshot else pd.DataFrame()
+    spx_full = snapshot.get("spx_s", pd.Series(dtype=float)) if snapshot else pd.Series(dtype=float)
+    active_indicators = snapshot.get("active_indicators", []) if snapshot else []
+    if combo_full is None or combo_full.empty or spx_full is None or spx_full.empty:
+        return (None, pd.DataFrame()) if return_debug else None
+    cutoff = pd.Timestamp.now().normalize() - pd.DateOffset(years=int(years))
+    visible_spx = spx_full.loc[spx_full.index >= cutoff].dropna()
+    if visible_spx.empty:
+        visible_spx = spx_full.dropna()
+    combo = combo_full.loc[combo_full.index >= visible_spx.index.min()].copy()
+    spx_aligned = visible_spx.reindex(combo.index).dropna()
+    combo = combo.reindex(spx_aligned.index)
+    event_df = _macro6_build_event_df(combo, active_indicators, benchmark_name, preset_cfg)
+    benchmark = _get_macro_benchmark(benchmark_name)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=spx_aligned.index, y=spx_aligned, name=benchmark["label"],
+        line=dict(color="rgba(182,182,182,0.88)", width=1.55),
+        hovertemplate=f"<b>%{{x|%Y-%m-%d}}</b><br>{benchmark['label']} %{{y:,.1f}}<extra></extra>",
+    ))
+    start_rows = event_df.loc[event_df["combo_start_signal"]].copy()
+    end_rows = event_df.loc[event_df["combo_end_signal"]].copy()
+    start_y = spx_aligned.reindex(pd.to_datetime(start_rows["date"])) if not start_rows.empty else pd.Series(dtype=float)
+    end_y = spx_aligned.reindex(pd.to_datetime(end_rows["date"])) if not end_rows.empty else pd.Series(dtype=float)
+    if not start_rows.empty and not start_y.empty:
+        fig.add_trace(go.Scatter(
+            x=start_y.index, y=start_y, name="리스크 시작",
+            mode="markers", marker=dict(symbol="triangle-down", size=10, color="rgba(210,55,55,0.95)"),
+            hovertemplate="<b>신호발생일 %{x|%Y-%m-%d}</b><br>리스크 시작: %{y:,.2f}<extra></extra>",
+        ))
+    if not end_rows.empty and not end_y.empty:
+        fig.add_trace(go.Scatter(
+            x=end_y.index, y=end_y, name="리스크 종료",
+            mode="markers", marker=dict(symbol="triangle-up", size=10, color="rgba(80,160,255,0.92)"),
+            hovertemplate="<b>신호발생일 %{x|%Y-%m-%d}</b><br>리스크 종료: %{y:,.2f}<extra></extra>",
+        ))
+    fig.update_layout(
+        **_ml(
+            f"⓪ 최종 후보 리스크 사이클 ({benchmark['label']}, {int(preset_cfg.get('combo_k', 1))}/{len(active_indicators)}, 종료≤{int(preset_cfg.get('combo_l', 0))})",
+            height=300,
+        ),
+    )
+    labels = event_df["selected_labels"].iloc[0] if not event_df.empty and "selected_labels" in event_df.columns else ""
+    fig.add_annotation(
+        xref="paper", yref="paper", x=0.01, y=0.98, showarrow=False,
+        text=f"<b>조합</b>: {labels}",
+        font=dict(size=11, color="#C8C8C8"),
+        align="left",
+        bgcolor="rgba(0,0,0,0.18)",
+        bordercolor="rgba(255,255,255,0.08)",
+        borderwidth=1,
+        borderpad=4,
+    )
+    return (fig, event_df) if return_debug else fig
+
+
+@st.cache_data(
+    ttl=7200,
+    max_entries=64,
+    show_spinner=False,
+)
+def _compute_macro6_operating_snapshot_cached(preset_cfg: dict, sync_bucket: str | None = None):
+    benchmark_name = preset_cfg.get("benchmark", "S&P500")
+    benchmark = _get_macro_benchmark(benchmark_name)
+    spx_s = _macro3_filter_confirmed_us_daily(_yf_close(benchmark["code"], 25, sync_bucket=sync_bucket))
+    if spx_s is None or spx_s.empty:
+        return None
+    combo, active_indicators = _compute_macro6_preset_signal_frame(
+        spx_s=spx_s,
+        benchmark_name=benchmark_name,
+        preset_cfg=preset_cfg,
+        sync_bucket=sync_bucket,
+    )
+    if combo.empty or not active_indicators:
+        return None
+    event_df = _macro6_build_event_df(combo, active_indicators, benchmark_name, preset_cfg)
+    if event_df.empty:
+        return None
+    ordered = event_df.sort_values("date").reset_index(drop=True)
+    latest = ordered.iloc[-1]
+    current_state = bool(latest.get("combo_risk_state", False))
+    start_idx = len(ordered) - 1
+    while start_idx > 0 and bool(ordered.iloc[start_idx - 1].get("combo_risk_state", False)) == current_state:
+        start_idx -= 1
+    return {
+        "spx_s": spx_s,
+        "combo_frame": combo,
+        "event_frame": event_df,
+        "active_indicators": list(active_indicators),
+        "is_on": current_state,
+        "on_count": int(latest.get("active_count", 0)),
+        "total_count": len(active_indicators),
+        "start_count": int(preset_cfg.get("combo_k", len(active_indicators))),
+        "basis_date": pd.Timestamp(latest.get("date")).normalize(),
+        "state_start_date": None if start_idx == 0 else pd.Timestamp(ordered.iloc[start_idx].get("date")).normalize(),
+        "state_duration_days": int(len(ordered) - start_idx),
+    }
+
+
+def _compute_macro6_operating_snapshot(preset_cfg: dict, sync_bucket: str | None = None):
+    return _compute_macro6_operating_snapshot_cached(preset_cfg=preset_cfg, sync_bucket=sync_bucket)
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def _get_macro3_signal_latest_date(indicator: str, years: int, benchmark_name: str = "S&P500", sync_bucket: str | None = None):
     if indicator == "Bollinger Band":
@@ -7550,6 +7957,161 @@ def _build_macro3_status_panel(
             if is_on:
                 active_labels.append(_MACRO3_INDICATOR_LABELS.get(indicator, indicator))
             latest_date = _get_macro3_signal_latest_date(indicator, years, benchmark_name=benchmark_name, sync_bucket=sync_bucket)
+            freshness = _macro3_freshness_note(indicator, latest_date)
+            latest_text = _macro_date_text(latest_date)
+            if freshness == "지연":
+                latest_text = f"{latest_text} · 지연"
+            elif freshness == "확인 불가":
+                latest_text = "확인 불가"
+            entries.append({
+                "label": _MACRO3_INDICATOR_LABELS.get(indicator, indicator),
+                "selected": indicator in selected,
+                "flag": is_on,
+                "latest_date": latest_text,
+            })
+    active_flags_text = ", ".join(active_labels) if active_labels else "없음"
+    summary_html = (
+        '<div style="display:flex;gap:12px 16px;align-items:center;flex-wrap:wrap;padding:0 0 14px 0;color:#CFCFCF;font-size:12px;line-height:1.42;">'
+        f"<span><b>기준일</b> {basis_date}</span>"
+        f"<span><b>현재 플래그</b> {active_count} / {combo_n} ON ({active_flags_text})</span>"
+        f"<span><b>상태</b> <span style='color:{status_color};font-weight:700;'>{status_text}</span></span>"
+        f"<span><b>실행 안내</b> {execution_text}</span>"
+        "</div>"
+    )
+    midpoint = int(np.ceil(len(entries) / 2))
+    left_entries = entries[:midpoint]
+    right_entries = entries[midpoint:]
+    row_count = max(len(left_entries), len(right_entries))
+
+    def _entry_cells(entry):
+        if not entry:
+            return "<td style='padding:6px 8px;'></td>" * 4
+        return (
+            f"<td style='padding:5px 8px;color:#D6D6D6;line-height:1.32;'>{entry['label']}</td>"
+            f"<td style='padding:5px 8px;text-align:center;line-height:1.32;'>{_macro_status_circle(entry['selected'], color_on='#7C7CF7')}</td>"
+            f"<td style='padding:5px 8px;text-align:center;line-height:1.32;'>{_macro_status_circle(entry['flag'], color_on='#4BFFB3')}</td>"
+            f"<td style='padding:5px 8px;color:#AFAFAF;line-height:1.32;'>{entry['latest_date']}</td>"
+        )
+
+    rows_html = []
+    for idx in range(row_count):
+        left = left_entries[idx] if idx < len(left_entries) else None
+        right = right_entries[idx] if idx < len(right_entries) else None
+        rows_html.append(f"<tr>{_entry_cells(left)}<td style='width:12px;'></td>{_entry_cells(right)}</tr>")
+    table_html = (
+        "<table style='width:100%;border-collapse:collapse;font-size:11px;line-height:1.32;'>"
+        "<thead><tr>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>지표</th>"
+        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>선택</th>"
+        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>플래그</th>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>최신날짜</th>"
+        "<th style='width:12px;border-bottom:1px solid rgba(255,255,255,0.08);'></th>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>지표</th>"
+        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>선택</th>"
+        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>플래그</th>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>최신날짜</th>"
+        f"</tr></thead><tbody>{''.join(rows_html)}</tbody></table>"
+    )
+    return summary_html, table_html
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _get_macro6_signal_latest_date(indicator: str, years: int, benchmark_name: str = "S&P500", sync_bucket: str | None = None):
+    if indicator == "Bollinger Band":
+        ohlc = _macro3_fetch_benchmark_ohlcv(benchmark_name, years)
+        return None if ohlc.empty else ohlc.index.max()
+    series = _macro6_get_indicator_raw_series(indicator, years, benchmark_name=benchmark_name, sync_bucket=sync_bucket)
+    return None if series is None or series.empty else series.index.max()
+
+
+def _macro6_component_data_status(
+    component_cfg: dict,
+    years: int,
+    benchmark_name: str = "S&P500",
+    sync_bucket: str | None = None,
+) -> dict:
+    rows = []
+    for indicator in component_cfg.get("selected_indicators", []):
+        latest_date = _get_macro6_signal_latest_date(
+            indicator,
+            years,
+            benchmark_name=benchmark_name,
+            sync_bucket=sync_bucket,
+        )
+        rows.append({
+            "indicator": indicator,
+            "label": _MACRO3_INDICATOR_LABELS.get(indicator, indicator),
+            "latest_date": latest_date,
+            "note": _macro3_freshness_note(indicator, latest_date),
+        })
+    valid_rows = [row for row in rows if row["latest_date"] is not None and not pd.isna(row["latest_date"])]
+    bottleneck = min(valid_rows, key=lambda row: pd.Timestamp(row["latest_date"])) if valid_rows else None
+    return {"rows": rows, "bottleneck": bottleneck}
+
+
+def _build_macro6_status_panel(
+    benchmark_name: str,
+    years: int,
+    preset_cfg: dict,
+    combo_event_df: pd.DataFrame,
+    sync_bucket: str | None = None,
+):
+    if combo_event_df is None or combo_event_df.empty:
+        return "", ""
+    latest = combo_event_df.sort_values("date").iloc[-1]
+    combo_state = bool(latest.get("combo_risk_state", False))
+    active_count = int(latest.get("active_count", 0))
+    combo_n = int(latest.get("combo_n", len(preset_cfg.get("selected_indicators", []))))
+    basis_date = _macro_date_text(latest.get("date"))
+    next_exec = _macro3_next_execution_date(latest.get("date"), combo_event_df.get("date", []))
+    next_exec_date = _macro_date_text(next_exec) if next_exec is not None else "확인 필요"
+    status_text = "리스크 사이클 ON" if combo_state else "리스크 사이클 OFF"
+    status_color = "#FF8C69" if combo_state else "#4BFFB3"
+    if bool(latest.get("combo_start_signal", False)):
+        execution_text = f"리스크 시작 신호 · T+1 {next_exec_date} 축소 검토"
+    elif bool(latest.get("combo_end_signal", False)):
+        execution_text = f"리스크 종료 신호 · T+1 {next_exec_date} 재진입 검토"
+    else:
+        execution_text = "기준일 신규 시작/종료 신호 없음"
+    active_labels = []
+    entries = []
+    if preset_cfg.get("kind") == "combo2_final8":
+        component_cfgs = preset_cfg.get("component_cfgs", {})
+        for component_key in preset_cfg.get("components", []):
+            key = _macro3_indicator_key(component_key)
+            is_on = bool(latest.get(f"{key}_flag", False))
+            label = _macro3_component_label(component_key, component_cfgs.get(component_key))
+            if is_on:
+                active_labels.append(label)
+            data_status = _macro6_component_data_status(
+                component_cfgs.get(component_key, {}),
+                years,
+                benchmark_name=benchmark_name,
+                sync_bucket=sync_bucket,
+            )
+            bottleneck = data_status.get("bottleneck")
+            if bottleneck:
+                latest_text = (
+                    f"가장 오래된 사용값 {bottleneck['label']} "
+                    f"{_macro_date_text(bottleneck['latest_date'])}"
+                    f"{' · 지연' if bottleneck.get('note') == '지연' else ''}"
+                )
+            else:
+                latest_text = "확인 불가"
+            entries.append({
+                "label": label,
+                "selected": True,
+                "flag": is_on,
+                "latest_date": latest_text,
+            })
+    else:
+        selected = set(preset_cfg.get("selected_indicators", []))
+        for indicator in _MACRO3_INDICATOR_ORDER:
+            key = _macro3_indicator_key(indicator)
+            is_on = bool(latest.get(f"{key}_flag", False))
+            if is_on:
+                active_labels.append(_MACRO3_INDICATOR_LABELS.get(indicator, indicator))
+            latest_date = _get_macro6_signal_latest_date(indicator, years, benchmark_name=benchmark_name, sync_bucket=sync_bucket)
             freshness = _macro3_freshness_note(indicator, latest_date)
             latest_text = _macro_date_text(latest_date)
             if freshness == "지연":
@@ -7767,6 +8329,7 @@ def _macro6_group_consensus_html(
     blocking_map: dict,
     years: int,
     sync_bucket: str | None = None,
+    snapshot_map: dict | None = None,
 ) -> str:
     keys = [key for key in list(preset_keys) if key in preset_defs]
     total = len(list(preset_keys))
@@ -7782,18 +8345,8 @@ def _macro6_group_consensus_html(
     benchmark = _get_macro_benchmark("S&P500")
     for key in keys:
         cfg = preset_defs.get(key, {})
-        spx_s = _macro3_filter_confirmed_us_daily(_yf_close(benchmark["code"], max(years + 2, 5), sync_bucket=sync_bucket))
-        if spx_s is None or spx_s.empty:
-            return (
-                f"<span style='font-weight:700;color:#FFB86B;'>{label} 합의도 확인 필요</span>"
-                f"<span style='color:rgba(255,255,255,0.55);'> · 기준지수 데이터 없음</span>"
-            )
-        combo, _active = _compute_macro3_preset_signal_frame(
-            spx_s=spx_s,
-            benchmark_name="S&P500",
-            preset_cfg=cfg,
-            sync_bucket=sync_bucket,
-        )
+        snapshot = (snapshot_map or {}).get(key)
+        combo = snapshot.get("combo_frame", pd.DataFrame()) if snapshot else pd.DataFrame()
         if combo.empty:
             return (
                 f"<span style='font-weight:700;color:#FFB86B;'>{label} 합의도 확인 필요</span>"
@@ -7822,6 +8375,7 @@ def _build_macro6_backtest_panel(
     preset_order: tuple[str, ...] | list[str],
     years: int = 5,
     sync_bucket: str | None = None,
+    snapshot_map: dict | None = None,
 ) -> str:
     rows_html = []
     hold_metrics = _MACRO_META_BACKTEST_COMPARE["sp500_buyhold"]["metrics"]
@@ -7870,7 +8424,7 @@ def _build_macro6_backtest_panel(
         border = "1px solid rgba(120,126,231,0.34)" if is_selected else "1px solid transparent"
         current_state = None
         if key != "sp500_buyhold" and not _macro3_preset_blocking_reasons(cfg):
-            current_state = _compute_macro3_preset_current_state(cfg, years=years, sync_bucket=sync_bucket)
+            current_state = (snapshot_map or {}).get(key)
         current_state_html = "-" if current_state is None else _macro_flag_ratio_html(
             current_state.get("on_count", 0),
             current_state.get("start_count", current_state.get("total_count", 1)),
@@ -8042,6 +8596,185 @@ def _build_macro3_component_chart(
     if combo_spx is None or combo_spx.empty:
         combo_spx = spx_s
     combo, active_indicators = _compute_macro3_combo_signal_frame(
+        spx_s=combo_spx,
+        benchmark_name=benchmark_name,
+        selected_indicators=component_cfg.get("selected_indicators", []),
+        cfgs=component_cfg.get("cfgs", {}),
+        combo_k=int(component_cfg.get("combo_k", 1)),
+        combo_l=int(component_cfg.get("combo_l", 0)),
+        sync_bucket=sync_bucket,
+    )
+    if combo.empty:
+        return None
+    combo = combo.loc[combo.index >= spx_s.dropna().index.min()].copy()
+    price = spx_s.reindex(combo.index).dropna()
+    combo = combo.reindex(price.index)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=price.index,
+        y=price,
+        name=benchmark["label"],
+        line=dict(color="rgba(182,182,182,0.88)", width=1.55),
+    ))
+    start_y = price.reindex(combo.index[combo["combo_start_signal"].fillna(False)])
+    end_y = price.reindex(combo.index[combo["combo_end_signal"].fillna(False)])
+    if not start_y.empty:
+        fig.add_trace(go.Scatter(
+            x=start_y.index, y=start_y, mode="markers", name="component 시작",
+            marker=dict(symbol="triangle-down", size=9, color="rgba(210,55,55,0.95)"),
+            hovertemplate="<b>신호발생일 %{x|%Y-%m-%d}</b><br>component 시작: %{y:,.2f}<extra></extra>",
+        ))
+    if not end_y.empty:
+        fig.add_trace(go.Scatter(
+            x=end_y.index, y=end_y, mode="markers", name="component 종료",
+            marker=dict(symbol="triangle-up", size=9, color="rgba(80,160,255,0.92)"),
+            hovertemplate="<b>신호발생일 %{x|%Y-%m-%d}</b><br>component 종료: %{y:,.2f}<extra></extra>",
+        ))
+    selected_labels = " + ".join([_MACRO3_INDICATOR_LABELS.get(name, name) for name in active_indicators])
+    fig.update_layout(**_ml(_macro3_component_label(component_key, component_cfg), height=260))
+    fig.add_annotation(
+        xref="paper", yref="paper", x=0.01, y=0.97, showarrow=False,
+        text=f"{int(component_cfg.get('combo_k', 1))}/{len(active_indicators)} · 종료≤{int(component_cfg.get('combo_l', 0))}<br>{selected_labels}",
+        font=dict(size=10, color="#C8C8C8", family="Arial, sans-serif"),
+        align="left",
+        bgcolor="rgba(0,0,0,0.18)",
+        bordercolor="rgba(255,255,255,0.08)",
+        borderwidth=1,
+        borderpad=4,
+    )
+    return fig
+
+
+def _build_macro6_indicator_chart(
+    indicator: str,
+    years: int,
+    benchmark_name: str,
+    preset_cfg: dict,
+    spx_s: pd.Series,
+    show_raw: bool,
+    sync_bucket: str | None = None,
+):
+    cfg = preset_cfg.get("cfgs", {}).get(indicator)
+    if not cfg or not COMBO1_EXPANDED_SIGNALS_AVAILABLE:
+        return None
+    benchmark_index = spx_s.index if spx_s is not None else pd.DatetimeIndex([])
+    signal_df = _macro6_get_indicator_signal_frame(
+        indicator=indicator,
+        cfg=cfg,
+        benchmark_index=benchmark_index,
+        years=max(years + 2, 5),
+        benchmark_name=benchmark_name,
+        spx_s=spx_s,
+        sync_bucket=sync_bucket,
+    )
+    if signal_df.empty:
+        return None
+    benchmark = _get_macro_benchmark(benchmark_name)
+    title = _MACRO3_INDICATOR_LABELS.get(indicator, indicator)
+    fig = go.Figure()
+    if indicator == "Bollinger Band":
+        ohlc = _macro3_fetch_benchmark_ohlcv(benchmark_name, max(years + 2, 5))
+        if ohlc.empty:
+            return None
+        price = ohlc["Close"].reindex(signal_df.index).dropna()
+        signal_df = signal_df.reindex(price.index)
+        fig.add_trace(go.Scatter(x=price.index, y=price, name=benchmark["label"], line=dict(color="rgba(182,182,182,0.88)", width=1.55)))
+        for col, name, color, dash in [
+            ("bb_middle", "BB Middle", "rgba(216,195,106,0.74)", "solid"),
+            ("bb_upper", "BB Upper", "rgba(255,140,105,0.68)", "dot"),
+            ("bb_lower", "BB Lower", "rgba(120,220,255,0.72)", "dot"),
+        ]:
+            if col in signal_df.columns:
+                fig.add_trace(go.Scatter(
+                    x=signal_df.index,
+                    y=signal_df[col],
+                    name=name,
+                    line=dict(color=color, width=1.15, dash=dash),
+                ))
+        start_y = price.reindex(signal_df.index[signal_df["risk_start_signal"].fillna(False)])
+        end_y = price.reindex(signal_df.index[signal_df["risk_end_signal"].fillna(False)])
+        if not start_y.empty:
+            fig.add_trace(go.Scatter(x=start_y.index, y=start_y, mode="markers", name="리스크 시작", marker=dict(symbol="triangle-down", size=9, color="rgba(210,55,55,0.95)")))
+        if not end_y.empty:
+            fig.add_trace(go.Scatter(x=end_y.index, y=end_y, mode="markers", name="리스크 종료", marker=dict(symbol="triangle-up", size=9, color="rgba(80,160,255,0.92)")))
+        fig.update_layout(**_ml(title, height=300))
+        return fig
+
+    raw_series = _macro6_get_indicator_raw_series(indicator, max(years + 2, 5), benchmark_name=benchmark_name, spx_s=spx_s, sync_bucket=sync_bucket)
+    if raw_series is None or raw_series.empty:
+        return None
+    display_s = signal_df["value"].dropna() if "value" in signal_df.columns else raw_series.reindex(signal_df.index).dropna()
+    signal_df = signal_df.reindex(display_s.index)
+    ema_candidates = [col for col in signal_df.columns if col.startswith("ema")]
+    ema_col = ema_candidates[0] if ema_candidates else None
+    main_s = signal_df[ema_col].dropna() if ema_col else display_s
+    signal_df = signal_df.reindex(main_s.index)
+    if show_raw and ema_col:
+        raw_display = display_s.reindex(main_s.index).dropna()
+        if not raw_display.empty:
+            fig.add_trace(go.Scatter(
+                x=raw_display.index,
+                y=raw_display,
+                name=f"{indicator} 원본",
+                line=dict(color="rgba(182,182,182,0.22)", width=0.85),
+                hovertemplate=f"<b>%{{x|%Y-%m-%d}}</b><br>{indicator} 원본  %{{y:.2f}}<extra></extra>",
+            ))
+    fig.add_trace(go.Scatter(
+        x=main_s.index,
+        y=main_s,
+        name=ema_col.upper() if ema_col else indicator,
+        line=dict(color="rgba(216,195,106,0.32)", width=1.1),
+    ))
+    if "risk_start_line" in signal_df.columns:
+        fig.add_trace(go.Scatter(
+            x=signal_df.index,
+            y=signal_df["risk_start_line"],
+            name="시작선",
+            line=dict(color="rgba(255,140,105,0.55)", width=1.2, dash="dot"),
+        ))
+    if "risk_end_line" in signal_df.columns:
+        fig.add_trace(go.Scatter(
+            x=signal_df.index,
+            y=signal_df["risk_end_line"],
+            name="종료선",
+            line=dict(color="rgba(120,220,255,0.60)", width=1.2, dash="dot"),
+        ))
+    if indicator != "Index":
+        _add_spx_overlay(fig, main_s, spx_s, yaxis="y2", label=benchmark["label"])
+        fig.update_layout(yaxis2=_visible_price_yaxis("y", "right"))
+        marker_price = spx_s.reindex(signal_df.index).dropna() if spx_s is not None else pd.Series(dtype=float)
+        marker_axis = "y2"
+    else:
+        marker_price = main_s
+        marker_axis = "y"
+    _add_price_signal_markers(
+        fig,
+        signal_df.rename(columns={"risk_start_signal": "down_start_signal", "risk_end_signal": "down_end_signal"}),
+        marker_price,
+        yaxis=marker_axis,
+        prefix=indicator,
+    )
+    fig.update_layout(**_ml(title, height=300))
+    return fig
+
+
+def _build_macro6_component_chart(
+    component_key: str,
+    years: int,
+    benchmark_name: str,
+    preset_cfg: dict,
+    spx_s: pd.Series,
+    sync_bucket: str | None = None,
+):
+    component_cfg = preset_cfg.get("component_cfgs", {}).get(component_key)
+    if not component_cfg or spx_s is None or spx_s.empty:
+        return None
+    warmup_years = max(years + 2, 5)
+    benchmark = _get_macro_benchmark(benchmark_name)
+    combo_spx = _macro3_filter_confirmed_us_daily(_yf_close(benchmark["code"], warmup_years, sync_bucket=sync_bucket))
+    if combo_spx is None or combo_spx.empty:
+        combo_spx = spx_s
+    combo, active_indicators = _compute_macro6_combo_signal_frame(
         spx_s=combo_spx,
         benchmark_name=benchmark_name,
         selected_indicators=component_cfg.get("selected_indicators", []),
@@ -11155,6 +11888,21 @@ def main(page="signal"):
                 st.warning("Proxy-only 후보 프리셋을 불러오지 못했습니다.")
                 return
             _macro6_blocking = {key: _macro3_preset_blocking_reasons(value) for key, value in _macro6_presets.items()}
+            _macro6_snapshot_map = {}
+            _macro6_runtime_blocking = {key: [] for key in _macro6_presets}
+            with st.spinner("📡 Proxy-only 운영 스냅샷 계산 중..."):
+                for _key, _cfg in _macro6_presets.items():
+                    if _macro6_blocking.get(_key):
+                        continue
+                    _snapshot = _compute_macro6_operating_snapshot(_cfg, sync_bucket=_macro6_sync_bucket)
+                    if _snapshot is None:
+                        _macro6_runtime_blocking[_key].append("Proxy-only 현재 신호 계산 경로에서 결과를 만들지 못했습니다.")
+                    else:
+                        _macro6_snapshot_map[_key] = _snapshot
+            _macro6_blocking = {
+                key: list(dict.fromkeys(_macro6_blocking.get(key, []) + _macro6_runtime_blocking.get(key, [])))
+                for key in _macro6_presets
+            }
             _macro6_group_status_combo2 = _macro3_group_availability_html(
                 "조합2",
                 _MACRO6_COMBO2_ORDER,
@@ -11174,6 +11922,7 @@ def main(page="signal"):
                 _macro6_blocking,
                 years=5,
                 sync_bucket=_macro6_sync_bucket,
+                snapshot_map=_macro6_snapshot_map,
             )
             _macro6_consensus_combo1 = _macro6_group_consensus_html(
                 "조합1",
@@ -11182,6 +11931,7 @@ def main(page="signal"):
                 _macro6_blocking,
                 years=5,
                 sync_bucket=_macro6_sync_bucket,
+                snapshot_map=_macro6_snapshot_map,
             )
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
             st.markdown(
@@ -11308,23 +12058,27 @@ def main(page="signal"):
                 return
 
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
-            with st.spinner("📡 기준 지수 데이터 로딩 중..."):
-                _spx_s6 = _macro3_filter_confirmed_us_daily(_yf_close("^GSPC", _macro6_years, sync_bucket=_macro6_sync_bucket))
+            _macro6_selected_snapshot = _macro6_snapshot_map.get(_macro6_preset)
+            _spx_s6_full = _macro6_selected_snapshot.get("spx_s", pd.Series(dtype=float)) if _macro6_selected_snapshot else pd.Series(dtype=float)
+            _macro6_spx_cutoff = pd.Timestamp.now().normalize() - pd.DateOffset(years=int(_macro6_years))
+            _spx_s6 = _spx_s6_full.loc[_spx_s6_full.index >= _macro6_spx_cutoff].dropna() if not _spx_s6_full.empty else pd.Series(dtype=float)
+            if _spx_s6.empty and not _spx_s6_full.empty:
+                _spx_s6 = _spx_s6_full.dropna()
             if _spx_s6 is None or _spx_s6.empty:
                 st.warning("기준 지수 데이터를 불러오지 못했습니다.")
                 return
 
             with st.spinner("📡 Proxy-only 후보 데이터 로딩 중..."):
-                _macro6_combo_fig, _macro6_combo_event_df = make_macro3_combo_dynamic_chart(
+                _macro6_combo_fig, _macro6_combo_event_df = _make_macro6_combo_chart_from_snapshot(
                     years=_macro6_years,
                     benchmark_name="S&P500",
                     preset_cfg=_macro6_preset_cfg,
+                    snapshot=_macro6_selected_snapshot,
                     return_debug=True,
-                    sync_bucket=_macro6_sync_bucket,
                 )
                 if _macro6_is_combo2:
                     _macro6_indicator_charts = {
-                        _component: _build_macro3_component_chart(
+                        _component: _build_macro6_component_chart(
                             component_key=_component,
                             years=_macro6_years,
                             benchmark_name="S&P500",
@@ -11336,7 +12090,7 @@ def main(page="signal"):
                     }
                 else:
                     _macro6_indicator_charts = {
-                        _indicator: _build_macro3_indicator_chart(
+                        _indicator: _build_macro6_indicator_chart(
                             indicator=_indicator,
                             years=_macro6_years,
                             benchmark_name="S&P500",
@@ -11352,19 +12106,20 @@ def main(page="signal"):
                 st.warning("선택한 Proxy-only 후보 차트를 만들지 못했습니다. 데이터 지연 또는 필수 지표 누락 여부를 확인해 주세요.")
                 return
 
-            _macro6_status_html, _macro6_status_table_html = _build_macro3_status_panel(
+            _macro6_full_event_df = _macro6_selected_snapshot.get("event_frame", _macro6_combo_event_df) if _macro6_selected_snapshot else _macro6_combo_event_df
+            _macro6_status_html, _macro6_status_table_html = _build_macro6_status_panel(
                 benchmark_name="S&P500",
                 years=_macro6_years,
                 preset_cfg=_macro6_preset_cfg,
-                combo_event_df=_macro6_combo_event_df,
+                combo_event_df=_macro6_full_event_df,
                 sync_bucket=_macro6_sync_bucket,
             )
             if _macro6_status_html:
                 st.markdown(
-                    _macro6_status_html.replace("신규 전환 신호 없음", "기준일 신규 시작/종료 신호 없음"),
+                    _macro6_status_html,
                     unsafe_allow_html=True,
                 )
-            _macro6_duration_html = _macro6_state_duration_html(_macro6_combo_event_df)
+            _macro6_duration_html = _macro6_state_duration_html(_macro6_full_event_df)
             if _macro6_duration_html:
                 st.markdown(_macro6_duration_html, unsafe_allow_html=True)
 
@@ -11374,6 +12129,7 @@ def main(page="signal"):
                 preset_order=_MACRO6_COMBO2_ORDER,
                 years=_macro6_years,
                 sync_bucket=_macro6_sync_bucket,
+                snapshot_map=_macro6_snapshot_map,
             )
             _macro6_bt_compare_combo1_html = _build_macro6_backtest_panel(
                 _macro6_preset,
@@ -11381,6 +12137,7 @@ def main(page="signal"):
                 preset_order=_MACRO6_COMBO1_ORDER,
                 years=_macro6_years,
                 sync_bucket=_macro6_sync_bucket,
+                snapshot_map=_macro6_snapshot_map,
             )
             if _macro6_bt_compare_combo2_html:
                 with st.expander("백테스트 비교 보기 · 조합2", expanded=False):
