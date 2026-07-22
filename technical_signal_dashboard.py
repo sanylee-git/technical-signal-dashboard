@@ -9828,7 +9828,7 @@ def main(page="signal"):
             ("market", "🌐 시장 내부지표"),
         ]
         if st.session_state.get("market_macro_section") not in {k for k, _ in _market_macro_sections}:
-            st.session_state["market_macro_section"] = "macro5"
+            st.session_state["market_macro_section"] = "macro6"
         _market_macro_section = st.radio(
             "섹션 선택",
             options=[k for k, _ in _market_macro_sections],
