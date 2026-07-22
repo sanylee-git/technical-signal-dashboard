@@ -91,7 +91,7 @@ _IS_MARKET_MACRO_APP = any(
 )
 
 def _configure_streamlit_page(page="signal"):
-    is_market_macro_app = page in ("market_macro", "market", "macro", "macro2", "macro3", "macro4", "macro5") or _IS_MARKET_MACRO_APP
+    is_market_macro_app = page in ("market_macro", "market", "macro", "macro2", "macro3", "macro4", "macro5", "macro6") or _IS_MARKET_MACRO_APP
     st.set_page_config(
         page_title="시장/매크로 지표" if is_market_macro_app else "기술적 신호 스캐너",
         page_icon="🏔️" if is_market_macro_app else "🎯",
@@ -6368,6 +6368,22 @@ _MACRO3_PARITY_OUTPUT_DIR = os.path.join(
     "sp500",
     "macro3_dashboard_validation_v1",
 )
+_MACRO6_PROXY_REVIEW_CSV = os.path.join(
+    _DIR,
+    "combo1_expanded_v1",
+    "outputs_sp500_final_v1",
+    "sp500",
+    "credit_proxy_kl_restore_pre20y_check_v1",
+    "final_user_review_candidates_updated.csv",
+)
+_MACRO6_PROXY_BACKTEST_CSV = os.path.join(
+    _DIR,
+    "combo1_expanded_v1",
+    "outputs_sp500_final_v1",
+    "sp500",
+    "credit_proxy_selection_rerun_v1",
+    "proxy_only_dashboard_review_candidates.csv",
+)
 _MACRO3_BACKTEST_GROUP_SA = (
     "macro5_combo2_final8_1",
     "macro5_combo2_final8_2",
@@ -6388,6 +6404,23 @@ _MACRO3_BACKTEST_GROUP_BCD = (
     "macro5_combo1_final8_5",
     "macro5_combo1_final8_7",
 )
+_MACRO6_COMBO2_CANDIDATES = (
+    ("macro6_combo2_1", "m8_8112998890601066", "Main"),
+    ("macro6_combo2_2", "m6_6624758514725359", "시장참여형"),
+    ("macro6_combo2_3", "m7_7836479199389981", "안정 방어형"),
+    ("macro6_combo2_4", "m7_7304308638289210", "고수익형"),
+    ("macro6_combo2_5", "m4_4001137875", "T+2 균형형"),
+    ("macro6_combo2_6", "m5_5010704845", "고수익 방어형"),
+)
+_MACRO6_COMBO1_CANDIDATES = (
+    ("macro6_combo1_1", "combo1_proxy_540347d549244000", "Main"),
+    ("macro6_combo1_2", "combo1_proxy_ece4aa198a4060ff", "수익형"),
+    ("macro6_combo1_3", "combo1_proxy_08160f7db8770aa9", "균형 방어형"),
+    ("macro6_combo1_4", "combo1_proxy_f37033c32516e147", "강방어형"),
+    ("macro6_combo1_5", "combo1_proxy_c3a64264c2e842f5", "저이탈형"),
+)
+_MACRO6_COMBO2_ORDER = tuple(key for key, _, _ in _MACRO6_COMBO2_CANDIDATES)
+_MACRO6_COMBO1_ORDER = tuple(key for key, _, _ in _MACRO6_COMBO1_CANDIDATES)
 _MACRO3_INDICATOR_ORDER = [
     "Index",
     "HY",
@@ -6797,6 +6830,239 @@ def _load_macro3_final8_presets():
     combo2_first = {key: value for key, value in presets.items() if value.get("kind") == "combo2_final8"}
     combo1_after = {key: value for key, value in presets.items() if value.get("kind") != "combo2_final8"}
     return {**combo2_first, **combo1_after}
+
+
+def _macro6_safe_row_value(row: dict | None, key: str, default=None):
+    if not row or key not in row:
+        return default
+    value = row.get(key)
+    if value is None:
+        return default
+    try:
+        if pd.isna(value):
+            return default
+    except Exception:
+        pass
+    return value
+
+
+def _macro6_metric_asset_from_rows(primary: dict, secondary: dict | None, key: str) -> str:
+    value = _macro6_safe_row_value(primary, key, _macro6_safe_row_value(secondary, key))
+    if value is None:
+        return "-"
+    try:
+        return _macro3_metric_asset(value)
+    except Exception:
+        return "-"
+
+
+def _macro6_metric_percent_from_rows(primary: dict, secondary: dict | None, key: str) -> str:
+    value = _macro6_safe_row_value(primary, key, _macro6_safe_row_value(secondary, key))
+    if value is None:
+        return "-"
+    try:
+        return _macro3_metric_percent(value)
+    except Exception:
+        return "-"
+
+
+def _macro6_metric_int_from_rows(primary: dict, secondary: dict | None, key: str) -> str:
+    value = _macro6_safe_row_value(primary, key, _macro6_safe_row_value(secondary, key))
+    if value is None:
+        return "-"
+    try:
+        return str(int(round(float(value))))
+    except Exception:
+        return "-"
+
+
+def _macro6_metric_cagr_from_rows(primary: dict, secondary: dict | None) -> str:
+    asset = _macro6_safe_row_value(primary, "final_asset_20y", _macro6_safe_row_value(secondary, "final_asset_20y"))
+    start = _macro6_safe_row_value(primary, "date_start", _macro6_safe_row_value(secondary, "date_start"))
+    end = _macro6_safe_row_value(primary, "date_end", _macro6_safe_row_value(secondary, "date_end"))
+    try:
+        start_dt = pd.Timestamp(start)
+        end_dt = pd.Timestamp(end)
+        years = max((end_dt - start_dt).days / 365.25, 0.01)
+        cagr = (float(asset) / 100.0) ** (1.0 / years) - 1.0
+        return _macro3_metric_percent(cagr)
+    except Exception:
+        return "-"
+
+
+def _macro6_metrics_from_rows(primary: dict, secondary: dict | None = None) -> dict:
+    short_cycle_count = _macro6_metric_int_from_rows(primary, secondary, "short_cycle_count_20y")
+    if short_cycle_count == "-":
+        try:
+            cycles = float(_macro6_safe_row_value(primary, "cycle_count_20y", _macro6_safe_row_value(secondary, "cycle_count_20y", 0)))
+            ratio = float(_macro6_safe_row_value(primary, "short_cycle_ratio_20y", _macro6_safe_row_value(secondary, "short_cycle_ratio_20y", 0)))
+            short_cycle_count = str(int(round(cycles * ratio)))
+        except Exception:
+            short_cycle_count = "-"
+    return {
+        "10Y 자산": _macro6_metric_asset_from_rows(primary, secondary, "final_asset_10y"),
+        "20Y 자산": _macro6_metric_asset_from_rows(primary, secondary, "final_asset_20y"),
+        "20Y CAGR": _macro6_metric_cagr_from_rows(primary, secondary),
+        "10Y MDD": _macro6_metric_percent_from_rows(primary, secondary, "total_mdd_10y"),
+        "20Y MDD": _macro6_metric_percent_from_rows(primary, secondary, "total_mdd_20y"),
+        "20Y Risk-off": _macro6_metric_percent_from_rows(primary, secondary, "risk_off_share_20y"),
+        "20Y Cycle": _macro6_metric_int_from_rows(primary, secondary, "cycle_count_20y"),
+        "짧은 Cycle": short_cycle_count,
+    }
+
+
+def _macro6_unavailable_preset(preset_key: str, candidate_key: str, role: str, group_label: str, reason: str) -> dict:
+    return {
+        "kind": "unavailable",
+        "label": f"{group_label} · {role} ({candidate_key})",
+        "benchmark": "S&P500",
+        "candidate_key": candidate_key,
+        "combo_id": candidate_key,
+        "selected_indicators": [],
+        "components": [],
+        "component_cfgs": {},
+        "combo_k": 1,
+        "combo_l": 0,
+        "combo_m": 0,
+        "cfgs": {},
+        "metrics": {},
+        "review_status": "사용자 선택 완료·운영 미승인 대시보드 검토 후보",
+        "unavailable_reason": reason,
+        "preset_key": preset_key,
+    }
+
+
+@st.cache_data(show_spinner=False)
+def _load_macro6_proxy_final_presets():
+    presets = {}
+    candidate_defs = list(_MACRO6_COMBO2_CANDIDATES) + list(_MACRO6_COMBO1_CANDIDATES)
+    if not os.path.exists(_MACRO6_PROXY_REVIEW_CSV):
+        for preset_key, candidate_key, role in candidate_defs:
+            group_label = "조합2" if preset_key.startswith("macro6_combo2") else "조합1"
+            presets[preset_key] = _macro6_unavailable_preset(
+                preset_key,
+                candidate_key,
+                role,
+                group_label,
+                "Proxy-only 사용자 검토 후보 source-of-truth 파일이 없습니다.",
+            )
+        return presets
+
+    review = pd.read_csv(_MACRO6_PROXY_REVIEW_CSV)
+    review_by_key = {str(row.get("candidate_key")): row for row in review.to_dict("records") if pd.notna(row.get("candidate_key"))}
+    backtest_by_key = {}
+    if os.path.exists(_MACRO6_PROXY_BACKTEST_CSV):
+        backtest = pd.read_csv(_MACRO6_PROXY_BACKTEST_CSV)
+        backtest_by_key = {str(row.get("candidate_key")): row for row in backtest.to_dict("records") if pd.notna(row.get("candidate_key"))}
+    component_presets = _load_macro3_top44_component_presets()
+
+    for preset_key, candidate_key, role in _MACRO6_COMBO2_CANDIDATES:
+        row = review_by_key.get(candidate_key)
+        backtest_row = backtest_by_key.get(candidate_key)
+        label = f"조합2 · {role} ({candidate_key})"
+        if row is None:
+            presets[preset_key] = _macro6_unavailable_preset(
+                preset_key,
+                candidate_key,
+                role,
+                "조합2",
+                "지정한 사용자 검토 후보 파일에 candidate_key가 없습니다.",
+            )
+            continue
+        raw_components = str(_macro6_safe_row_value(row, "component_keys", "")).strip()
+        components = [part.strip() for part in raw_components.split("+") if part.strip()]
+        missing = [key for key in components if key not in component_presets]
+        try:
+            m = int(round(float(_macro6_safe_row_value(row, "m", len(components)))))
+            combo_k = int(round(float(_macro6_safe_row_value(row, "start_k"))))
+            combo_l = int(round(float(_macro6_safe_row_value(row, "end_l"))))
+        except Exception:
+            m = len(components)
+            combo_k = 1
+            combo_l = 0
+        if missing or not components or len(components) != m or not (0 <= combo_l < combo_k <= m):
+            reasons = []
+            if missing:
+                reasons.append(f"component 정의 누락: {', '.join(missing)}")
+            if not components:
+                reasons.append("component_keys가 비어 있습니다.")
+            if len(components) != m:
+                reasons.append(f"component 수 불일치: {len(components)} / {m}")
+            if not (0 <= combo_l < combo_k <= m):
+                reasons.append("k/l 조건이 유효하지 않습니다.")
+            presets[preset_key] = _macro6_unavailable_preset(
+                preset_key,
+                candidate_key,
+                role,
+                "조합2",
+                " · ".join(reasons),
+            )
+            continue
+        presets[preset_key] = {
+            "kind": "combo2_final8",
+            "label": label,
+            "benchmark": "S&P500",
+            "candidate_key": candidate_key,
+            "combo_id": candidate_key,
+            "selected_indicators": components,
+            "components": components,
+            "component_cfgs": {key: component_presets[key] for key in components},
+            "combo_k": combo_k,
+            "combo_l": combo_l,
+            "combo_m": m,
+            "cfgs": {},
+            "metrics": _macro6_metrics_from_rows(row, backtest_row),
+            "role_tags": role,
+            "review_status": "사용자 선택 완료·운영 미승인 대시보드 검토 후보",
+            "selection_reason": str(_macro6_safe_row_value(row, "final_selection_reason", _macro6_safe_row_value(row, "selection_reason", ""))).strip(),
+            "dashboard_review_focus": str(_macro6_safe_row_value(row, "dashboard_review_focus", "")).strip(),
+            "reconstructed_combo_key": "|".join(components) + f"|start_k={combo_k}|end_l={combo_l}",
+            "preset_key": preset_key,
+        }
+
+    for preset_key, candidate_key, role in _MACRO6_COMBO1_CANDIDATES:
+        row = review_by_key.get(candidate_key)
+        backtest_row = backtest_by_key.get(candidate_key)
+        label = f"조합1 · {role} ({candidate_key})"
+        if row is None:
+            presets[preset_key] = _macro6_unavailable_preset(
+                preset_key,
+                candidate_key,
+                role,
+                "조합1",
+                "지정한 사용자 검토 후보 파일에 candidate_key가 없습니다.",
+            )
+            continue
+        parsed = _parse_macro3_combo_key(_macro6_safe_row_value(row, "combo_key", ""))
+        if not parsed["selected_indicators"] or parsed["start_k"] is None or parsed["end_l"] is None:
+            presets[preset_key] = _macro6_unavailable_preset(
+                preset_key,
+                candidate_key,
+                role,
+                "조합1",
+                "조합1 combo_key를 기존 parser로 해석하지 못했습니다.",
+            )
+            continue
+        presets[preset_key] = {
+            "kind": "combo1_final8",
+            "label": label,
+            "benchmark": "S&P500",
+            "candidate_key": candidate_key,
+            "combo_id": candidate_key,
+            "selected_indicators": parsed["selected_indicators"],
+            "combo_k": int(parsed["start_k"]),
+            "combo_l": int(parsed["end_l"]),
+            "combo_m": len(parsed["selected_indicators"]),
+            "cfgs": parsed["cfgs"],
+            "metrics": _macro6_metrics_from_rows(row, backtest_row),
+            "role_tags": role,
+            "review_status": "사용자 선택 완료·운영 미승인 대시보드 검토 후보",
+            "selection_reason": str(_macro6_safe_row_value(row, "final_selection_reason", _macro6_safe_row_value(row, "selection_reason", ""))).strip(),
+            "dashboard_review_focus": str(_macro6_safe_row_value(row, "dashboard_review_focus", "")).strip(),
+            "reconstructed_combo_key": str(_macro6_safe_row_value(row, "combo_key", "")).strip(),
+            "preset_key": preset_key,
+        }
+    return {key: presets[key] for key, _, _ in candidate_defs if key in presets}
 
 
 def _macro3_fetch_benchmark_ohlcv(benchmark_name: str, years: int) -> pd.DataFrame:
@@ -7467,6 +7733,142 @@ def _build_macro3_backtest_panel(
         f"</tr></thead><tbody>{''.join(rows_html)}</tbody></table>"
     )
     return "", compare_html
+
+
+def _macro6_state_duration_html(combo_event_df: pd.DataFrame) -> str:
+    if combo_event_df is None or combo_event_df.empty or "combo_risk_state" not in combo_event_df.columns:
+        return ""
+    ordered = combo_event_df.sort_values("date").reset_index(drop=True)
+    latest = ordered.iloc[-1]
+    current_state = bool(latest.get("combo_risk_state", False))
+    start_idx = len(ordered) - 1
+    while start_idx > 0 and bool(ordered.iloc[start_idx - 1].get("combo_risk_state", False)) == current_state:
+        start_idx -= 1
+    if start_idx == 0:
+        start_text = "계산범위 이전"
+    else:
+        start_text = _macro_date_text(ordered.iloc[start_idx].get("date"))
+    duration_days = len(ordered) - start_idx
+    return (
+        '<div style="display:flex;gap:12px 16px;align-items:center;flex-wrap:wrap;'
+        'padding:0 0 14px 0;color:#CFCFCF;font-size:12px;line-height:1.42;">'
+        f"<span><b>현재 상태 시작일</b> {start_text}</span>"
+        f"<span><b>현재 상태 지속 거래일</b> {duration_days}</span>"
+        "</div>"
+    )
+
+
+def _macro6_group_consensus_html(
+    label: str,
+    preset_keys,
+    preset_defs: dict,
+    blocking_map: dict,
+    years: int,
+    sync_bucket: str | None = None,
+) -> str:
+    keys = [key for key in list(preset_keys) if key in preset_defs]
+    total = len(list(preset_keys))
+    blocked_keys = [key for key in list(preset_keys) if key not in preset_defs or blocking_map.get(key)]
+    if blocked_keys:
+        available = max(0, total - len(blocked_keys))
+        return (
+            f"<span style='font-weight:700;color:#FFB86B;'>{label} 합의도 확인 필요</span>"
+            f"<span style='color:rgba(255,255,255,0.55);'> · 계산 가능 {available}/{total}</span>"
+        )
+    series_map = {}
+    basis_index = None
+    benchmark = _get_macro_benchmark("S&P500")
+    for key in keys:
+        cfg = preset_defs.get(key, {})
+        spx_s = _macro3_filter_confirmed_us_daily(_yf_close(benchmark["code"], max(years + 2, 5), sync_bucket=sync_bucket))
+        if spx_s is None or spx_s.empty:
+            return (
+                f"<span style='font-weight:700;color:#FFB86B;'>{label} 합의도 확인 필요</span>"
+                f"<span style='color:rgba(255,255,255,0.55);'> · 기준지수 데이터 없음</span>"
+            )
+        combo, _active = _compute_macro3_preset_signal_frame(
+            spx_s=spx_s,
+            benchmark_name="S&P500",
+            preset_cfg=cfg,
+            sync_bucket=sync_bucket,
+        )
+        if combo.empty:
+            return (
+                f"<span style='font-weight:700;color:#FFB86B;'>{label} 합의도 확인 필요</span>"
+                f"<span style='color:rgba(255,255,255,0.55);'> · {cfg.get('label', key)} 계산 불가</span>"
+            )
+        state = combo["combo_risk_state"].astype(bool).dropna()
+        series_map[key] = state
+        basis_index = state.index if basis_index is None else basis_index.intersection(state.index)
+    if basis_index is None or len(basis_index) == 0:
+        return (
+            f"<span style='font-weight:700;color:#FFB86B;'>{label} 합의도 확인 필요</span>"
+            f"<span style='color:rgba(255,255,255,0.55);'> · 공통 기준일 없음</span>"
+        )
+    basis_date = pd.Timestamp(basis_index.max()).normalize()
+    risk_off = sum(1 for state in series_map.values() if bool(state.reindex([basis_date]).iloc[0]))
+    color = "#FF8C69" if risk_off > 0 else "#4BFFB3"
+    return (
+        f"<span style='font-weight:700;color:{color};'>{label} Risk-off {risk_off}/{total}</span>"
+        f"<span style='color:rgba(255,255,255,0.55);'> · 기준일 {_macro_date_text(basis_date)}</span>"
+    )
+
+
+def _build_macro6_backtest_panel(
+    preset_key: str,
+    preset_defs: dict,
+    preset_order: tuple[str, ...] | list[str],
+    years: int = 5,
+    sync_bucket: str | None = None,
+) -> str:
+    rows_html = []
+    for key in [item for item in preset_order if item in preset_defs]:
+        cfg = preset_defs[key]
+        metrics = cfg.get("metrics", {})
+        is_selected = key == preset_key
+        bg = "rgba(120,126,231,0.16)" if is_selected else "transparent"
+        border = "1px solid rgba(120,126,231,0.34)" if is_selected else "1px solid transparent"
+        current_state = None
+        if not _macro3_preset_blocking_reasons(cfg):
+            current_state = _compute_macro3_preset_current_state(cfg, years=years, sync_bucket=sync_bucket)
+        current_state_html = "-" if current_state is None else _macro_flag_ratio_html(
+            current_state.get("on_count", 0),
+            current_state.get("start_count", current_state.get("total_count", 1)),
+            current_state.get("is_on"),
+        )
+        role = str(cfg.get("role_tags", "")).strip()
+        candidate_key = str(cfg.get("candidate_key", key))
+        label = f"{role}<br><span style='font-size:10.5px;color:rgba(255,255,255,0.55);'>{candidate_key}</span>" if role else cfg.get("label", key)
+        rows_html.append(
+            f"<tr style='background:{bg};border-top:{border};border-bottom:{border};'>"
+            f"<td style='padding:7px 8px;color:#EDEDED;font-weight:700;line-height:1.28;'>{label}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{metrics.get('10Y 자산', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{metrics.get('20Y 자산', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{metrics.get('20Y CAGR', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{metrics.get('10Y MDD', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{metrics.get('20Y MDD', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{metrics.get('20Y Risk-off', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{metrics.get('20Y Cycle', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{metrics.get('짧은 Cycle', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:center;'>{current_state_html}</td></tr>"
+        )
+    if not rows_html:
+        return ""
+    return (
+        "<table style='width:100%;border-collapse:collapse;font-size:12px;'>"
+        "<thead><tr>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>역할 / 후보</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>10Y 자산</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>20Y 자산</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>20Y CAGR</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>10Y MDD</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>20Y MDD</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>20Y Risk-off</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>20Y Cycle</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>짧은 Cycle</th>"
+        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>현재</th>"
+        f"</tr></thead><tbody>{''.join(rows_html)}</tbody></table>"
+    )
 
 
 def _build_macro3_indicator_chart(
@@ -9145,7 +9547,7 @@ def main(page="signal"):
             st.session_state["intra_interval"] = _intra_interval_param
         st.session_state["_last_scan_nav_sig"] = _scan_nav_sig
 
-    if page in ("market_macro", "macro2", "macro3"):
+    if page in ("market_macro", "macro2", "macro3", "macro6"):
         st.markdown("""
             <style>
             [data-testid="stSidebar"] { display: none !important; }
@@ -9154,7 +9556,7 @@ def main(page="signal"):
         """, unsafe_allow_html=True)
 
     # ─── 사이드바 ─────────────────────────────────────────────
-    if page not in ("market_macro", "macro2", "macro3"):
+    if page not in ("market_macro", "macro2", "macro3", "macro6"):
       with st.sidebar:
         # 즐겨찾기 파일 오류가 있을 때만 경고 표시
         if st.session_state.get('_fav_load_err'):
@@ -9389,6 +9791,7 @@ def main(page="signal"):
         "macro3": ("MACRO INDICATORS 3", "🧪 매크로 지표 3"),
         "macro4": ("MACRO INDICATORS 4", "🧪 매크로 지표 4"),
         "macro5": ("MACRO INDICATORS 5", "🧪 매크로 지표 3"),
+        "macro6": ("MACRO INDICATORS 6", "🧪 매크로 지표 4"),
         "all": ("TECHNICAL SIGNAL SCANNER", "🎯 기술적 신호 스캐너"),
     }
     _eyebrow, _title = _page_titles.get(page, _page_titles["signal"])
@@ -9421,6 +9824,7 @@ def main(page="signal"):
             ("macro", "🌍 매크로 지표"),
             ("macro4", "🧪 매크로 지표 2"),
             ("macro5", "🧪 매크로 지표 3"),
+            ("macro6", "🧪 매크로 지표 4"),
             ("market", "🌐 시장 내부지표"),
         ]
         if st.session_state.get("market_macro_section") not in {k for k, _ in _market_macro_sections}:
@@ -9446,6 +9850,8 @@ def main(page="signal"):
     elif page == "macro4":
         tab1, tab2, tab3 = None, None, st.container()
     elif page == "macro5":
+        tab1, tab2, tab3 = None, None, st.container()
+    elif page == "macro6":
         tab1, tab2, tab3 = None, None, st.container()
     else:
         st.error(f"알 수 없는 페이지입니다: {page}")
@@ -10661,6 +11067,311 @@ def main(page="signal"):
                 elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
             )
 
+    def render_macro6_proxy_final_section(container):
+        with container:
+            _started = time.perf_counter()
+            st.markdown(
+                '<div class="macro2-helper-text">Proxy-only 신용지표 기준 사용자 선택 완료·운영 미승인 후보를 최신 Yahoo/FRED 데이터와 백테스트 availability 정책으로 재계산해 비교합니다.</div>',
+                unsafe_allow_html=True,
+            )
+            _macro6_sync_bucket = _macro_sync_bucket(60)
+            _render_macro_combo_common_css()
+            st.markdown("""
+            <style>
+            .st-key-macro6_preset div[data-baseweb="select"] > div,
+            .st-key-macro6_benchmark div[data-baseweb="select"] > div,
+            .st-key-macro6_selected_codes div[data-baseweb="select"] > div,
+            .st-key-macro6_years div[data-baseweb="slider"] + div,
+            .st-key-macro6_show_raw label,
+            .st-key-macro6_show_raw span,
+            .st-key-macro6_show_raw p {
+                font-size: 12px !important;
+                line-height: 1.35 !important;
+                color: rgba(255,255,255,0.92) !important;
+            }
+            .st-key-macro6_preset div[data-baseweb="select"] > div,
+            .st-key-macro6_benchmark div[data-baseweb="select"] > div,
+            .st-key-macro6_selected_codes div[data-baseweb="select"] > div {
+                min-height: 2.35rem;
+                border-color: rgba(95,86,214,0.72) !important;
+                background: rgba(52,44,112,0.22) !important;
+                box-shadow: none !important;
+                line-height: 1.32 !important;
+            }
+            .st-key-macro6_selected_codes [data-baseweb="tag"] {
+                background: rgba(92,79,214,0.96) !important;
+                color: #F6F4FF !important;
+                font-size: 11px !important;
+                line-height: 1.25 !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
+            _macro6_presets = _load_macro6_proxy_final_presets()
+            if not _macro6_presets:
+                st.warning("Proxy-only 후보 프리셋을 불러오지 못했습니다.")
+                return
+            _macro6_blocking = {key: _macro3_preset_blocking_reasons(value) for key, value in _macro6_presets.items()}
+            _macro6_group_status_combo2 = _macro3_group_availability_html(
+                "조합2",
+                _MACRO6_COMBO2_ORDER,
+                _macro6_presets,
+                _macro6_blocking,
+            )
+            _macro6_group_status_combo1 = _macro3_group_availability_html(
+                "조합1",
+                _MACRO6_COMBO1_ORDER,
+                _macro6_presets,
+                _macro6_blocking,
+            )
+            _macro6_consensus_combo2 = _macro6_group_consensus_html(
+                "조합2",
+                _MACRO6_COMBO2_ORDER,
+                _macro6_presets,
+                _macro6_blocking,
+                years=5,
+                sync_bucket=_macro6_sync_bucket,
+            )
+            _macro6_consensus_combo1 = _macro6_group_consensus_html(
+                "조합1",
+                _MACRO6_COMBO1_ORDER,
+                _macro6_presets,
+                _macro6_blocking,
+                years=5,
+                sync_bucket=_macro6_sync_bucket,
+            )
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            st.markdown(
+                f"""
+                <div class="macro2-helper-text">
+                    {_macro6_group_status_combo2}
+                    <span style="color:rgba(255,255,255,0.36);padding:0 8px;">|</span>
+                    {_macro6_group_status_combo1}
+                </div>
+                <div class="macro2-helper-text" style="margin-top:6px;">
+                    {_macro6_consensus_combo2}
+                    <span style="color:rgba(255,255,255,0.36);padding:0 8px;">|</span>
+                    {_macro6_consensus_combo1}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            _macro6_preset_order = list(_MACRO6_COMBO2_ORDER) + list(_MACRO6_COMBO1_ORDER)
+            _macro6_preset_order = [key for key in _macro6_preset_order if key in _macro6_presets]
+            if not _macro6_preset_order:
+                st.warning("표시 가능한 Proxy-only 후보가 없습니다.")
+                return
+            if st.session_state.get("macro6_preset") not in _macro6_preset_order:
+                st.session_state["macro6_preset"] = _macro6_preset_order[0]
+
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            _l61, _l62, _l63, _l64 = st.columns([1.8, 1.0, 2.2, 1.0], vertical_alignment="bottom")
+            with _l61:
+                st.markdown('<div class="macro2-control-label">조합 프리셋</div>', unsafe_allow_html=True)
+            with _l62:
+                st.markdown('<div class="macro2-control-label">기준지수</div>', unsafe_allow_html=True)
+            with _l63:
+                st.markdown('<div class="macro2-control-label">기간</div>', unsafe_allow_html=True)
+            with _l64:
+                st.markdown('<div class="macro2-control-label">보조선 표시</div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
+
+            _m61, _m62, _m63, _m64 = st.columns([1.8, 1.0, 2.2, 1.0], vertical_alignment="bottom")
+            with _m61:
+                _macro6_preset = st.selectbox(
+                    "조합 프리셋",
+                    options=_macro6_preset_order,
+                    index=_macro6_preset_order.index(st.session_state["macro6_preset"]),
+                    format_func=lambda x: _macro6_presets[x]["label"],
+                    key="macro6_preset",
+                    label_visibility="collapsed",
+                )
+            _macro6_preset_cfg = _macro6_presets[_macro6_preset]
+            _macro6_is_combo2 = _macro6_preset_cfg.get("kind") == "combo2_final8" or bool(_macro6_preset_cfg.get("components"))
+            with _m62:
+                st.selectbox(
+                    "기준지수",
+                    options=["S&P500"],
+                    index=0,
+                    key="macro6_benchmark",
+                    label_visibility="collapsed",
+                    disabled=True,
+                )
+            with _m63:
+                _yr_opts6 = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년', 15: '15년', 20: '20년'}
+                _macro6_years = st.select_slider(
+                    "기간",
+                    options=list(_yr_opts6.keys()),
+                    value=5,
+                    format_func=lambda x: _yr_opts6[x],
+                    key="macro6_years",
+                    label_visibility="collapsed",
+                )
+            with _m64:
+                st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
+                _show_raw_macro6 = st.checkbox("보조선 표시", value=False, key="macro6_show_raw", label_visibility="collapsed")
+
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            _l65, _l66 = st.columns([4.4, 1.6], vertical_alignment="bottom")
+            with _l65:
+                st.markdown('<div class="macro2-control-label">조합 지표</div>', unsafe_allow_html=True)
+            with _l66:
+                st.markdown('<div class="macro2-control-label">리스크 기준</div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
+
+            _m65, _m66 = st.columns([4.4, 1.6], vertical_alignment="bottom")
+            with _m65:
+                _macro6_options = _macro6_preset_cfg.get("components", []) if _macro6_is_combo2 else _MACRO3_INDICATOR_ORDER
+                _macro6_default = _macro6_preset_cfg.get("components", []) if _macro6_is_combo2 else _macro6_preset_cfg.get("selected_indicators", [])
+                if list(st.session_state.get("macro6_selected_codes", [])) != list(_macro6_default):
+                    st.session_state["macro6_selected_codes"] = list(_macro6_default)
+                st.multiselect(
+                    "조합 지표",
+                    options=_macro6_options,
+                    default=_macro6_default,
+                    format_func=lambda x: _macro3_component_label(x, _macro6_preset_cfg.get("component_cfgs", {}).get(x)) if _macro6_is_combo2 else _MACRO3_INDICATOR_LABELS.get(x, x),
+                    key="macro6_selected_codes",
+                    label_visibility="collapsed",
+                    disabled=True,
+                )
+            with _m66:
+                st.markdown(
+                    (
+                        "<div style='padding-top:8px;font-size:11.5px;line-height:1.42;color:rgba(255,255,255,0.84);'>"
+                        f"시작 {int(_macro6_preset_cfg.get('combo_k', 1))}개 이상 ON<br>"
+                        f"종료 {int(_macro6_preset_cfg.get('combo_l', 0))}개 이하 ON"
+                        "</div>"
+                    ),
+                    unsafe_allow_html=True,
+                )
+
+            _macro6_selected_blocking = _macro6_blocking.get(_macro6_preset, [])
+            if _macro6_selected_blocking:
+                st.warning("선택한 후보는 계산 불가 상태입니다.")
+                with st.expander("계산 불가 사유", expanded=True):
+                    for _reason in _macro6_selected_blocking:
+                        st.write(f"- {_reason}")
+                return
+
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            with st.spinner("📡 기준 지수 데이터 로딩 중..."):
+                _spx_s6 = _macro3_filter_confirmed_us_daily(_yf_close("^GSPC", _macro6_years, sync_bucket=_macro6_sync_bucket))
+            if _spx_s6 is None or _spx_s6.empty:
+                st.warning("기준 지수 데이터를 불러오지 못했습니다.")
+                return
+
+            with st.spinner("📡 Proxy-only 후보 데이터 로딩 중..."):
+                _macro6_combo_fig, _macro6_combo_event_df = make_macro3_combo_dynamic_chart(
+                    years=_macro6_years,
+                    benchmark_name="S&P500",
+                    preset_cfg=_macro6_preset_cfg,
+                    return_debug=True,
+                    sync_bucket=_macro6_sync_bucket,
+                )
+                if _macro6_is_combo2:
+                    _macro6_indicator_charts = {
+                        _component: _build_macro3_component_chart(
+                            component_key=_component,
+                            years=_macro6_years,
+                            benchmark_name="S&P500",
+                            preset_cfg=_macro6_preset_cfg,
+                            spx_s=_spx_s6,
+                            sync_bucket=_macro6_sync_bucket,
+                        )
+                        for _component in _macro6_preset_cfg.get("components", [])
+                    }
+                else:
+                    _macro6_indicator_charts = {
+                        _indicator: _build_macro3_indicator_chart(
+                            indicator=_indicator,
+                            years=_macro6_years,
+                            benchmark_name="S&P500",
+                            preset_cfg=_macro6_preset_cfg,
+                            spx_s=_spx_s6,
+                            show_raw=_show_raw_macro6,
+                            sync_bucket=_macro6_sync_bucket,
+                        )
+                        for _indicator in _MACRO3_INDICATOR_ORDER
+                    }
+
+            if _macro6_combo_fig is None:
+                st.warning("선택한 Proxy-only 후보 차트를 만들지 못했습니다. 데이터 지연 또는 필수 지표 누락 여부를 확인해 주세요.")
+                return
+
+            _macro6_status_html, _macro6_status_table_html = _build_macro3_status_panel(
+                benchmark_name="S&P500",
+                years=_macro6_years,
+                preset_cfg=_macro6_preset_cfg,
+                combo_event_df=_macro6_combo_event_df,
+                sync_bucket=_macro6_sync_bucket,
+            )
+            if _macro6_status_html:
+                st.markdown(_macro6_status_html, unsafe_allow_html=True)
+            _macro6_duration_html = _macro6_state_duration_html(_macro6_combo_event_df)
+            if _macro6_duration_html:
+                st.markdown(_macro6_duration_html, unsafe_allow_html=True)
+
+            _macro6_bt_compare_combo2_html = _build_macro6_backtest_panel(
+                _macro6_preset,
+                preset_defs=_macro6_presets,
+                preset_order=_MACRO6_COMBO2_ORDER,
+                years=_macro6_years,
+                sync_bucket=_macro6_sync_bucket,
+            )
+            _macro6_bt_compare_combo1_html = _build_macro6_backtest_panel(
+                _macro6_preset,
+                preset_defs=_macro6_presets,
+                preset_order=_MACRO6_COMBO1_ORDER,
+                years=_macro6_years,
+                sync_bucket=_macro6_sync_bucket,
+            )
+            if _macro6_bt_compare_combo2_html:
+                with st.expander("백테스트 비교 보기 · 조합2", expanded=False):
+                    st.markdown(_macro6_bt_compare_combo2_html, unsafe_allow_html=True)
+            if _macro6_bt_compare_combo1_html:
+                with st.expander("백테스트 비교 보기 · 조합1", expanded=False):
+                    st.markdown(_macro6_bt_compare_combo1_html, unsafe_allow_html=True)
+
+            if _macro6_status_table_html:
+                with st.expander("지표별 상태 보기", expanded=False):
+                    st.markdown(_macro6_status_table_html, unsafe_allow_html=True)
+                    st.caption(_macro6_preset_cfg.get("review_status", "사용자 선택 완료·운영 미승인 대시보드 검토 후보"))
+                    if _macro6_preset_cfg.get("selection_reason"):
+                        st.caption(f"선정 이유: {_macro6_preset_cfg['selection_reason']}")
+                    if _macro6_preset_cfg.get("dashboard_review_focus"):
+                        st.caption(f"대시보드 확인 포인트: {_macro6_preset_cfg['dashboard_review_focus']}")
+
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            st.plotly_chart(
+                _macro6_combo_fig,
+                width="stretch",
+                config={"displayModeBar": False},
+                key=f"macro6_combo_{_macro6_preset}_{_macro6_years}",
+            )
+            _macro6_detail_items = _macro6_preset_cfg.get("components", []) if _macro6_is_combo2 else _MACRO3_INDICATOR_ORDER
+            for _indicator in _macro6_detail_items:
+                _fig = _macro6_indicator_charts.get(_indicator)
+                _expanded = True if _macro6_is_combo2 else _indicator in _macro6_preset_cfg.get("selected_indicators", [])
+                _label = _macro3_component_label(_indicator, _macro6_preset_cfg.get("component_cfgs", {}).get(_indicator)) if _macro6_is_combo2 else _MACRO3_INDICATOR_LABELS.get(_indicator, _indicator)
+                with st.expander(_label, expanded=_expanded):
+                    if _fig is not None:
+                        st.plotly_chart(
+                            _fig,
+                            width="stretch",
+                            config={"displayModeBar": False},
+                            key=f"macro6_chart_{_macro6_preset}_{_macro6_years}_{_macro3_indicator_key(_indicator)}",
+                        )
+                    else:
+                        st.caption("이 후보에서는 사용되지 않거나 차트 데이터가 없습니다.")
+
+            _macro_debug_log(
+                "render_macro6_proxy_final_section",
+                preset_key=_macro6_preset,
+                years=_macro6_years,
+                elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+            )
+
     def render_market_macro_main_section(container):
         with container:
             st.markdown("""
@@ -11274,6 +11985,13 @@ def main(page="signal"):
     if page == "macro5" or (page == "market_macro" and _market_macro_section == "macro5"):
         _macro5_container = tab5 if page == "market_macro" else tab3
         render_macro5_final8_section(_macro5_container)
+
+        # ═══════════════════════════════════════════════════════════
+        # TAB 3E — 매크로 지표 6 (Proxy-only 후보 비교용)
+        # ═══════════════════════════════════════════════════════════
+    if page == "macro6" or (page == "market_macro" and _market_macro_section == "macro6"):
+        _macro6_container = tab6 if page == "market_macro" else tab3
+        render_macro6_proxy_final_section(_macro6_container)
 
         # ═══════════════════════════════════════════════════════════
         # TAB 3 — 매크로 지표
