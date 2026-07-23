@@ -39,6 +39,7 @@ try:
         build_hysteresis_combo_state as _combo1_build_hysteresis_combo_state,
         compute_bollinger_signal_frame as _combo1_compute_bollinger_signal_frame,
         compute_dynamic_quantile_signal_frame as _combo1_compute_dynamic_quantile_signal_frame,
+        compute_rsi_signal_frame as _combo1_compute_rsi_signal_frame,
         compute_yield_slope_signal_frame as _combo1_compute_yield_slope_signal_frame,
     )
     COMBO1_EXPANDED_SIGNALS_AVAILABLE = True
@@ -6384,6 +6385,32 @@ _MACRO6_PROXY_BACKTEST_CSV = os.path.join(
     "credit_proxy_selection_rerun_v1",
     "proxy_only_dashboard_review_candidates.csv",
 )
+_MACRO6_OFFICIAL_FROZEN_DIR = os.path.join(
+    _DIR,
+    "combo1_expanded_v1",
+    "outputs_sp500_final_v1",
+    "sp500",
+    "credit_proxy_full_reselection_v1",
+)
+_MACRO6_OFFICIAL_FROZEN_SNAPSHOT_PARQUET = os.path.join(
+    _DIR,
+    "combo1_expanded_v1",
+    "outputs_single_full_v1",
+    "sp500",
+    "market_data_snapshot.parquet",
+)
+_MACRO6_OFFICIAL_FROZEN_PROXY_RAW_PARQUET = os.path.join(
+    _MACRO6_OFFICIAL_FROZEN_DIR,
+    "proxy_raw_fred_sources.parquet",
+)
+_MACRO6_OFFICIAL_BASELINE_TIMELINE_SOURCES = (
+    os.path.join(_DIR, "combo1_expanded_v1", "outputs_sp500_final_v1", "sp500", "single_indicator", "indicator_candidate_timeline.parquet"),
+    os.path.join(_DIR, "combo1_expanded_v1", "outputs_sp500_final_v1", "sp500", "focused_search_run_v1", "_runtime_candidate_timeline_tier6.parquet"),
+    os.path.join(_DIR, "combo1_expanded_v1", "outputs_sp500_final_v1", "sp500", "focused_search_run_v1", "n=7", "_runtime_candidate_timeline_tier4.parquet"),
+    os.path.join(_DIR, "combo1_expanded_v1", "outputs_sp500_final_v1", "sp500", "focused_search_run_v1", "n=8", "_runtime_candidate_timeline_tier4.parquet"),
+    os.path.join(_DIR, "combo1_expanded_v1", "outputs_sp500_final_v1", "sp500", "focused_search_n9_local_run_v1", "n=9", "_runtime_candidate_timeline_tier4.parquet"),
+)
+_MACRO6_CREDIT_PROXY_INDICATORS = {"HY", "IG", "Credit Stress"}
 _MACRO3_BACKTEST_GROUP_SA = (
     "macro5_combo2_final8_1",
     "macro5_combo2_final8_2",
@@ -6434,6 +6461,7 @@ _MACRO3_INDICATOR_ORDER = [
     "10Y Nominal Yield Slope",
     "Bollinger Band",
 ]
+_MACRO6_COMPONENT_INDICATOR_ORDER = _MACRO3_INDICATOR_ORDER[:-1] + ["RSI", _MACRO3_INDICATOR_ORDER[-1]]
 _MACRO3_LAGGED_INDICATORS = {
     "HY",
     "IG",
@@ -6454,6 +6482,7 @@ _MACRO3_INDICATOR_LABELS = {
     "10Y-3M Spread": "⑨ 10Y-3M 스프레드",
     "10Y Nominal Yield Slope": "⑩ 10Y 금리기울기",
     "Bollinger Band": "⑪ 볼린저밴드",
+    "RSI": "⑫ RSI",
 }
 
 
@@ -6617,10 +6646,21 @@ def _parse_macro3_param_token(raw_value: str) -> dict | None:
             "std": float(m_bb.group(2).replace("p", ".")),
             "raw": value,
         }
+    m_rsi = re.fullmatch(r"RSI(\d+)_LB(\d+)_Q10_90", value)
+    if m_rsi:
+        return {
+            "kind": "rsi",
+            "period": int(m_rsi.group(1)),
+            "lookback": int(m_rsi.group(2)),
+            "lower_q": 0.10,
+            "upper_q": 0.90,
+            "raw": value,
+        }
     return None
 
 
-def _parse_macro3_combo_key(combo_key: str) -> dict:
+def _parse_macro3_combo_key(combo_key: str, indicator_order=None) -> dict:
+    indicator_order = list(indicator_order or _MACRO3_INDICATOR_ORDER)
     cfgs = {}
     start_k = None
     end_l = None
@@ -6639,7 +6679,7 @@ def _parse_macro3_combo_key(combo_key: str) -> dict:
         parsed = _parse_macro3_param_token(raw_value)
         if parsed:
             cfgs[name] = parsed
-    selected_indicators = [name for name in _MACRO3_INDICATOR_ORDER if name in cfgs]
+    selected_indicators = [name for name in indicator_order if name in cfgs]
     return {
         "cfgs": cfgs,
         "selected_indicators": selected_indicators,
@@ -6682,6 +6722,40 @@ def _load_macro3_top44_component_presets():
         return {}
     for row in dictionary.to_dict("records"):
         parsed = _parse_macro3_combo_key(row.get("reconstructed_combo_key", ""))
+        if not parsed["selected_indicators"] or parsed["start_k"] is None or parsed["end_l"] is None:
+            continue
+        key = str(row["candidate_key"])
+        presets[key] = {
+            "kind": "combo1_component",
+            "label": _macro3_component_label(key, row),
+            "benchmark": "S&P500",
+            "candidate_key": key,
+            "combo_id": int(row["combo_id"]),
+            "n": int(row["n"]),
+            "selected_indicators": parsed["selected_indicators"],
+            "combo_k": int(parsed["start_k"]),
+            "combo_l": int(parsed["end_l"]),
+            "cfgs": parsed["cfgs"],
+            "reconstructed_combo_key": str(row.get("reconstructed_combo_key", "")).strip(),
+            "role_tags": str(row.get("role_tags", "")).strip(),
+        }
+    return presets
+
+
+@st.cache_data(show_spinner=False)
+def _load_macro6_top44_component_presets():
+    if not os.path.exists(_MACRO3_TOP44_DICTIONARY_PARQUET):
+        return {}
+    dictionary = pd.read_parquet(_MACRO3_TOP44_DICTIONARY_PARQUET)
+    presets = {}
+    required_cols = {"candidate_key", "reconstructed_combo_key", "n", "combo_id", "start_k", "end_l"}
+    if not required_cols.issubset(set(dictionary.columns)):
+        return {}
+    for row in dictionary.to_dict("records"):
+        parsed = _parse_macro3_combo_key(
+            row.get("reconstructed_combo_key", ""),
+            indicator_order=_MACRO6_COMPONENT_INDICATOR_ORDER,
+        )
         if not parsed["selected_indicators"] or parsed["start_k"] is None or parsed["end_l"] is None:
             continue
         key = str(row["candidate_key"])
@@ -6954,7 +7028,7 @@ def _load_macro6_proxy_final_presets():
     if os.path.exists(_MACRO6_PROXY_BACKTEST_CSV):
         backtest = pd.read_csv(_MACRO6_PROXY_BACKTEST_CSV)
         backtest_by_key = {str(row.get("candidate_key")): row for row in backtest.to_dict("records") if pd.notna(row.get("candidate_key"))}
-    component_presets = _load_macro3_top44_component_presets()
+    component_presets = _load_macro6_top44_component_presets()
 
     for preset_key, candidate_key, role in _MACRO6_COMBO2_CANDIDATES:
         row = review_by_key.get(candidate_key)
@@ -7033,7 +7107,10 @@ def _load_macro6_proxy_final_presets():
                 "지정한 사용자 검토 후보 파일에 candidate_key가 없습니다.",
             )
             continue
-        parsed = _parse_macro3_combo_key(_macro6_safe_row_value(row, "combo_key", ""))
+        parsed = _parse_macro3_combo_key(
+            _macro6_safe_row_value(row, "combo_key", ""),
+            indicator_order=_MACRO6_COMPONENT_INDICATOR_ORDER,
+        )
         if not parsed["selected_indicators"] or parsed["start_k"] is None or parsed["end_l"] is None:
             presets[preset_key] = _macro6_unavailable_preset(
                 preset_key,
@@ -7234,6 +7311,152 @@ def _macro6_get_indicator_raw_series(
     )
 
 
+def _macro6_source_mode(source_mode: str | None = None) -> str:
+    return "official_frozen" if str(source_mode or "").strip() == "official_frozen" else "live_raw"
+
+
+@st.cache_data(show_spinner=False)
+def _macro6_load_official_frozen_proxy_snapshot():
+    if not os.path.exists(_MACRO6_OFFICIAL_FROZEN_SNAPSHOT_PARQUET):
+        return pd.DataFrame()
+    if not os.path.exists(_MACRO6_OFFICIAL_FROZEN_PROXY_RAW_PARQUET):
+        return pd.DataFrame()
+    if not COMBO1_EXPANDED_AVAILABILITY_AVAILABLE or _MACRO3_AVAILABILITY_CONFIG is None:
+        return pd.DataFrame()
+    snapshot = pd.read_parquet(_MACRO6_OFFICIAL_FROZEN_SNAPSHOT_PARQUET)
+    if "date" in snapshot.columns:
+        snapshot["date"] = pd.to_datetime(snapshot["date"]).dt.normalize()
+        snapshot = snapshot.set_index("date")
+    else:
+        snapshot.index = pd.to_datetime(snapshot.index).normalize()
+    snapshot = snapshot.sort_index()
+    fred = pd.read_parquet(_MACRO6_OFFICIAL_FROZEN_PROXY_RAW_PARQUET)
+    fred.index = pd.to_datetime(fred.index).normalize()
+    required = {"DBAA", "DAAA", "DGS10"}
+    if not required.issubset(set(fred.columns)):
+        return pd.DataFrame()
+    baa = pd.concat([fred["DBAA"].rename("corp"), fred["DGS10"].rename("dgs10")], axis=1, join="inner").dropna()
+    aaa = pd.concat([fred["DAAA"].rename("corp"), fred["DGS10"].rename("dgs10")], axis=1, join="inner").dropna()
+    if baa.empty or aaa.empty:
+        return pd.DataFrame()
+    out = snapshot.copy()
+    out["hy_raw"] = (baa["corp"] - baa["dgs10"]).reindex(out.index)
+    out["ig_raw"] = (aaa["corp"] - aaa["dgs10"]).reindex(out.index)
+    out["hy_safe"] = -out["hy_raw"]
+    out["ig_safe"] = -out["ig_raw"]
+    try:
+        out["credit_stress_safe"] = _combo1_build_credit_stress_safe_from_components(
+            out,
+            _MACRO3_AVAILABILITY_CONFIG,
+            require_all_components=True,
+        ).reindex(out.index)
+        out["credit_stress_raw"] = -out["credit_stress_safe"]
+    except Exception:
+        return pd.DataFrame()
+    return out
+
+
+@st.cache_data(show_spinner=False)
+def _macro6_load_official_baseline_indicator_state(indicator: str, param_id: str):
+    needed_indicator = str(indicator)
+    needed_param_id = str(param_id)
+    for path in _MACRO6_OFFICIAL_BASELINE_TIMELINE_SOURCES:
+        if not os.path.exists(path):
+            continue
+        try:
+            frame = pd.read_parquet(path, columns=["date", "indicator", "param_id", "risk_state"])
+        except Exception:
+            continue
+        frame = frame.loc[
+            frame["indicator"].astype(str).eq(needed_indicator)
+            & frame["param_id"].astype(str).eq(needed_param_id)
+        ].copy()
+        if frame.empty:
+            continue
+        frame["date"] = pd.to_datetime(frame["date"]).dt.normalize()
+        series = frame.drop_duplicates("date").set_index("date")["risk_state"].sort_index()
+        if not series.empty:
+            return series.astype(bool)
+    return pd.Series(dtype=bool)
+
+
+def _macro6_official_frozen_indicator_signal_frame(
+    indicator: str,
+    cfg: dict,
+    benchmark_index: pd.DatetimeIndex,
+):
+    if not COMBO1_EXPANDED_SIGNALS_AVAILABLE:
+        return pd.DataFrame()
+    benchmark_index = pd.DatetimeIndex(pd.to_datetime(benchmark_index)).normalize()
+    if indicator not in _MACRO6_CREDIT_PROXY_INDICATORS:
+        param_id = str(cfg.get("raw", "")).strip()
+        if not param_id:
+            return pd.DataFrame()
+        baseline = _macro6_load_official_baseline_indicator_state(indicator, param_id)
+        if baseline.empty:
+            return pd.DataFrame()
+        state = baseline.reindex(benchmark_index)
+        if state.isna().any():
+            return pd.DataFrame()
+        values = state.astype(bool).to_numpy()
+        starts = values & ~np.r_[False, values[:-1]]
+        ends = (~values) & np.r_[False, values[:-1]]
+        return pd.DataFrame(
+            {
+                "risk_state": values.astype(bool),
+                "risk_start_signal": starts.astype(bool),
+                "risk_end_signal": ends.astype(bool),
+                "valid_signal": True,
+            },
+            index=benchmark_index,
+        )
+
+    snapshot = _macro6_load_official_frozen_proxy_snapshot()
+    if snapshot.empty:
+        return pd.DataFrame()
+    kind = cfg.get("kind", "level")
+    if indicator == "HY":
+        raw_series = _combo1_apply_availability_lag(
+            snapshot["hy_safe"].dropna(),
+            "HY",
+            _MACRO3_AVAILABILITY_CONFIG,
+        ).dropna()
+    elif indicator == "IG":
+        raw_series = _combo1_apply_availability_lag(
+            snapshot["ig_safe"].dropna(),
+            "IG",
+            _MACRO3_AVAILABILITY_CONFIG,
+        ).dropna()
+    elif indicator == "Credit Stress":
+        raw_series = _combo1_build_credit_stress_safe_from_components(
+            snapshot,
+            _MACRO3_AVAILABILITY_CONFIG,
+            require_all_components=True,
+        ).dropna()
+    else:
+        return pd.DataFrame()
+    if raw_series.empty:
+        return pd.DataFrame()
+    if kind == "yield_slope":
+        signal = _combo1_compute_yield_slope_signal_frame(
+            dgs10=raw_series,
+            slope_window=int(cfg["slope_window"]),
+            ema_span=int(cfg["ema"]),
+            threshold_window=int(cfg["window"]),
+            start_quantile=float(cfg["start"]),
+            end_quantile=float(cfg["end"]),
+        )
+    else:
+        signal = _combo1_compute_dynamic_quantile_signal_frame(
+            series=raw_series,
+            window=int(cfg["window"]),
+            start_quantile=float(cfg["start"]),
+            end_quantile=float(cfg["end"]),
+            ema_span=int(cfg["ema"]),
+        )
+    return _combo1_align_signal_to_benchmark(signal, benchmark_index)
+
+
 def _macro6_get_indicator_signal_frame(
     indicator: str,
     cfg: dict,
@@ -7263,6 +7486,28 @@ def _macro6_get_indicator_signal_frame(
                 source = signal.copy()
                 source.index = pd.DatetimeIndex(pd.to_datetime(source.index)).normalize()
                 source = source.sort_index().loc[~source.index.duplicated(keep="last")]
+                aligned[col] = source[col].reindex(aligned.index).ffill()
+        return aligned
+    if kind == "rsi":
+        if spx_s is None or spx_s.empty:
+            benchmark = _get_macro_benchmark(benchmark_name)
+            spx_s = _yf_close(benchmark["code"], years, sync_bucket=sync_bucket)
+        close = _macro3_filter_confirmed_us_daily(spx_s)
+        if close is None or close.empty:
+            return pd.DataFrame()
+        signal = _combo1_compute_rsi_signal_frame(
+            close=close,
+            period=int(cfg["period"]),
+            lookback=int(cfg["lookback"]),
+            lower_quantile=float(cfg["lower_q"]),
+            upper_quantile=float(cfg["upper_q"]),
+        )
+        aligned = _combo1_align_signal_to_benchmark(signal, benchmark_index)
+        source = signal.copy()
+        source.index = pd.DatetimeIndex(pd.to_datetime(source.index)).normalize()
+        source = source.sort_index().loc[~source.index.duplicated(keep="last")]
+        for col in ["close", "rsi", "dyn_lower", "dyn_upper", "buy_on", "sell_on"]:
+            if col in source.columns:
                 aligned[col] = source[col].reindex(aligned.index).ffill()
         return aligned
 
@@ -7511,9 +7756,11 @@ def _compute_macro6_combo_signal_frame(
     combo_k: int,
     combo_l: int,
     sync_bucket: str | None = None,
+    source_mode: str | None = None,
 ):
     if spx_s is None or spx_s.empty or not COMBO1_EXPANDED_SIGNALS_AVAILABLE:
         return pd.DataFrame(), []
+    source_mode = _macro6_source_mode(source_mode)
     selected_indicators = list(selected_indicators or [])
     if not selected_indicators:
         return pd.DataFrame(), []
@@ -7524,15 +7771,22 @@ def _compute_macro6_combo_signal_frame(
         cfg = cfgs.get(indicator)
         if not cfg:
             return pd.DataFrame(), []
-        signal_df = _macro6_get_indicator_signal_frame(
-            indicator=indicator,
-            cfg=cfg,
-            benchmark_index=spx_s.index,
-            years=fetch_years,
-            benchmark_name=benchmark_name,
-            spx_s=spx_s,
-            sync_bucket=sync_bucket,
-        )
+        if source_mode == "official_frozen":
+            signal_df = _macro6_official_frozen_indicator_signal_frame(
+                indicator=indicator,
+                cfg=cfg,
+                benchmark_index=spx_s.index,
+            )
+        else:
+            signal_df = _macro6_get_indicator_signal_frame(
+                indicator=indicator,
+                cfg=cfg,
+                benchmark_index=spx_s.index,
+                years=fetch_years,
+                benchmark_name=benchmark_name,
+                spx_s=spx_s,
+                sync_bucket=sync_bucket,
+            )
         if signal_df.empty:
             return pd.DataFrame(), []
         key = _macro3_indicator_key(indicator)
@@ -7562,9 +7816,11 @@ def _compute_macro6_combo2_signal_frame(
     benchmark_name: str,
     preset_cfg: dict,
     sync_bucket: str | None = None,
+    source_mode: str | None = None,
 ):
     if spx_s is None or spx_s.empty or not COMBO1_EXPANDED_SIGNALS_AVAILABLE:
         return pd.DataFrame(), []
+    source_mode = _macro6_source_mode(source_mode)
     components = list(preset_cfg.get("components", []))
     component_cfgs = dict(preset_cfg.get("component_cfgs", {}))
     if not components:
@@ -7583,6 +7839,7 @@ def _compute_macro6_combo2_signal_frame(
             combo_k=int(component_cfg.get("combo_k", 1)),
             combo_l=int(component_cfg.get("combo_l", 0)),
             sync_bucket=sync_bucket,
+            source_mode=source_mode,
         )
         if component_combo.empty or not component_active:
             return pd.DataFrame(), []
@@ -7617,6 +7874,7 @@ def _compute_macro6_preset_signal_frame(
     benchmark_name: str,
     preset_cfg: dict,
     sync_bucket: str | None = None,
+    source_mode: str | None = None,
 ):
     if preset_cfg.get("kind") == "combo2_final8":
         return _compute_macro6_combo2_signal_frame(
@@ -7624,6 +7882,7 @@ def _compute_macro6_preset_signal_frame(
             benchmark_name=benchmark_name,
             preset_cfg=preset_cfg,
             sync_bucket=sync_bucket,
+            source_mode=source_mode,
         )
     return _compute_macro6_combo_signal_frame(
         spx_s=spx_s,
@@ -7633,6 +7892,7 @@ def _compute_macro6_preset_signal_frame(
         combo_k=int(preset_cfg.get("combo_k", 1)),
         combo_l=int(preset_cfg.get("combo_l", 0)),
         sync_bucket=sync_bucket,
+        source_mode=source_mode,
     )
 
 
