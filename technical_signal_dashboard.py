@@ -6582,6 +6582,8 @@ def _macro6_vix_spread_with_fallback(
     source_status = "NO_DATA"
     source_label = "데이터 없음"
     final_spread = pd.Series(dtype=float)
+    fred_supplement_days = None
+    fred_supplement_trading_days = None
 
     if not yahoo_spread.empty:
         final_spread = yahoo_spread.copy()
@@ -6593,7 +6595,13 @@ def _macro6_vix_spread_with_fallback(
             fred_tail = fred_spread[fred_spread.index > yahoo_last]
             final_spread = pd.concat([final_spread, fred_tail]).sort_index()
             source_status = "YAHOO_PLUS_FRED_FALLBACK"
-            source_label = "FRED fallback"
+            fred_tail_last = None if fred_tail.empty else fred_tail.index.max()
+            if fred_tail_last is not None:
+                fred_supplement_days = int(max(0, (fred_tail_last - yahoo_last).days))
+                fred_supplement_trading_days = int(len(fred_tail))
+                source_label = f"FRED 보완 {fred_supplement_days}일"
+            else:
+                source_label = "FRED 보완"
         elif yahoo_is_stale:
             source_status = "YAHOO_STALE"
             source_label = "Yahoo"
@@ -6626,6 +6634,8 @@ def _macro6_vix_spread_with_fallback(
         "final_latest_date": final_latest,
         "yahoo_common_latest_date": yahoo_last,
         "fred_common_latest_date": fred_last,
+        "fred_supplement_days": fred_supplement_days,
+        "fred_supplement_trading_days": fred_supplement_trading_days,
     }
 
 
@@ -8470,6 +8480,8 @@ def _macro6_indicator_data_status_row(
             "fred_common_latest_date": meta.get("fred_common_latest_date"),
             "source_status": meta.get("source_status"),
             "lag_trading_days": meta.get("lag_trading_days"),
+            "fred_supplement_days": meta.get("fred_supplement_days"),
+            "fred_supplement_trading_days": meta.get("fred_supplement_trading_days"),
         }
     latest_date = _get_macro6_signal_latest_date(
         indicator,
