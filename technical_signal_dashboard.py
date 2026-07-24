@@ -6507,6 +6507,128 @@ def _macro3_filter_confirmed_us_daily(data):
     return out[out.index <= cutoff]
 
 
+def _macro6_inner_vix_spread(vix: pd.Series, vix3m: pd.Series) -> pd.Series:
+    if vix is None or vix3m is None or vix.empty or vix3m.empty:
+        return pd.Series(dtype=float)
+    pair = (
+        pd.to_numeric(vix, errors="coerce")
+        .dropna()
+        .rename("vix")
+        .to_frame()
+        .join(pd.to_numeric(vix3m, errors="coerce").dropna().rename("vix3m").to_frame(), how="inner")
+        .dropna()
+    )
+    if pair.empty:
+        return pd.Series(dtype=float)
+    pair.index = pd.DatetimeIndex(_strip_tz(pair.index)).normalize()
+    pair = pair.sort_index().loc[~pair.index.duplicated(keep="last")]
+    return (pair["vix"] - pair["vix3m"]).dropna()
+
+
+def _macro6_lag_trading_days(expected_date, latest_date, benchmark_index) -> int | None:
+    if expected_date is None or latest_date is None or pd.isna(expected_date) or pd.isna(latest_date):
+        return None
+    try:
+        expected = pd.Timestamp(expected_date).normalize()
+        latest = pd.Timestamp(latest_date).normalize()
+        idx = pd.DatetimeIndex(pd.to_datetime(benchmark_index)).normalize().sort_values().unique()
+        return int(((idx > latest) & (idx <= expected)).sum())
+    except Exception:
+        return None
+
+
+def _macro6_expected_latest_trading_date(
+    benchmark_name: str = "S&P500",
+    years: int = 5,
+    spx_s: pd.Series | None = None,
+    sync_bucket: str | None = None,
+):
+    source = spx_s
+    if source is None or getattr(source, "empty", True):
+        benchmark = _get_macro_benchmark(benchmark_name)
+        source = _yf_close(benchmark["code"], years, sync_bucket=sync_bucket)
+    source = _macro3_filter_confirmed_us_daily(source).dropna() if source is not None else pd.Series(dtype=float)
+    if source.empty:
+        return None, pd.DatetimeIndex([])
+    return source.index.max(), pd.DatetimeIndex(source.index).normalize().sort_values().unique()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _macro6_vix_spread_with_fallback(
+    years: int,
+    benchmark_name: str = "S&P500",
+    expected_latest_date=None,
+    benchmark_dates: tuple | None = None,
+    sync_bucket: str | None = None,
+):
+    expected_latest = pd.Timestamp(expected_latest_date).normalize() if expected_latest_date is not None and not pd.isna(expected_latest_date) else None
+    benchmark_index = pd.DatetimeIndex(pd.to_datetime(list(benchmark_dates or []))).normalize().sort_values().unique()
+
+    yahoo_vix = _macro3_filter_confirmed_us_daily(_yf_close("^VIX", years, sync_bucket=sync_bucket))
+    yahoo_vix3m = _macro3_filter_confirmed_us_daily(_yf_close("^VIX3M", years, sync_bucket=sync_bucket))
+    yahoo_spread = _macro6_inner_vix_spread(yahoo_vix, yahoo_vix3m)
+
+    fred_vix = _macro3_filter_confirmed_us_daily(_fred("VIXCLS", years, sync_bucket=sync_bucket))
+    fred_vix3m = _macro3_filter_confirmed_us_daily(_fred("VXVCLS", years, sync_bucket=sync_bucket))
+    fred_spread = _macro6_inner_vix_spread(fred_vix, fred_vix3m)
+    if expected_latest is not None:
+        if not fred_spread.empty:
+            fred_spread = fred_spread[fred_spread.index <= expected_latest]
+        if not yahoo_spread.empty:
+            yahoo_spread = yahoo_spread[yahoo_spread.index <= expected_latest]
+
+    yahoo_last = None if yahoo_spread.empty else yahoo_spread.index.max()
+    fred_last = None if fred_spread.empty else fred_spread.index.max()
+    source_status = "NO_DATA"
+    source_label = "데이터 없음"
+    final_spread = pd.Series(dtype=float)
+
+    if not yahoo_spread.empty:
+        final_spread = yahoo_spread.copy()
+        source_status = "YAHOO"
+        source_label = "Yahoo"
+        yahoo_is_stale = expected_latest is not None and yahoo_last < expected_latest
+        fred_is_newer = fred_last is not None and fred_last > yahoo_last
+        if yahoo_is_stale and fred_is_newer:
+            fred_tail = fred_spread[fred_spread.index > yahoo_last]
+            final_spread = pd.concat([final_spread, fred_tail]).sort_index()
+            source_status = "YAHOO_PLUS_FRED_FALLBACK"
+            source_label = "FRED fallback"
+        elif yahoo_is_stale:
+            source_status = "YAHOO_STALE"
+            source_label = "Yahoo"
+    elif not fred_spread.empty:
+        final_spread = fred_spread.copy()
+        source_status = "FRED_ONLY"
+        source_label = "FRED"
+
+    final_spread = final_spread.replace([np.inf, -np.inf], np.nan).dropna().sort_index()
+    final_spread = final_spread.loc[~final_spread.index.duplicated(keep="first")]
+    final_latest = None if final_spread.empty else final_spread.index.max()
+    lag_days = _macro6_lag_trading_days(expected_latest, final_latest, benchmark_index)
+    if lag_days is None and expected_latest is not None and final_latest is not None:
+        lag_days = int(max(0, (expected_latest - final_latest).days))
+    note = "확인 불가" if final_latest is None else ("지연" if (lag_days or 0) > 0 else "정상")
+    detail_parts = [source_label]
+    if lag_days is not None and lag_days > 0:
+        detail_parts.append(f"{lag_days}거래일 지연")
+    detail = " · ".join(detail_parts)
+
+    return {
+        "series": (-final_spread).dropna(),
+        "raw_spread": final_spread,
+        "source_status": source_status,
+        "source_label": source_label,
+        "note": note,
+        "detail": detail,
+        "lag_trading_days": lag_days,
+        "expected_latest_date": expected_latest,
+        "final_latest_date": final_latest,
+        "yahoo_common_latest_date": yahoo_last,
+        "fred_common_latest_date": fred_last,
+    }
+
+
 def _macro3_next_execution_date(signal_date, benchmark_index) -> pd.Timestamp | None:
     try:
         signal_date = pd.Timestamp(signal_date).normalize()
@@ -7290,6 +7412,21 @@ def _macro6_get_indicator_raw_series(
     spx_s: pd.Series | None = None,
     sync_bucket: str | None = None,
 ):
+    if indicator == "VIX Spread":
+        expected_latest, benchmark_index = _macro6_expected_latest_trading_date(
+            benchmark_name=benchmark_name,
+            years=years,
+            spx_s=spx_s,
+            sync_bucket=sync_bucket,
+        )
+        meta = _macro6_vix_spread_with_fallback(
+            years=years,
+            benchmark_name=benchmark_name,
+            expected_latest_date=expected_latest,
+            benchmark_dates=tuple(pd.Timestamp(d).isoformat() for d in benchmark_index),
+            sync_bucket=sync_bucket,
+        )
+        return meta.get("series", pd.Series(dtype=float)).dropna()
     if indicator == "HY":
         return _macro3_apply_indicator_availability(
             "HY",
@@ -8280,8 +8417,79 @@ def _get_macro6_signal_latest_date(indicator: str, years: int, benchmark_name: s
     if indicator == "Bollinger Band":
         ohlc = _macro3_fetch_benchmark_ohlcv(benchmark_name, years)
         return None if ohlc.empty else ohlc.index.max()
+    if indicator == "VIX Spread":
+        expected_latest, benchmark_index = _macro6_expected_latest_trading_date(
+            benchmark_name=benchmark_name,
+            years=years,
+            sync_bucket=sync_bucket,
+        )
+        meta = _macro6_vix_spread_with_fallback(
+            years=years,
+            benchmark_name=benchmark_name,
+            expected_latest_date=expected_latest,
+            benchmark_dates=tuple(pd.Timestamp(d).isoformat() for d in benchmark_index),
+            sync_bucket=sync_bucket,
+        )
+        return meta.get("final_latest_date")
     series = _macro6_get_indicator_raw_series(indicator, years, benchmark_name=benchmark_name, sync_bucket=sync_bucket)
     return None if series is None or series.empty else series.index.max()
+
+
+def _macro6_indicator_data_status_row(
+    indicator: str,
+    years: int,
+    benchmark_name: str = "S&P500",
+    sync_bucket: str | None = None,
+) -> dict:
+    if indicator == "VIX Spread":
+        expected_latest, benchmark_index = _macro6_expected_latest_trading_date(
+            benchmark_name=benchmark_name,
+            years=years,
+            sync_bucket=sync_bucket,
+        )
+        meta = _macro6_vix_spread_with_fallback(
+            years=years,
+            benchmark_name=benchmark_name,
+            expected_latest_date=expected_latest,
+            benchmark_dates=tuple(pd.Timestamp(d).isoformat() for d in benchmark_index),
+            sync_bucket=sync_bucket,
+        )
+        latest_date = meta.get("final_latest_date")
+        detail = meta.get("detail", "")
+        latest_text = _macro_date_text(latest_date) if latest_date is not None and not pd.isna(latest_date) else "확인 불가"
+        if detail:
+            latest_text = f"{latest_text} · {detail}"
+        return {
+            "indicator": indicator,
+            "label": _MACRO3_INDICATOR_LABELS.get(indicator, indicator),
+            "latest_date": latest_date,
+            "note": meta.get("note", _macro3_freshness_note(indicator, latest_date)),
+            "latest_text": latest_text,
+            "expected_latest_date": meta.get("expected_latest_date"),
+            "yahoo_common_latest_date": meta.get("yahoo_common_latest_date"),
+            "fred_common_latest_date": meta.get("fred_common_latest_date"),
+            "source_status": meta.get("source_status"),
+            "lag_trading_days": meta.get("lag_trading_days"),
+        }
+    latest_date = _get_macro6_signal_latest_date(
+        indicator,
+        years,
+        benchmark_name=benchmark_name,
+        sync_bucket=sync_bucket,
+    )
+    note = _macro3_freshness_note(indicator, latest_date)
+    latest_text = _macro_date_text(latest_date)
+    if note == "지연":
+        latest_text = f"{latest_text} · 지연"
+    elif note == "확인 불가":
+        latest_text = "확인 불가"
+    return {
+        "indicator": indicator,
+        "label": _MACRO3_INDICATOR_LABELS.get(indicator, indicator),
+        "latest_date": latest_date,
+        "note": note,
+        "latest_text": latest_text,
+    }
 
 
 def _macro6_component_data_status(
@@ -8292,18 +8500,13 @@ def _macro6_component_data_status(
 ) -> dict:
     rows = []
     for indicator in component_cfg.get("selected_indicators", []):
-        latest_date = _get_macro6_signal_latest_date(
+        row = _macro6_indicator_data_status_row(
             indicator,
             years,
             benchmark_name=benchmark_name,
             sync_bucket=sync_bucket,
         )
-        rows.append({
-            "indicator": indicator,
-            "label": _MACRO3_INDICATOR_LABELS.get(indicator, indicator),
-            "latest_date": latest_date,
-            "note": _macro3_freshness_note(indicator, latest_date),
-        })
+        rows.append(row)
     valid_rows = [row for row in rows if row["latest_date"] is not None and not pd.isna(row["latest_date"])]
     bottleneck = min(valid_rows, key=lambda row: pd.Timestamp(row["latest_date"])) if valid_rows else None
     return {"rows": rows, "bottleneck": bottleneck}
@@ -8353,8 +8556,7 @@ def _build_macro6_status_panel(
             if bottleneck:
                 latest_text = (
                     f"가장 오래된 사용값 {bottleneck['label']} "
-                    f"{_macro_date_text(bottleneck['latest_date'])}"
-                    f"{' · 지연' if bottleneck.get('note') == '지연' else ''}"
+                    f"{bottleneck.get('latest_text') or _macro_date_text(bottleneck['latest_date'])}"
                 )
             else:
                 latest_text = "확인 불가"
@@ -8371,13 +8573,13 @@ def _build_macro6_status_panel(
             is_on = bool(latest.get(f"{key}_flag", False))
             if is_on:
                 active_labels.append(_MACRO3_INDICATOR_LABELS.get(indicator, indicator))
-            latest_date = _get_macro6_signal_latest_date(indicator, years, benchmark_name=benchmark_name, sync_bucket=sync_bucket)
-            freshness = _macro3_freshness_note(indicator, latest_date)
-            latest_text = _macro_date_text(latest_date)
-            if freshness == "지연":
-                latest_text = f"{latest_text} · 지연"
-            elif freshness == "확인 불가":
-                latest_text = "확인 불가"
+            data_status = _macro6_indicator_data_status_row(
+                indicator,
+                years,
+                benchmark_name=benchmark_name,
+                sync_bucket=sync_bucket,
+            )
+            latest_text = data_status.get("latest_text", "확인 불가")
             entries.append({
                 "label": _MACRO3_INDICATOR_LABELS.get(indicator, indicator),
                 "selected": indicator in selected,
