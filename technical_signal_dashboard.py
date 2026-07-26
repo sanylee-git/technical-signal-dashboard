@@ -11421,6 +11421,315 @@ def _render_signal_scanner2_section(container, favorites=None):
             """)
 
 
+def _scanner3_ohlcv_from_batch(code: str, closes: pd.DataFrame, highs: pd.DataFrame, lows: pd.DataFrame) -> pd.DataFrame:
+    if closes is None or closes.empty or code not in closes.columns:
+        return pd.DataFrame()
+    out = pd.DataFrame({
+        "close": pd.to_numeric(closes[code], errors="coerce"),
+        "high": pd.to_numeric(highs[code], errors="coerce") if highs is not None and code in highs.columns else pd.to_numeric(closes[code], errors="coerce"),
+        "low": pd.to_numeric(lows[code], errors="coerce") if lows is not None and code in lows.columns else pd.to_numeric(closes[code], errors="coerce"),
+    }).dropna(subset=["close"]).sort_index()
+    out.index = pd.DatetimeIndex(out.index).normalize()
+    return out
+
+
+def _scanner3_compute_from_ohlcv(ohlc: pd.DataFrame, preset: dict) -> dict | None:
+    if ohlc is None or ohlc.empty or "close" not in ohlc:
+        return None
+    ohlc = ohlc.copy()
+    ohlc.index = pd.DatetimeIndex(ohlc.index).normalize()
+    ohlc = ohlc.sort_index().drop_duplicates(keep="last")
+    for col in ["close", "high", "low"]:
+        if col not in ohlc:
+            ohlc[col] = ohlc["close"]
+        ohlc[col] = pd.to_numeric(ohlc[col], errors="coerce")
+    ohlc = ohlc.dropna(subset=["close", "high", "low"])
+    if len(ohlc) < 80:
+        return None
+    close = ohlc["close"].dropna()
+    dates = close.index
+    index_frame = _scanner2_align_signal(
+        _scanner2_compute_index_signal(close, _scanner2_parse_index_param(preset["index_param_id"])),
+        dates,
+    )
+    rsi_raw = _scanner2_compute_rsi_signal(close, _scanner2_parse_rsi_param(preset["rsi_param_id"]))
+    rsi_frame = _scanner2_align_signal(rsi_raw, dates)
+    bb_raw = _scanner2_compute_bb_signal(ohlc, _scanner2_parse_bb_param(preset["bb_param_id"]))
+    bb_frame = _scanner2_align_signal(bb_raw, dates)
+    atr_param = _scanner2_parse_atr_param(preset.get("atr_param_id"))
+    atr_raw = _scanner2_compute_atr_signal(ohlc, atr_param)
+    atr_frame = _scanner2_align_signal(atr_raw, dates)
+    components = {"EMA": index_frame, "RSI": rsi_frame, "BB": bb_frame}
+    raw = {"EMA": _scanner2_compute_index_signal(close, _scanner2_parse_index_param(preset["index_param_id"])), "RSI": rsi_raw, "BB": bb_raw, "ATR": atr_raw}
+    if atr_param:
+        components["ATR"] = atr_frame
+    active = sum(frame["risk_state"].astype(int).reindex(dates).fillna(0) for frame in components.values())
+    combo = _scanner2_hysteresis_combo(active, int(preset["start_k"]), int(preset["end_l"]))
+    backtest20 = _scanner2_backtest(close, combo["combo_risk_state"], years=20)
+    backtest10 = _scanner2_backtest(close, combo["combo_risk_state"], years=10)
+    return {
+        "ohlc": ohlc,
+        "close": close,
+        "combo": combo,
+        "components": components,
+        "component_raw": raw,
+        "backtest20": backtest20,
+        "backtest10": backtest10,
+    }
+
+
+def _scanner3_cycle_meta(combo: pd.DataFrame) -> dict:
+    if combo is None or combo.empty:
+        return {
+            "latest_date": None,
+            "risk_state": False,
+            "active_count": 0,
+            "start_signal": False,
+            "end_signal": False,
+            "cycle_start": None,
+            "duration": 0,
+        }
+    latest_date = combo.index.max()
+    latest = combo.loc[latest_date]
+    state = combo["combo_risk_state"].fillna(False).astype(bool)
+    current_state = bool(latest["combo_risk_state"])
+    start_idx = len(state) - 1
+    while start_idx > 0 and bool(state.iloc[start_idx - 1]) == current_state:
+        start_idx -= 1
+    return {
+        "latest_date": latest_date,
+        "risk_state": current_state,
+        "active_count": int(latest["active_count"]),
+        "start_signal": bool(latest["combo_start_signal"]),
+        "end_signal": bool(latest["combo_end_signal"]),
+        "cycle_start": state.index[start_idx],
+        "duration": int(len(state.iloc[start_idx:])),
+    }
+
+
+@st.cache_data(ttl=180, show_spinner=False)
+def _scanner3_build_rows(items_tuple, preset: dict, start_str: str, end_str: str):
+    items = [{"code": code, "name": name} for code, name in items_tuple]
+    tickers = tuple(item["code"] for item in items)
+    closes, highs, lows = fetch_ohlcv_batch(tickers, start_str, end_str, interval="1d")
+    rows = []
+    for item in items:
+        code = item["code"]
+        snap = _scanner3_compute_from_ohlcv(_scanner3_ohlcv_from_batch(code, closes, highs, lows), preset)
+        if snap is None:
+            rows.append({
+                "name": item["name"],
+                "code": code,
+                "latest_date": "—",
+                "risk_state": "데이터 부족",
+                "active": "—",
+                "event": "—",
+                "cycle_start": "—",
+                "duration": "—",
+                "components": "—",
+            })
+            continue
+        meta = _scanner3_cycle_meta(snap["combo"])
+        comp_latest = {
+            name: bool(frame.reindex(snap["combo"].index).loc[meta["latest_date"]].get("risk_state", False))
+            for name, frame in snap["components"].items()
+        }
+        event = "Risk 시작" if meta["start_signal"] else "Risk 종료" if meta["end_signal"] else "신규 신호 없음"
+        rows.append({
+            "name": item["name"],
+            "code": code,
+            "latest_date": meta["latest_date"].strftime("%Y-%m-%d") if meta["latest_date"] is not None else "—",
+            "risk_state": "Risk ON" if meta["risk_state"] else "Risk OFF",
+            "active": f"{meta['active_count']} / {len(snap['components'])}",
+            "event": event,
+            "cycle_start": meta["cycle_start"].strftime("%Y-%m-%d") if meta["cycle_start"] is not None else "—",
+            "duration": meta["duration"],
+            "components": " · ".join(f"{k}:{'ON' if v else 'OFF'}" for k, v in comp_latest.items()),
+        })
+    return rows
+
+
+@st.cache_data(ttl=180, show_spinner=False)
+def _scanner3_build_ticker_snapshot(code: str, preset: dict, start_str: str, end_str: str):
+    ohlcv = fetch_ohlcv(code, start_str, end_str, interval="1d")
+    if ohlcv is None or ohlcv.empty:
+        return None
+    lower = ohlcv.rename(columns={c: c.lower() for c in ohlcv.columns})
+    return _scanner3_compute_from_ohlcv(lower, preset)
+
+
+def _scanner3_rows_dataframe(rows: list[dict]) -> pd.DataFrame:
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    return df.rename(columns={
+        "name": "이름",
+        "code": "코드",
+        "latest_date": "기준일",
+        "risk_state": "상태",
+        "active": "ON 수",
+        "event": "실행 안내",
+        "cycle_start": "상태 시작일",
+        "duration": "지속 거래일",
+        "components": "지표 상태",
+    })
+
+
+def _render_signal_scanner3_section(container, favorites=None):
+    with container:
+        _render_dashboard_common_ui_css()
+        try:
+            manifest = _load_scanner2_preset_manifest()
+        except Exception as exc:
+            st.error(f"신호스캐너3 프리셋 로딩 실패: {exc}")
+            return
+
+        st.markdown(
+            "<div class='dash-muted'>지수 백테스트로 선정한 EMA·RSI·BB·ATR K/L 프리셋을 각 종목 가격에 다시 계산해 적용합니다. 종목 단위 운영 확정 모델은 아닙니다.</div>",
+            unsafe_allow_html=True,
+        )
+        c1, c2 = st.columns([1, 3])
+        with c1:
+            preset_group = st.radio(
+                "프리셋 그룹",
+                list(manifest["markets"].keys()),
+                format_func=lambda m: manifest["markets"][m]["label"],
+                horizontal=False,
+                key="scanner3_group",
+            )
+        with c2:
+            preset = st.selectbox(
+                "조합 프리셋",
+                manifest["markets"][preset_group]["presets"],
+                format_func=lambda p: f"{p['label']} · {p['index_param_id'].replace('idx_', '')} / {p['rsi_param_id'].replace('rsi_', '')} / {p['bb_param_id'].replace('bb_', '')} / {p.get('atr_param_id') or 'ATR 없음'} · K{p['start_k']}/L{p['end_l']}",
+                label_visibility="collapsed",
+                key=f"scanner3_preset_{preset_group}",
+            )
+
+        st.markdown(
+            "<div class='dash-card-grid'>"
+            f"<div class='dash-card'><div class='dash-card-label'>적용 프리셋</div><div class='dash-card-value' style='font-size:15px'>{preset['label']}</div><div class='dash-card-note'>{preset['candidate_id']}</div></div>"
+            f"<div class='dash-card'><div class='dash-card-label'>조합식</div><div class='dash-card-value' style='font-size:15px'>{preset['indicator_set'].upper()}</div><div class='dash-card-note'>시작 K{preset['start_k']} · 종료 L{preset['end_l']}</div></div>"
+            f"<div class='dash-card'><div class='dash-card-label'>상태</div><div class='dash-card-value' style='font-size:15px'>연구 기반 프리셋</div><div class='dash-card-note'>official_operating_model=False</div></div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        today = datetime.now().date()
+        data_end = str(today + timedelta(days=1))
+        data_start = str(today - timedelta(days=365 * 25 + 30))
+
+        favorites = favorites or []
+        kr_items = tuple((item["code"], item["name"]) for item in favorites)
+        us_items = tuple((item["code"], item["name"]) for item in US_WATCHLIST)
+
+        with st.spinner("조합 프리셋으로 즐겨찾기 신호 계산 중..."):
+            kr_rows = _scanner3_build_rows(kr_items, preset, data_start, data_end) if kr_items else []
+            us_rows = _scanner3_build_rows(us_items, preset, data_start, data_end)
+
+        with st.expander(f"📋 🇰🇷 한국 즐겨찾기 현황 ({len(kr_rows)}개)", expanded=False):
+            if kr_rows:
+                st.dataframe(_scanner3_rows_dataframe(kr_rows), width="stretch", hide_index=True)
+            else:
+                st.caption("한국 즐겨찾기 종목이 없습니다.")
+
+        with st.expander(f"📋 🇺🇸 미국 지수/ETF 현황 ({len(us_rows)}개)", expanded=False):
+            st.dataframe(_scanner3_rows_dataframe(us_rows), width="stretch", hide_index=True)
+
+        st.markdown("<div class='dash-section-title'>종목 선택</div>", unsafe_allow_html=True)
+        col_kr, col_us = st.columns(2)
+        kr_names = [f["name"] for f in favorites]
+        us_names = [t["name"] for t in US_WATCHLIST]
+        if "scanner3_active" not in st.session_state:
+            st.session_state.scanner3_active = "kr" if kr_names else "us"
+
+        with col_kr:
+            with st.expander("🇰🇷 한국 즐겨찾기", expanded=True):
+                if kr_names:
+                    if st.session_state.get("scanner3_kr_name") not in kr_names:
+                        st.session_state.scanner3_kr_name = kr_names[0]
+                    st.selectbox("한국종목선택", kr_names, key="scanner3_kr_name", label_visibility="collapsed")
+                    if st.button("한국 선택", key="scanner3_select_kr", width="stretch"):
+                        st.session_state.scanner3_active = "kr"
+                else:
+                    st.caption("신호스캐너1 사이드바에서 즐겨찾기를 추가해 주세요.")
+
+        with col_us:
+            with st.expander("🇺🇸 미국 지수/ETF", expanded=True):
+                if st.session_state.get("scanner3_us_name") not in us_names:
+                    st.session_state.scanner3_us_name = us_names[0]
+                st.selectbox("미국종목선택", us_names, key="scanner3_us_name", label_visibility="collapsed")
+                if st.button("미국 선택", key="scanner3_select_us", width="stretch"):
+                    st.session_state.scanner3_active = "us"
+
+        if st.session_state.get("scanner3_active") == "kr" and kr_names:
+            selected_name = st.session_state.get("scanner3_kr_name", kr_names[0])
+            selected = next((f for f in favorites if f["name"] == selected_name), favorites[0])
+        else:
+            selected_name = st.session_state.get("scanner3_us_name", us_names[0])
+            selected = next((t for t in US_WATCHLIST if t["name"] == selected_name), US_WATCHLIST[0])
+
+        with st.spinner(f"{selected['name']} 상세 신호 계산 중..."):
+            snapshot = _scanner3_build_ticker_snapshot(selected["code"], preset, data_start, data_end)
+
+        if snapshot is None:
+            st.warning(f"{selected['name']} 데이터를 가져오거나 신호를 계산할 수 없습니다.")
+            return
+
+        meta = _scanner3_cycle_meta(snapshot["combo"])
+        comp_latest = {
+            name: bool(frame.reindex(snapshot["combo"].index).loc[meta["latest_date"]].get("risk_state", False))
+            for name, frame in snapshot["components"].items()
+        }
+        event = "Risk 시작" if meta["start_signal"] else "Risk 종료" if meta["end_signal"] else "신규 시작/종료 신호 없음"
+        st.markdown("<div class='dash-section-title'>선택 종목 현재 상태</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='dash-card-grid'>"
+            f"<div class='dash-card'><div class='dash-card-label'>종목</div><div class='dash-card-value' style='font-size:15px'>{selected['name']}</div><div class='dash-card-note'>{selected['code']}</div></div>"
+            f"<div class='dash-card'><div class='dash-card-label'>기준일</div><div class='dash-card-value'>{meta['latest_date'].strftime('%Y-%m-%d')}</div><div class='dash-card-note'>Yahoo 일봉 기준</div></div>"
+            f"<div class='dash-card'><div class='dash-card-label'>현재 ON 수</div><div class='dash-card-value'>{meta['active_count']} / {len(snapshot['components'])}</div><div class='dash-card-note'>시작 K{preset['start_k']} · 종료 L{preset['end_l']}</div></div>"
+            f"<div class='dash-card'><div class='dash-card-label'>상태</div><div class='dash-card-value'>{'Risk ON' if meta['risk_state'] else 'Risk OFF'}</div><div class='dash-card-note'>상태 시작일 {meta['cycle_start'].strftime('%Y-%m-%d')} · {meta['duration']}거래일</div></div>"
+            f"<div class='dash-card'><div class='dash-card-label'>실행 안내</div><div class='dash-card-value' style='font-size:15px'>{event}</div><div class='dash-card-note'>{' · '.join(f'{k}:{'ON' if v else 'OFF'}' for k, v in comp_latest.items())}</div></div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("".join(_scanner2_status_badge(name, val) for name, val in comp_latest.items()), unsafe_allow_html=True)
+        years = st.radio("상세 차트 기간", [3, 5, 10, 20], index=1, horizontal=True, format_func=lambda x: f"{x}년", key="scanner3_chart_years", label_visibility="collapsed")
+        st.markdown("<div class='dash-section-title'>대표 차트: 종목 가격 + BB + 조합 Risk 신호</div>", unsafe_allow_html=True)
+        fig = _scanner2_make_main_chart(snapshot, years)
+        fig.update_layout(title=dict(text=selected["name"], font=dict(size=13, color="#D7D7D7")))
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+        st.markdown("<div class='dash-section-title'>지표별 상세 차트</div>", unsafe_allow_html=True)
+        charts = _scanner2_make_component_charts(snapshot, years)
+        st.plotly_chart(charts["EMA"], width="stretch", config={"displayModeBar": False})
+        d1, d2 = st.columns(2)
+        with d1:
+            st.plotly_chart(charts["RSI"], width="stretch", config={"displayModeBar": False})
+        with d2:
+            st.plotly_chart(charts["ATR"], width="stretch", config={"displayModeBar": False})
+
+        st.markdown("<div class='dash-section-title'>선택 종목 간단 백테스트</div>", unsafe_allow_html=True)
+        bt = snapshot["backtest20"]
+        st.dataframe(pd.DataFrame([{
+            "기간": f"{bt.get('start_date', '—')} ~ {bt.get('end_date', '—')}",
+            "전략 CAGR": _scanner2_fmt_pct(bt.get("cagr"), 2),
+            "B&H CAGR": _scanner2_fmt_pct(bt.get("buyhold_cagr"), 2),
+            "전략 MDD": _scanner2_fmt_pct(bt.get("mdd"), 1),
+            "B&H MDD": _scanner2_fmt_pct(bt.get("buyhold_mdd"), 1),
+            "Risk-off 비중": _scanner2_fmt_pct(bt.get("risk_off_share"), 1),
+        }]), width="stretch", hide_index=True)
+
+        with st.expander("📖 신호스캐너3 해석 가이드", expanded=False):
+            st.markdown("""
+            - 신호스캐너3는 지수 백테스트에서 고른 조합 프리셋의 **파라미터와 K/L 규칙**을 각 종목 가격에 다시 적용합니다.
+            - 지수의 저장 신호를 종목에 복사하는 방식이 아니므로, 종목마다 신호 날짜와 상태가 다르게 나오는 것이 정상입니다.
+            - `Risk ON`은 방어/현금 대기 성격의 구간으로 해석하고, `Risk OFF`는 위험 사이클이 꺼진 상태로 봅니다.
+            - 개별 종목 단위로 별도 최적화한 모델은 아니므로, 초기에는 연구 기반 참고 신호로 검토해 주세요.
+            """)
+
+
 # ============================================================
 # 메인 앱
 # ============================================================
@@ -11441,7 +11750,7 @@ def main(page="signal"):
         }
         </style>
         """, unsafe_allow_html=True)
-    elif page in ("signal", "signal2", "all"):
+    elif page in ("signal", "signal2", "signal3", "all"):
         st.markdown("""
         <style>
         .main .block-container,
@@ -11496,7 +11805,7 @@ def main(page="signal"):
             st.session_state["intra_interval"] = _intra_interval_param
         st.session_state["_last_scan_nav_sig"] = _scan_nav_sig
 
-    if page in ("market_macro", "macro2", "macro3", "macro6", "signal2"):
+    if page in ("market_macro", "macro2", "macro3", "macro6", "signal2", "signal3"):
         st.markdown("""
             <style>
             [data-testid="stSidebar"] { display: none !important; }
@@ -11505,7 +11814,7 @@ def main(page="signal"):
         """, unsafe_allow_html=True)
 
     # ─── 사이드바 ─────────────────────────────────────────────
-    if page not in ("market_macro", "macro2", "macro3", "macro6", "signal2"):
+    if page not in ("market_macro", "macro2", "macro3", "macro6", "signal2", "signal3"):
       with st.sidebar:
         # 즐겨찾기 파일 오류가 있을 때만 경고 표시
         if st.session_state.get('_fav_load_err'):
@@ -11734,6 +12043,7 @@ def main(page="signal"):
     _page_titles = {
         "signal": ("TECHNICAL SIGNAL SCANNER", "🎯 기술적 신호 스캐너"),
         "signal2": ("TECHNICAL SIGNAL SCANNER 2", "🎯 신호스캐너2"),
+        "signal3": ("TECHNICAL SIGNAL SCANNER 3", "🎯 신호스캐너3"),
         "market": ("MARKET INTERNALS", "🌐 시장 내부지표"),
         "macro": ("MACRO INDICATORS", "🌍 매크로 지표"),
         "market_macro": ("MARKET & MACRO DASHBOARD", "🌐 시장/매크로 지표"),
@@ -11766,6 +12076,8 @@ def main(page="signal"):
     elif page == "signal":
         tab1, tab2, tab3 = st.container(), None, None
     elif page == "signal2":
+        tab1, tab2, tab3 = st.container(), None, None
+    elif page == "signal3":
         tab1, tab2, tab3 = st.container(), None, None
     elif page == "market":
         tab1, tab2, tab3 = None, st.container(), None
@@ -13487,6 +13799,9 @@ def main(page="signal"):
     # ═══════════════════════════════════════════════════════════
     if page == "signal2":
         _render_signal_scanner2_section(tab1, favorites=favorites)
+
+    if page == "signal3":
+        _render_signal_scanner3_section(tab1, favorites=favorites)
 
     if page in ("all", "signal"):
         with tab1:
