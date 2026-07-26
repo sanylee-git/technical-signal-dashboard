@@ -8129,6 +8129,7 @@ def make_macro3_combo_dynamic_chart(
         line=dict(color="rgba(182,182,182,0.88)", width=1.55),
         hovertemplate=f"<b>%{{x|%Y-%m-%d}}</b><br>{benchmark['label']} %{{y:,.1f}}<extra></extra>",
     ))
+    _add_macro_combo_risk_cycle_background(fig, event_df, spx_aligned.index)
     start_rows = event_df.loc[event_df["combo_start_signal"]].copy()
     end_rows = event_df.loc[event_df["combo_end_signal"]].copy()
     start_y = spx_aligned.reindex(pd.to_datetime(start_rows["date"])) if not start_rows.empty else pd.Series(dtype=float)
@@ -8210,6 +8211,7 @@ def _make_macro6_combo_chart_from_snapshot(
         line=dict(color="rgba(182,182,182,0.88)", width=1.55),
         hovertemplate=f"<b>%{{x|%Y-%m-%d}}</b><br>{benchmark['label']} %{{y:,.1f}}<extra></extra>",
     ))
+    _add_macro_combo_risk_cycle_background(fig, event_df, spx_aligned.index)
     start_rows = event_df.loc[event_df["combo_start_signal"]].copy()
     end_rows = event_df.loc[event_df["combo_end_signal"]].copy()
     start_y = spx_aligned.reindex(pd.to_datetime(start_rows["date"])) if not start_rows.empty else pd.Series(dtype=float)
