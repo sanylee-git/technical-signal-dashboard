@@ -29,6 +29,7 @@ import traceback
 from zoneinfo import ZoneInfo
 warnings.filterwarnings('ignore')
 
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
 _COMBO1_EXPANDED_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "combo1_expanded_v1")
 if os.path.isdir(os.path.join(_COMBO1_EXPANDED_ROOT, "combo1_expanded")) and _COMBO1_EXPANDED_ROOT not in sys.path:
     sys.path.append(_COMBO1_EXPANDED_ROOT)
@@ -10722,6 +10723,704 @@ def _render_macro_combo_common_css():
     """, unsafe_allow_html=True)
 
 
+def _render_dashboard_common_ui_css():
+    st.markdown("""
+    <style>
+    .dash-section-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: rgba(237,237,237,0.92);
+        margin: 18px 0 8px 0;
+    }
+    .dash-muted {
+        font-size: 11.5px;
+        color: rgba(237,237,237,0.54);
+        line-height: 1.45;
+    }
+    .dash-card-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 8px;
+        margin: 8px 0 14px 0;
+    }
+    .dash-card {
+        background: #141416;
+        border: 1px solid rgba(255,255,255,0.07);
+        border-radius: 6px;
+        padding: 10px 12px;
+        min-height: 72px;
+    }
+    .dash-card-label {
+        font-size: 10px;
+        letter-spacing: 0.7px;
+        text-transform: uppercase;
+        color: rgba(237,237,237,0.46);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .dash-card-value {
+        margin-top: 4px;
+        font-size: 18px;
+        font-weight: 700;
+        color: #EDEDED;
+        font-variant-numeric: tabular-nums;
+    }
+    .dash-card-note {
+        margin-top: 3px;
+        font-size: 11px;
+        color: rgba(237,237,237,0.52);
+        line-height: 1.35;
+    }
+    .dash-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        border-radius: 999px;
+        padding: 3px 8px;
+        font-size: 11px;
+        font-weight: 700;
+        border: 1px solid rgba(255,255,255,0.1);
+        margin-right: 5px;
+        margin-bottom: 5px;
+    }
+    .dash-badge-on {
+        color: #FFB86C;
+        background: rgba(255,184,108,0.12);
+        border-color: rgba(255,184,108,0.28);
+    }
+    .dash-badge-off {
+        color: #8EA0B7;
+        background: rgba(142,160,183,0.10);
+        border-color: rgba(142,160,183,0.22);
+    }
+    .dash-badge-good {
+        color: #4BFFB3;
+        background: rgba(75,255,179,0.10);
+        border-color: rgba(75,255,179,0.24);
+    }
+    .dash-divider {
+        border-top: 1px solid rgba(255,255,255,0.07);
+        margin: 18px 0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+_SCANNER2_ASSET_ROOT = os.path.join(_APP_DIR, "signal_scanner2_assets")
+_SCANNER2_PRESET_PATH = os.path.join(_SCANNER2_ASSET_ROOT, "signal_scanner2_final5_presets.json")
+
+
+def _scanner2_sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+@st.cache_data(show_spinner=False)
+def _load_scanner2_preset_manifest():
+    if not os.path.exists(_SCANNER2_PRESET_PATH):
+        raise FileNotFoundError(f"신호스캐너2 프리셋 파일이 없습니다: {_SCANNER2_PRESET_PATH}")
+    with open(_SCANNER2_PRESET_PATH, "r", encoding="utf-8") as f:
+        manifest = json.load(f)
+    for market, spec in manifest.get("markets", {}).items():
+        for _name, file_spec in spec.get("source_files", {}).items():
+            path = os.path.join(_APP_DIR, file_spec["path"])
+            if not os.path.exists(path):
+                raise FileNotFoundError(f"{market} asset missing: {path}")
+            actual = _scanner2_sha256(path)
+            expected = file_spec.get("sha256")
+            if expected and actual != expected:
+                raise RuntimeError(f"{market} asset hash mismatch: {file_spec['path']}")
+    return manifest
+
+
+@st.cache_data(show_spinner=False)
+def _load_scanner2_market_assets(market: str):
+    manifest = _load_scanner2_preset_manifest()
+    market_spec = manifest["markets"][market]
+    source_files = market_spec["source_files"]
+    frozen = pd.read_parquet(os.path.join(_APP_DIR, source_files["frozen_ohlcv_parquet"]["path"]))
+    candidates = pd.read_csv(os.path.join(_APP_DIR, source_files["candidates_csv"]["path"]))
+    daily = pd.read_parquet(os.path.join(_APP_DIR, source_files["daily_signals_parquet"]["path"]))
+    frozen["date"] = pd.to_datetime(frozen["date"]).dt.normalize()
+    frozen = frozen.sort_values("date").drop_duplicates("date", keep="last").set_index("date")
+    daily["date"] = pd.to_datetime(daily["date"]).dt.normalize()
+    daily = daily.sort_values(["candidate_id", "date"])
+    return frozen, candidates, daily
+
+
+def _scanner2_state_from_events(start_event: pd.Series, end_event: pd.Series):
+    idx = start_event.index.union(end_event.index).sort_values()
+    start_event = start_event.reindex(idx).fillna(False).astype(bool)
+    end_event = end_event.reindex(idx).fillna(False).astype(bool)
+    states = []
+    starts = []
+    ends = []
+    in_risk = False
+    for dt in idx:
+        start = bool(start_event.loc[dt])
+        end = bool(end_event.loc[dt])
+        start_signal = False
+        end_signal = False
+        if not in_risk and start:
+            in_risk = True
+            start_signal = True
+        elif in_risk and end:
+            in_risk = False
+            end_signal = True
+        states.append(in_risk)
+        starts.append(start_signal)
+        ends.append(end_signal)
+    return (
+        pd.Series(states, index=idx, dtype=bool),
+        pd.Series(starts, index=idx, dtype=bool),
+        pd.Series(ends, index=idx, dtype=bool),
+    )
+
+
+def _scanner2_align_signal(signal: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFrame:
+    if signal is None or signal.empty:
+        return pd.DataFrame(index=dates, data={
+            "risk_state": False,
+            "risk_start_signal": False,
+            "risk_end_signal": False,
+            "valid_signal": False,
+        })
+    source = signal.copy()
+    source.index = pd.DatetimeIndex(source.index).normalize()
+    union = source.index.union(dates).sort_values()
+    state = source["risk_state"].astype(bool).reindex(union).ffill().fillna(False).reindex(dates).fillna(False)
+    prev = state.shift(1, fill_value=False)
+    valid_source = source.get("valid_signal", pd.Series(True, index=source.index)).astype(bool)
+    valid_dates = source.index[valid_source]
+    first_valid = valid_dates.min() if len(valid_dates) else dates.max()
+    return pd.DataFrame({
+        "risk_state": state.astype(bool),
+        "risk_start_signal": (state & ~prev).astype(bool),
+        "risk_end_signal": (~state & prev).astype(bool),
+        "valid_signal": pd.Series(dates >= first_valid, index=dates, dtype=bool),
+    }, index=dates)
+
+
+def _scanner2_parse_index_param(param_id: str) -> dict:
+    m = re.fullmatch(r"idx_ema(\d+)_w(\d+)_sq(\d+)_eq(\d+)", str(param_id))
+    if not m:
+        raise ValueError(f"Index param_id 파싱 실패: {param_id}")
+    return {
+        "ema_span": int(m.group(1)),
+        "window": int(m.group(2)),
+        "start_q": int(m.group(3)),
+        "end_q": int(m.group(4)),
+    }
+
+
+def _scanner2_parse_rsi_param(param_id: str) -> dict:
+    m = re.fullmatch(r"rsi_p(\d+)_lb(\d+)_q(\d+)_(\d+)", str(param_id))
+    if not m:
+        raise ValueError(f"RSI param_id 파싱 실패: {param_id}")
+    return {
+        "period": int(m.group(1)),
+        "lookback": int(m.group(2)),
+        "lower_q": int(m.group(3)),
+        "upper_q": int(m.group(4)),
+    }
+
+
+def _scanner2_parse_bb_param(param_id: str) -> dict:
+    m = re.fullmatch(r"bb_w(\d+)_std([0-9]+)p([0-9]+)", str(param_id))
+    if not m:
+        raise ValueError(f"BB param_id 파싱 실패: {param_id}")
+    return {
+        "window": int(m.group(1)),
+        "std": float(f"{m.group(2)}.{m.group(3)}"),
+    }
+
+
+def _scanner2_parse_atr_param(param_id: str | None) -> dict | None:
+    if param_id is None or str(param_id).lower() == "nan" or str(param_id).strip() == "":
+        return None
+    m = re.fullmatch(r"atr_p(\d+)_lb(\d+)_q(\d+)_(\d+)", str(param_id))
+    if not m:
+        raise ValueError(f"ATR param_id 파싱 실패: {param_id}")
+    return {
+        "period": int(m.group(1)),
+        "lookback": int(m.group(2)),
+        "lower_q": int(m.group(3)),
+        "upper_q": int(m.group(4)),
+    }
+
+
+def _scanner2_compute_index_signal(close: pd.Series, param: dict) -> pd.DataFrame:
+    out = pd.DataFrame({"close": pd.to_numeric(close, errors="coerce")}).dropna().sort_index()
+    span = int(param["ema_span"])
+    if span == 1:
+        out["ema"] = out["close"]
+    else:
+        out["ema"] = out["close"].ewm(span=span, adjust=False, min_periods=max(3, span // 2)).mean()
+    out = out.dropna().copy()
+    min_periods = max(20, int(param["window"]) // 2)
+    out["start_line"] = out["ema"].rolling(int(param["window"]), min_periods=min_periods).quantile(float(param["start_q"]) / 100.0).shift(1)
+    out["end_line"] = out["ema"].rolling(int(param["window"]), min_periods=min_periods).quantile(float(param["end_q"]) / 100.0).shift(1)
+    out = out.dropna().copy()
+    prev_ema = out["ema"].shift(1)
+    start_event = (prev_ema >= out["start_line"].shift(1)) & (out["ema"] < out["start_line"])
+    end_event = (prev_ema <= out["end_line"].shift(1)) & (out["ema"] > out["end_line"])
+    state, starts, ends = _scanner2_state_from_events(start_event.fillna(False), end_event.fillna(False))
+    out["risk_state"] = state.reindex(out.index).astype(bool)
+    out["risk_start_signal"] = starts.reindex(out.index).astype(bool)
+    out["risk_end_signal"] = ends.reindex(out.index).astype(bool)
+    out["valid_signal"] = True
+    return out
+
+
+def _scanner2_calculate_rsi(close: pd.Series, period: int) -> pd.Series:
+    delta = close.diff()
+    gain = delta.clip(lower=0.0).rolling(int(period), min_periods=int(period)).mean()
+    loss = (-delta.clip(upper=0.0)).rolling(int(period), min_periods=int(period)).mean()
+    rs = gain / (loss + 1e-10)
+    return 100.0 - (100.0 / (1.0 + rs))
+
+
+def _scanner2_compute_rsi_signal(close: pd.Series, param: dict) -> pd.DataFrame:
+    close = pd.to_numeric(close, errors="coerce").dropna().sort_index()
+    rsi = _scanner2_calculate_rsi(close, int(param["period"]))
+    min_periods = max(int(param["lookback"]) // 2, 10)
+    lower = rsi.rolling(int(param["lookback"]), min_periods=min_periods).quantile(float(param["lower_q"]) / 100.0)
+    upper = rsi.rolling(int(param["lookback"]), min_periods=min_periods).quantile(float(param["upper_q"]) / 100.0)
+    out = pd.concat([close.rename("close"), rsi.rename("rsi"), lower.rename("lower_line"), upper.rename("upper_line")], axis=1).dropna()
+    start_event = out["rsi"] >= out["upper_line"]
+    end_event = out["rsi"] <= out["lower_line"]
+    state, starts, ends = _scanner2_state_from_events(start_event, end_event)
+    out["risk_state"] = state.reindex(out.index).astype(bool)
+    out["risk_start_signal"] = starts.reindex(out.index).astype(bool)
+    out["risk_end_signal"] = ends.reindex(out.index).astype(bool)
+    out["valid_signal"] = True
+    return out
+
+
+def _scanner2_compute_bb_signal(ohlc: pd.DataFrame, param: dict) -> pd.DataFrame:
+    out = ohlc[["close", "high", "low"]].apply(pd.to_numeric, errors="coerce").dropna().sort_index()
+    middle = out["close"].rolling(int(param["window"]), min_periods=int(param["window"])).mean()
+    std = out["close"].rolling(int(param["window"]), min_periods=int(param["window"])).std()
+    out["bb_middle"] = middle
+    out["bb_upper"] = middle + float(param["std"]) * std
+    out["bb_lower"] = middle - float(param["std"]) * std
+    out = out.dropna().copy()
+    buy_flag = out["low"] <= out["bb_lower"]
+    sell_flag = out["high"] >= out["bb_upper"]
+    start_event = sell_flag.shift(1, fill_value=False) & (out["high"] < out["bb_upper"])
+    end_event = buy_flag.shift(1, fill_value=False) & (out["low"] > out["bb_lower"])
+    state, starts, ends = _scanner2_state_from_events(start_event, end_event)
+    out["risk_state"] = state.reindex(out.index).astype(bool)
+    out["risk_start_signal"] = starts.reindex(out.index).astype(bool)
+    out["risk_end_signal"] = ends.reindex(out.index).astype(bool)
+    out["valid_signal"] = True
+    return out
+
+
+def _scanner2_wilder_atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int) -> pd.Series:
+    prev_close = close.shift(1)
+    tr = pd.concat([(high - low).abs(), (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
+    return tr.ewm(alpha=1.0 / int(period), adjust=False, min_periods=int(period)).mean()
+
+
+def _scanner2_compute_atr_signal(ohlc: pd.DataFrame, param: dict | None) -> pd.DataFrame:
+    if not param:
+        return pd.DataFrame(index=ohlc.index, data={
+            "natr": np.nan,
+            "start_line": np.nan,
+            "end_line": np.nan,
+            "risk_state": False,
+            "risk_start_signal": False,
+            "risk_end_signal": False,
+            "valid_signal": False,
+        })
+    out = ohlc[["close", "high", "low"]].apply(pd.to_numeric, errors="coerce").dropna().sort_index()
+    atr = _scanner2_wilder_atr(out["high"], out["low"], out["close"], int(param["period"]))
+    natr = 100.0 * atr / out["close"]
+    min_periods = max(int(param["lookback"]) // 2, 20)
+    start_line = natr.rolling(int(param["lookback"]), min_periods=min_periods).quantile(float(param["upper_q"]) / 100.0).shift(1)
+    end_line = natr.rolling(int(param["lookback"]), min_periods=min_periods).quantile(float(param["lower_q"]) / 100.0).shift(1)
+    out = pd.concat([natr.rename("natr"), start_line.rename("start_line"), end_line.rename("end_line")], axis=1).dropna()
+    prev_natr = out["natr"].shift(1)
+    start_event = (out["natr"] >= out["start_line"]) & (prev_natr < out["start_line"].shift(1))
+    end_event = (out["natr"] <= out["end_line"]) & (prev_natr > out["end_line"].shift(1))
+    state, starts, ends = _scanner2_state_from_events(start_event.fillna(False), end_event.fillna(False))
+    out["risk_state"] = state.reindex(out.index).astype(bool)
+    out["risk_start_signal"] = starts.reindex(out.index).astype(bool)
+    out["risk_end_signal"] = ends.reindex(out.index).astype(bool)
+    out["valid_signal"] = True
+    return out
+
+
+def _scanner2_hysteresis_combo(active_count: pd.Series, start_k: int, end_l: int) -> pd.DataFrame:
+    states = []
+    starts = []
+    ends = []
+    in_risk = False
+    for _, count in active_count.items():
+        start_signal = False
+        end_signal = False
+        if not in_risk and int(count) >= int(start_k):
+            in_risk = True
+            start_signal = True
+        elif in_risk and int(count) <= int(end_l):
+            in_risk = False
+            end_signal = True
+        states.append(in_risk)
+        starts.append(start_signal)
+        ends.append(end_signal)
+    return pd.DataFrame({
+        "combo_risk_state": states,
+        "combo_start_signal": starts,
+        "combo_end_signal": ends,
+        "active_count": active_count.astype(int),
+    }, index=active_count.index)
+
+
+def _scanner2_backtest(close: pd.Series, risk_state: pd.Series, years: int = 20) -> dict:
+    close = pd.to_numeric(close, errors="coerce").dropna().sort_index()
+    if close.empty:
+        return {}
+    start_date = close.index.max() - pd.DateOffset(years=years)
+    close = close.loc[close.index >= start_date]
+    state = risk_state.reindex(close.index).fillna(False).astype(bool)
+    ret = close.pct_change().fillna(0.0)
+    position = (~state).shift(1, fill_value=True).astype(float)
+    strat = (1.0 + ret * position).cumprod()
+    bh = (1.0 + ret).cumprod()
+    elapsed_years = max((close.index.max() - close.index.min()).days / 365.25, 1e-9)
+
+    def _mdd(s):
+        return float((s / s.cummax() - 1.0).min())
+
+    return {
+        "start_date": close.index.min().strftime("%Y-%m-%d"),
+        "end_date": close.index.max().strftime("%Y-%m-%d"),
+        "final_asset": float(strat.iloc[-1]),
+        "buyhold_final_asset": float(bh.iloc[-1]),
+        "cagr": float(strat.iloc[-1] ** (1.0 / elapsed_years) - 1.0),
+        "buyhold_cagr": float(bh.iloc[-1] ** (1.0 / elapsed_years) - 1.0),
+        "mdd": _mdd(strat),
+        "buyhold_mdd": _mdd(bh),
+        "risk_off_share": float(state.mean()),
+    }
+
+
+@st.cache_data(show_spinner=False)
+def _build_scanner2_candidate_snapshot(market: str, candidate_id: str):
+    manifest = _load_scanner2_preset_manifest()
+    market_spec = manifest["markets"][market]
+    preset = next(p for p in market_spec["presets"] if p["candidate_id"] == candidate_id)
+    ohlc, candidates, saved_daily = _load_scanner2_market_assets(market)
+    ohlc = ohlc.rename(columns={c: c.lower() for c in ohlc.columns})
+    dates = pd.DatetimeIndex(ohlc.index).normalize()
+    close = pd.to_numeric(ohlc["close"], errors="coerce").dropna()
+    dates = close.index
+
+    index_frame = _scanner2_align_signal(
+        _scanner2_compute_index_signal(close, _scanner2_parse_index_param(preset["index_param_id"])),
+        dates,
+    )
+    rsi_frame_raw = _scanner2_compute_rsi_signal(close, _scanner2_parse_rsi_param(preset["rsi_param_id"]))
+    rsi_frame = _scanner2_align_signal(rsi_frame_raw, dates)
+    bb_frame_raw = _scanner2_compute_bb_signal(ohlc, _scanner2_parse_bb_param(preset["bb_param_id"]))
+    bb_frame = _scanner2_align_signal(bb_frame_raw, dates)
+    atr_param = _scanner2_parse_atr_param(preset.get("atr_param_id"))
+    atr_frame_raw = _scanner2_compute_atr_signal(ohlc, atr_param)
+    atr_frame = _scanner2_align_signal(atr_frame_raw, dates)
+
+    component_frames = {
+        "EMA": index_frame,
+        "RSI": rsi_frame,
+        "BB": bb_frame,
+    }
+    if atr_param:
+        component_frames["ATR"] = atr_frame
+
+    active = sum(frame["risk_state"].astype(int).reindex(dates).fillna(0) for frame in component_frames.values())
+    combo = _scanner2_hysteresis_combo(active, int(preset["start_k"]), int(preset["end_l"]))
+    saved = saved_daily[saved_daily["candidate_id"].astype(str).eq(candidate_id)].copy()
+    saved = saved.set_index("date").sort_index()
+    saved_state = saved["risk_state"].astype(bool).reindex(combo.index)
+    common = saved_state.dropna().index.intersection(combo.index)
+    parity_mismatch = int((saved_state.loc[common].astype(bool).to_numpy() != combo.loc[common, "combo_risk_state"].astype(bool).to_numpy()).sum()) if len(common) else None
+    combo["saved_risk_state"] = saved_state.reindex(combo.index).astype("boolean")
+    backtest20 = _scanner2_backtest(close, combo["combo_risk_state"], years=20)
+    backtest10 = _scanner2_backtest(close, combo["combo_risk_state"], years=10)
+    return {
+        "manifest": manifest,
+        "market_spec": market_spec,
+        "preset": preset,
+        "ohlc": ohlc,
+        "close": close,
+        "combo": combo,
+        "components": component_frames,
+        "component_raw": {
+            "EMA": _scanner2_compute_index_signal(close, _scanner2_parse_index_param(preset["index_param_id"])),
+            "RSI": rsi_frame_raw,
+            "BB": bb_frame_raw,
+            "ATR": atr_frame_raw,
+        },
+        "backtest20": backtest20,
+        "backtest10": backtest10,
+        "parity": {
+            "common_rows": int(len(common)),
+            "risk_state_mismatch": parity_mismatch,
+        },
+    }
+
+
+def _scanner2_fmt_pct(value, digits=1):
+    if value is None or pd.isna(value):
+        return "—"
+    return f"{float(value) * 100:.{digits}f}%"
+
+
+def _scanner2_fmt_num(value, digits=2):
+    if value is None or pd.isna(value):
+        return "—"
+    return f"{float(value):,.{digits}f}"
+
+
+def _scanner2_status_badge(label: str, is_on: bool) -> str:
+    cls = "dash-badge-on" if is_on else "dash-badge-off"
+    return f'<span class="dash-badge {cls}">{label} {"ON" if is_on else "OFF"}</span>'
+
+
+def _scanner2_add_risk_shapes(fig: go.Figure, state: pd.Series, row=None, col=None):
+    state = state.fillna(False).astype(bool)
+    if state.empty:
+        return
+    start = None
+    prev = False
+    for dt, val in state.items():
+        if val and not prev:
+            start = dt
+        if prev and not val and start is not None:
+            fig.add_vrect(x0=start, x1=dt, fillcolor="rgba(255,75,110,0.11)", line_width=0, row=row, col=col)
+            start = None
+        prev = val
+    if prev and start is not None:
+        fig.add_vrect(x0=start, x1=state.index[-1], fillcolor="rgba(255,75,110,0.11)", line_width=0, row=row, col=col)
+
+
+def _scanner2_chart_layout(fig: go.Figure, height: int = 360):
+    fig.update_layout(
+        height=height,
+        margin=dict(l=28, r=22, t=28, b=28),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#D7D7D7", size=11),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+    )
+    fig.update_xaxes(gridcolor="rgba(255,255,255,0.06)", zeroline=False)
+    fig.update_yaxes(gridcolor="rgba(255,255,255,0.06)", zeroline=False)
+    return fig
+
+
+def _scanner2_make_main_chart(snapshot: dict, years: int) -> go.Figure:
+    close = snapshot["close"]
+    combo = snapshot["combo"]
+    bb_raw = snapshot["component_raw"]["BB"]
+    start_date = close.index.max() - pd.DateOffset(years=years)
+    idx = close.loc[close.index >= start_date].index
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=idx, y=close.reindex(idx), name="지수", line=dict(color="#B7B7B7", width=1.7)))
+    for col, name, color, dash in [
+        ("bb_middle", "BB 중심", "rgba(216,195,106,0.70)", "solid"),
+        ("bb_upper", "BB 상단", "rgba(255,140,105,0.70)", "dot"),
+        ("bb_lower", "BB 하단", "rgba(120,220,255,0.72)", "dot"),
+    ]:
+        if col in bb_raw:
+            fig.add_trace(go.Scatter(x=idx, y=bb_raw[col].reindex(idx), name=name, line=dict(color=color, width=1.0, dash=dash)))
+    state = combo["combo_risk_state"].reindex(idx).fillna(False)
+    _scanner2_add_risk_shapes(fig, state)
+    starts = combo.index[combo["combo_start_signal"].astype(bool)]
+    ends = combo.index[combo["combo_end_signal"].astype(bool)]
+    starts = starts.intersection(idx)
+    ends = ends.intersection(idx)
+    fig.add_trace(go.Scatter(x=starts, y=close.reindex(starts), mode="markers", name="Risk 시작", marker=dict(symbol="triangle-down", size=11, color="#FF4B6E")))
+    fig.add_trace(go.Scatter(x=ends, y=close.reindex(ends), mode="markers", name="Risk 종료", marker=dict(symbol="triangle-up", size=11, color="#4F9CFF")))
+    return _scanner2_chart_layout(fig, height=390)
+
+
+def _scanner2_make_component_charts(snapshot: dict, years: int) -> dict[str, go.Figure]:
+    close = snapshot["close"]
+    start_date = close.index.max() - pd.DateOffset(years=years)
+    idx = close.loc[close.index >= start_date].index
+    out = {}
+    ema = snapshot["component_raw"]["EMA"]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=idx, y=close.reindex(idx), name="지수", line=dict(color="#A7A7A7", width=1.4)))
+    fig.add_trace(go.Scatter(x=idx, y=ema.get("ema", pd.Series(index=idx)).reindex(idx), name="EMA", line=dict(color="#F7C948", width=1.4)))
+    fig.add_trace(go.Scatter(x=idx, y=ema.get("start_line", pd.Series(index=idx)).reindex(idx), name="시작선", line=dict(color="#FF8C69", width=1, dash="dot")))
+    fig.add_trace(go.Scatter(x=idx, y=ema.get("end_line", pd.Series(index=idx)).reindex(idx), name="종료선", line=dict(color="#4F9CFF", width=1, dash="dot")))
+    out["EMA"] = _scanner2_chart_layout(fig, height=300)
+
+    rsi = snapshot["component_raw"]["RSI"]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=idx, y=rsi.get("rsi", pd.Series(index=idx)).reindex(idx), name="RSI", line=dict(color="#B18CFF", width=1.4)))
+    fig.add_trace(go.Scatter(x=idx, y=rsi.get("upper_line", pd.Series(index=idx)).reindex(idx), name="시작선", line=dict(color="#FF8C69", width=1, dash="dot")))
+    fig.add_trace(go.Scatter(x=idx, y=rsi.get("lower_line", pd.Series(index=idx)).reindex(idx), name="종료선", line=dict(color="#4F9CFF", width=1, dash="dot")))
+    fig.update_yaxes(range=[0, 100])
+    out["RSI"] = _scanner2_chart_layout(fig, height=280)
+
+    atr = snapshot["component_raw"].get("ATR", pd.DataFrame())
+    fig = go.Figure()
+    if atr is not None and not atr.empty and "natr" in atr and atr["natr"].notna().any():
+        fig.add_trace(go.Scatter(x=idx, y=atr["natr"].reindex(idx), name="NATR", line=dict(color="#5EEAD4", width=1.4)))
+        fig.add_trace(go.Scatter(x=idx, y=atr.get("start_line", pd.Series(index=idx)).reindex(idx), name="시작선", line=dict(color="#FF8C69", width=1, dash="dot")))
+        fig.add_trace(go.Scatter(x=idx, y=atr.get("end_line", pd.Series(index=idx)).reindex(idx), name="종료선", line=dict(color="#4F9CFF", width=1, dash="dot")))
+    else:
+        fig.add_annotation(text="ATR 미사용 후보", x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False, font=dict(color="#777"))
+    out["ATR"] = _scanner2_chart_layout(fig, height=280)
+    return out
+
+
+def _render_signal_scanner2_section(container, favorites=None):
+    with container:
+        _render_dashboard_common_ui_css()
+        try:
+            manifest = _load_scanner2_preset_manifest()
+        except Exception as exc:
+            st.error(f"신호스캐너2 자산 로딩 실패: {exc}")
+            return
+
+        st.markdown("<div class='dash-muted'>시장별 Stage03F 추천 후보 중 사용자가 확정한 5개 프리셋을 검토용으로 표시합니다. 운영 확정 모델은 아닙니다.</div>", unsafe_allow_html=True)
+        market_options = list(manifest["markets"].keys())
+        market = st.radio(
+            "시장",
+            market_options,
+            format_func=lambda m: manifest["markets"][m]["label"],
+            horizontal=True,
+            label_visibility="collapsed",
+            key="scanner2_market",
+        )
+        presets = manifest["markets"][market]["presets"]
+        preset = st.selectbox(
+            "Final5 조합 프리셋",
+            presets,
+            format_func=lambda p: f"{p['label']} · {p['index_param_id'].replace('idx_', '')} / {p['rsi_param_id'].replace('rsi_', '')} / {p['bb_param_id'].replace('bb_', '')} / {p.get('atr_param_id') or 'ATR 없음'} · K{p['start_k']}/L{p['end_l']}",
+            label_visibility="collapsed",
+            key=f"scanner2_preset_{market}",
+        )
+
+        with st.spinner("신호스캐너2 프리셋 계산 중..."):
+            snapshot = _build_scanner2_candidate_snapshot(market, preset["candidate_id"])
+
+        combo = snapshot["combo"]
+        close = snapshot["close"]
+        latest_date = combo.index.max()
+        latest = combo.loc[latest_date]
+        state = combo["combo_risk_state"].astype(bool)
+        current_state = bool(latest["combo_risk_state"])
+        start_idx = len(state) - 1
+        while start_idx > 0 and bool(state.iloc[start_idx - 1]) == current_state:
+            start_idx -= 1
+        cycle_start = state.index[start_idx]
+        duration = int(len(state.iloc[start_idx:]))
+        comp_latest = {name: frame.reindex(combo.index).loc[latest_date] for name, frame in snapshot["components"].items()}
+        active_components = [name for name, row in comp_latest.items() if bool(row.get("risk_state", False))]
+        component_count = len(snapshot["components"])
+        active_count = int(latest["active_count"])
+        start_met = active_count >= int(preset["start_k"])
+        end_met = active_count <= int(preset["end_l"])
+        action = "신규 시작 신호" if bool(latest["combo_start_signal"]) else "신규 종료 신호" if bool(latest["combo_end_signal"]) else "신규 시작/종료 신호 없음"
+
+        st.markdown("<div class='dash-section-title'>현재 신호 상태 요약</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='dash-card-grid'>"
+            f"<div class='dash-card'><div class='dash-card-label'>기준일</div><div class='dash-card-value'>{latest_date.strftime('%Y-%m-%d')}</div><div class='dash-card-note'>공통 산출물 마지막 거래일</div></div>"
+            f"<div class='dash-card'><div class='dash-card-label'>시작 조건</div><div class='dash-card-value'>{active_count} / {component_count} ON</div><div class='dash-card-note'>K{preset['start_k']} 이상이면 시작 · {'충족' if start_met else '미충족'}</div></div>"
+            f"<div class='dash-card'><div class='dash-card-label'>종료 조건</div><div class='dash-card-value'>{active_count} / {component_count} ON</div><div class='dash-card-note'>L{preset['end_l']} 이하이면 종료 · {'충족' if end_met else '미충족'}</div></div>"
+            f"<div class='dash-card'><div class='dash-card-label'>상태</div><div class='dash-card-value'>{'리스크 사이클 ON' if current_state else '리스크 사이클 OFF'}</div><div class='dash-card-note'>현재 상태 시작일 {cycle_start.strftime('%Y-%m-%d')} · 지속 거래일 {duration}</div></div>"
+            f"<div class='dash-card'><div class='dash-card-label'>실행 안내</div><div class='dash-card-value' style='font-size:15px'>{action}</div><div class='dash-card-note'>활성 지표: {', '.join(active_components) if active_components else '없음'}</div></div>"
+            f"<div class='dash-card'><div class='dash-card-label'>저장 신호 parity</div><div class='dash-card-value'>{snapshot['parity']['risk_state_mismatch']}</div><div class='dash-card-note'>공통 {snapshot['parity']['common_rows']:,}행 mismatch</div></div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("<div class='dash-section-title'>지표별 현재 상태</div>", unsafe_allow_html=True)
+        badges = []
+        for name in ["EMA", "RSI", "BB", "ATR"]:
+            if name in comp_latest:
+                badges.append(_scanner2_status_badge(name, bool(comp_latest[name].get("risk_state", False))))
+            elif name == "ATR":
+                badges.append('<span class="dash-badge dash-badge-off">ATR 미사용</span>')
+        st.markdown("".join(badges), unsafe_allow_html=True)
+
+        comp_cols = st.columns(4)
+        component_notes = {
+            "EMA": preset["index_param_id"],
+            "RSI": preset["rsi_param_id"],
+            "BB": preset["bb_param_id"],
+            "ATR": preset.get("atr_param_id") or "ATR 없음",
+        }
+        for i, name in enumerate(["EMA", "RSI", "BB", "ATR"]):
+            with comp_cols[i]:
+                row = comp_latest.get(name)
+                if row is None:
+                    st.metric(name, "미사용")
+                    st.caption(component_notes[name])
+                else:
+                    st.metric(name, "ON" if bool(row.get("risk_state", False)) else "OFF")
+                    st.caption(component_notes[name])
+
+        if favorites:
+            with st.expander(f"📋 🇰🇷 한국 즐겨찾기 현황 ({len(favorites)}개)", expanded=False):
+                fav_df = pd.DataFrame(favorites)
+                if not fav_df.empty:
+                    st.dataframe(fav_df.rename(columns={"code": "코드", "name": "이름"}), width="stretch", hide_index=True)
+
+        st.markdown("<div class='dash-section-title'>대표 차트: 지수 + BB + 최종 Risk 신호</div>", unsafe_allow_html=True)
+        years = st.radio("표시 기간", [3, 5, 10, 20], index=1, horizontal=True, format_func=lambda x: f"{x}년", label_visibility="collapsed", key="scanner2_chart_years")
+        st.plotly_chart(_scanner2_make_main_chart(snapshot, years), width="stretch", config={"displayModeBar": False})
+        st.caption("BB 선은 선택 후보의 BB 파라미터 기준이고, 음영과 마커는 4지표 K/L 최종 조합 신호 기준입니다.")
+
+        st.markdown("<div class='dash-section-title'>세부 지표 차트</div>", unsafe_allow_html=True)
+        charts = _scanner2_make_component_charts(snapshot, years)
+        st.plotly_chart(charts["EMA"], width="stretch", config={"displayModeBar": False})
+        c1, c2 = st.columns(2)
+        with c1:
+            st.plotly_chart(charts["RSI"], width="stretch", config={"displayModeBar": False})
+        with c2:
+            st.plotly_chart(charts["ATR"], width="stretch", config={"displayModeBar": False})
+
+        st.markdown("<div class='dash-section-title'>백테스트 비교 보기</div>", unsafe_allow_html=True)
+        tabs = st.tabs([f"{manifest['markets'][m]['label']}" for m in market_options])
+        for tab, m in zip(tabs, market_options):
+            with tab:
+                rows = []
+                for p in manifest["markets"][m]["presets"]:
+                    metrics = p.get("metrics", {})
+                    rows.append({
+                        "프리셋": p["label"],
+                        "후보 ID": p["candidate_id"],
+                        "K/L": f"K{p['start_k']}/L{p['end_l']}",
+                        "20Y CAGR": _scanner2_fmt_pct(metrics.get("cagr_20y"), 2),
+                        "B&H 20Y CAGR": _scanner2_fmt_pct(metrics.get("buyhold_cagr_20y"), 2),
+                        "20Y MDD": _scanner2_fmt_pct(metrics.get("total_mdd_20y"), 1),
+                        "B&H MDD": _scanner2_fmt_pct(metrics.get("buyhold_mdd_20y"), 1),
+                        "Risk-off": _scanner2_fmt_pct(metrics.get("risk_off_share_20y"), 1),
+                        "사이클": int(metrics.get("cycle_count_20y") or 0),
+                    })
+                st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+
+        with st.expander("📖 신호 해석 가이드", expanded=False):
+            st.markdown("""
+            **신호스캐너2 기준**
+            - 각 후보는 EMA, RSI, BB, ATR 중 지정된 지표들의 Risk 상태를 먼저 계산합니다.
+            - `K`개 이상 지표가 Risk ON이면 최종 리스크 사이클이 시작됩니다.
+            - 리스크 사이클 중 ON 지표 수가 `L`개 이하로 내려가면 최종 리스크 사이클이 종료됩니다.
+            - 대표 차트의 BB는 선택 후보의 BB 조건이고, 음영은 BB 단독이 아니라 최종 K/L 조합 신호입니다.
+            - 현재 후보들은 연구 산출물 기반 검토용 프리셋이며, 사용자 승인 전 운영 확정 모델이 아닙니다.
+            """)
+
+
 # ============================================================
 # 메인 앱
 # ============================================================
@@ -10742,7 +11441,7 @@ def main(page="signal"):
         }
         </style>
         """, unsafe_allow_html=True)
-    elif page in ("signal", "all"):
+    elif page in ("signal", "signal2", "all"):
         st.markdown("""
         <style>
         .main .block-container,
@@ -10797,7 +11496,7 @@ def main(page="signal"):
             st.session_state["intra_interval"] = _intra_interval_param
         st.session_state["_last_scan_nav_sig"] = _scan_nav_sig
 
-    if page in ("market_macro", "macro2", "macro3", "macro6"):
+    if page in ("market_macro", "macro2", "macro3", "macro6", "signal2"):
         st.markdown("""
             <style>
             [data-testid="stSidebar"] { display: none !important; }
@@ -10806,7 +11505,7 @@ def main(page="signal"):
         """, unsafe_allow_html=True)
 
     # ─── 사이드바 ─────────────────────────────────────────────
-    if page not in ("market_macro", "macro2", "macro3", "macro6"):
+    if page not in ("market_macro", "macro2", "macro3", "macro6", "signal2"):
       with st.sidebar:
         # 즐겨찾기 파일 오류가 있을 때만 경고 표시
         if st.session_state.get('_fav_load_err'):
@@ -11034,6 +11733,7 @@ def main(page="signal"):
     # ─── 타이틀 ───────────────────────────────────────────────
     _page_titles = {
         "signal": ("TECHNICAL SIGNAL SCANNER", "🎯 기술적 신호 스캐너"),
+        "signal2": ("TECHNICAL SIGNAL SCANNER 2", "🎯 신호스캐너2"),
         "market": ("MARKET INTERNALS", "🌐 시장 내부지표"),
         "macro": ("MACRO INDICATORS", "🌍 매크로 지표"),
         "market_macro": ("MARKET & MACRO DASHBOARD", "🌐 시장/매크로 지표"),
@@ -11064,6 +11764,8 @@ def main(page="signal"):
     if page == "all":
         tab1, tab2, tab3 = st.tabs(["📊 신호 스캐너", "🌐 시장 내부지표", "🌍 매크로 지표"])
     elif page == "signal":
+        tab1, tab2, tab3 = st.container(), None, None
+    elif page == "signal2":
         tab1, tab2, tab3 = st.container(), None, None
     elif page == "market":
         tab1, tab2, tab3 = None, st.container(), None
@@ -12783,6 +13485,9 @@ def main(page="signal"):
     # ═══════════════════════════════════════════════════════════
     # TAB 1 — 신호 스캐너
     # ═══════════════════════════════════════════════════════════
+    if page == "signal2":
+        _render_signal_scanner2_section(tab1, favorites=favorites)
+
     if page in ("all", "signal"):
         with tab1:
             _signal_debug_log("scanner_page_enter", chart_mode=chart_mode, favorites=len(favorites), auto_refresh=auto_refresh)
