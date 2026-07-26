@@ -9299,6 +9299,33 @@ def _build_macro6_component_chart(
     return fig
 
 
+def _add_macro_combo_risk_cycle_background(fig: go.Figure, event_df: pd.DataFrame, x_index) -> None:
+    if event_df is None or event_df.empty or "combo_risk_state" not in event_df.columns:
+        return
+    dates = pd.to_datetime(x_index)
+    if len(dates) == 0:
+        return
+    state = (
+        event_df.assign(date=pd.to_datetime(event_df["date"]))
+        .drop_duplicates("date")
+        .set_index("date")["combo_risk_state"]
+        .reindex(dates)
+        .fillna(False)
+        .astype(bool)
+    )
+    start = None
+    prev = False
+    for dt, is_on in state.items():
+        if is_on and not prev:
+            start = dt
+        if prev and not is_on and start is not None:
+            fig.add_vrect(x0=start, x1=dt, fillcolor="rgba(255,75,110,0.11)", line_width=0, layer="below")
+            start = None
+        prev = bool(is_on)
+    if prev and start is not None:
+        fig.add_vrect(x0=start, x1=state.index[-1], fillcolor="rgba(255,75,110,0.11)", line_width=0, layer="below")
+
+
 def make_macro_combo_dynamic_chart(
     years: int = 5,
     spx_s=None,
@@ -9364,6 +9391,7 @@ def make_macro_combo_dynamic_chart(
         line=dict(color='rgba(182,182,182,0.88)', width=1.55),
         hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>{benchmark['label']} %{{y:,.1f}}<extra></extra>',
     ))
+    _add_macro_combo_risk_cycle_background(fig, combo_event_df, spx_aligned.index)
 
     start_rows = combo_event_df.loc[combo_event_df["combo_start_signal"]].copy()
     end_rows = combo_event_df.loc[combo_event_df["combo_end_signal"]].copy()
@@ -9644,6 +9672,7 @@ def make_macro_meta_combo_dynamic_chart(
         line=dict(color='rgba(182,182,182,0.88)', width=1.55),
         hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>{benchmark["label"]} %{{y:,.1f}}<extra></extra>',
     ))
+    _add_macro_combo_risk_cycle_background(fig, meta_event_df, spx_aligned.index)
 
     start_rows = meta_event_df.loc[meta_event_df["combo_start_signal"]].copy()
     end_rows = meta_event_df.loc[meta_event_df["combo_end_signal"]].copy()
