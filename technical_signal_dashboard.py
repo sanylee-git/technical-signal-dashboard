@@ -11604,11 +11604,11 @@ def _scanner3_adapt_to_scanner1_signal_row(code: str, name: str, snap: dict | No
     start_signal = bool(meta.get("start_signal", False))
     end_signal = bool(meta.get("end_signal", False))
 
-    row["dyn_buy_signal"] = start_signal
-    row["dyn_sell_signal"] = end_signal
-    row["dyn_holding"] = risk_state and not start_signal and not end_signal
-    row["dyn_buy_flag"] = (not risk_state) and (not start_signal) and active_count >= max(1, start_k - 1)
-    row["dyn_sell_flag"] = risk_state and (not end_signal) and active_count <= end_l + 1
+    row["dyn_buy_signal"] = end_signal
+    row["dyn_sell_signal"] = start_signal
+    row["dyn_holding"] = (not risk_state) and not start_signal and not end_signal
+    row["dyn_buy_flag"] = risk_state and (not end_signal) and active_count <= end_l + 1
+    row["dyn_sell_flag"] = (not risk_state) and (not start_signal) and active_count >= max(1, start_k - 1)
     row["scanner3_latest_date"] = meta["latest_date"]
     row["scanner3_active_count"] = active_count
     row["scanner3_component_count"] = len(snap.get("components", {}))
@@ -11656,16 +11656,21 @@ def _scanner3_build_ticker_snapshot(code: str, preset: dict, start_str: str, end
     return _scanner3_compute_from_ohlcv(lower, preset)
 
 
-def _scanner3_display_index(close: pd.Series, period_days: int) -> pd.Index:
+def _scanner3_display_index(close: pd.Series, period_days: int, chart_mode: str = "일봉", interval: str | None = None) -> pd.Index:
     close = close.dropna().sort_index()
     if close.empty:
         return close.index
-    end = close.index.max()
-    cutoff = end - pd.Timedelta(days=max(1, int(period_days)))
-    idx = close.loc[close.index >= cutoff].index
-    if len(idx) >= 3:
-        return idx
-    return close.index[-min(len(close), max(3, int(period_days))):]
+    if chart_mode == "분봉":
+        bars_per_day = {"5m": 78, "15m": 26, "30m": 13, "60m": 7}
+        display_bars = int(period_days) * bars_per_day.get(str(interval or ""), 78)
+    elif chart_mode == "주봉":
+        display_bars = round(int(period_days) / 5)
+    elif chart_mode == "월봉":
+        display_bars = round(int(period_days) / 21)
+    else:
+        display_bars = int(period_days)
+    display_bars = max(1, int(display_bars))
+    return close.index[-min(len(close), display_bars):]
 
 
 def _scanner3_series(raw: pd.DataFrame, column: str, idx: pd.Index) -> pd.Series:
@@ -11674,14 +11679,22 @@ def _scanner3_series(raw: pd.DataFrame, column: str, idx: pd.Index) -> pd.Series
     return pd.to_numeric(raw[column], errors="coerce").reindex(idx)
 
 
-def _scanner3_make_detail_chart(snapshot: dict, name: str, period_days: int, preset: dict, intraday_session=None) -> go.Figure | None:
+def _scanner3_make_detail_chart(
+    snapshot: dict,
+    name: str,
+    period_days: int,
+    preset: dict,
+    chart_mode: str = "일봉",
+    interval: str | None = None,
+    intraday_session=None,
+) -> go.Figure | None:
     if snapshot is None or snapshot.get("close") is None:
         return None
     close = pd.to_numeric(snapshot["close"], errors="coerce").dropna().sort_index()
     if close.empty:
         return None
-    idx = _scanner3_display_index(close, period_days)
-    if len(idx) < 3:
+    idx = _scanner3_display_index(close, period_days, chart_mode=chart_mode, interval=interval)
+    if len(idx) < 1:
         return None
 
     combo = snapshot.get("combo", pd.DataFrame()).reindex(close.index)
@@ -12050,7 +12063,15 @@ def _render_signal_scanner3_mode(
         if chart_mode == "분봉":
             is_korean = selected["code"].endswith((".KS", ".KQ")) or selected["code"] in ("^KS11", "^KQ11")
             intraday_session = (15, 9) if is_korean else (16, 9)
-        fig = _scanner3_make_detail_chart(snapshot, selected["name"], period_days, preset, intraday_session=intraday_session)
+        fig = _scanner3_make_detail_chart(
+            snapshot,
+            selected["name"],
+            period_days,
+            preset,
+            chart_mode=chart_mode,
+            interval=interval,
+            intraday_session=intraday_session,
+        )
         if fig:
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False}, key=f"scanner3_detail_{selected['code']}_{preset['preset_key']}_{chart_mode}_{period_days}")
         else:
