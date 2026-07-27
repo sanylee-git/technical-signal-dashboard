@@ -6499,12 +6499,37 @@ def _macro3_last_confirmed_us_date(now_et: pd.Timestamp | None = None) -> pd.Tim
     return today
 
 
+def _macro3_completed_us_trading_days(years: int = 5, now_et: pd.Timestamp | None = None) -> pd.DatetimeIndex:
+    now_et = now_et or _macro3_eastern_now()
+    start_date = (pd.Timestamp(now_et.date()) - pd.DateOffset(years=max(1, int(years))) - pd.Timedelta(days=14)).date()
+    end_date = pd.Timestamp(now_et.date()).date()
+    try:
+        import pandas_market_calendars as mcal
+        nyse = mcal.get_calendar("NYSE")
+        schedule = nyse.schedule(start_date=start_date, end_date=end_date)
+        if schedule.empty:
+            return pd.DatetimeIndex([])
+        now_utc = now_et.tz_convert("UTC") if getattr(now_et, "tzinfo", None) else now_et.tz_localize("America/New_York").tz_convert("UTC")
+        completed = schedule[schedule["market_close"] <= now_utc]
+        if completed.empty:
+            return pd.DatetimeIndex([])
+        return pd.DatetimeIndex(completed.index).tz_localize(None).normalize().sort_values().unique()
+    except Exception:
+        cutoff = _macro3_last_confirmed_us_date(now_et)
+        idx = pd.date_range(start=start_date, end=cutoff.date(), freq="B")
+        return pd.DatetimeIndex(idx).normalize().sort_values().unique()
+
+
+def _macro3_latest_completed_us_trading_date(years: int = 5, now_et: pd.Timestamp | None = None) -> pd.Timestamp | None:
+    idx = _macro3_completed_us_trading_days(years=years, now_et=now_et)
+    return None if len(idx) == 0 else pd.Timestamp(idx[-1]).normalize()
+
 def _macro3_filter_confirmed_us_daily(data):
     if data is None or getattr(data, "empty", True):
         return data
     out = data.copy()
     out.index = pd.DatetimeIndex(_strip_tz(out.index)).normalize()
-    cutoff = _macro3_last_confirmed_us_date()
+    cutoff = _macro3_latest_completed_us_trading_date() or _macro3_last_confirmed_us_date()
     return out[out.index <= cutoff]
 
 
@@ -6544,6 +6569,9 @@ def _macro6_expected_latest_trading_date(
     spx_s: pd.Series | None = None,
     sync_bucket: str | None = None,
 ):
+    calendar_index = _macro3_completed_us_trading_days(years=years)
+    if len(calendar_index):
+        return pd.Timestamp(calendar_index[-1]).normalize(), calendar_index
     source = spx_s
     if source is None or getattr(source, "empty", True):
         benchmark = _get_macro_benchmark(benchmark_name)
@@ -6721,7 +6749,7 @@ def _macro6_latest_date_debug_rows(years: int, benchmark_name: str, sync_bucket:
             "first_date": None if len(benchmark_index) == 0 else pd.Timestamp(benchmark_index[0]).strftime("%Y-%m-%d"),
             "latest_date": None if expected_latest is None or pd.isna(expected_latest) else pd.Timestamp(expected_latest).strftime("%Y-%m-%d"),
             "tail": "",
-            "note": "현재 코드는 외부 거래소 캘린더가 아니라 benchmark series 최신일을 기대 최신일로 사용",
+            "note": "NYSE 최신 완료 거래일 기준",
         })
     except Exception as exc:
         expected_latest, benchmark_index = None, pd.DatetimeIndex([])
@@ -8437,6 +8465,19 @@ def _build_macro3_status_panel(
     active_count = int(latest.get("active_count", 0))
     combo_n = int(latest.get("combo_n", len(preset_cfg.get("selected_indicators", []))))
     basis_date = _macro_date_text(latest.get("date"))
+    expected_latest, expected_index = _macro6_expected_latest_trading_date(
+        benchmark_name=benchmark_name,
+        years=years,
+        sync_bucket=sync_bucket,
+    )
+    basis_lag_days = _macro6_lag_trading_days(expected_latest, latest.get("date"), expected_index)
+    if basis_lag_days is not None and basis_lag_days > 0:
+        basis_date = (
+            f"{basis_date} "
+            f"<span style='color:#FFB36E;font-weight:700;'>"
+            f"· Yahoo 데이터 {basis_lag_days}거래일 지연 · 실제 기준일 {_macro_date_text(latest.get('date'))}"
+            "</span>"
+        )
     next_exec = _macro3_next_execution_date(latest.get("date"), combo_event_df.get("date", []))
     next_exec_date = _macro_date_text(next_exec) if next_exec is not None else "확인 필요"
     status_text = "리스크 사이클 ON" if combo_state else "리스크 사이클 OFF"
@@ -8613,8 +8654,21 @@ def _macro6_indicator_data_status_row(
     )
     note = _macro3_freshness_note(indicator, latest_date)
     latest_text = _macro_date_text(latest_date)
+    expected_latest = None
+    lag_trading_days = None
+    if indicator in {"Index", "VIX", "Bollinger Band"}:
+        expected_latest, benchmark_index = _macro6_expected_latest_trading_date(
+            benchmark_name=benchmark_name,
+            years=years,
+            sync_bucket=sync_bucket,
+        )
+        lag_trading_days = _macro6_lag_trading_days(expected_latest, latest_date, benchmark_index)
+        if lag_trading_days is not None and lag_trading_days > 0:
+            note = "지연"
+            latest_text = f"{latest_text} · Yahoo 데이터 {lag_trading_days}거래일 지연"
     if note == "지연":
-        latest_text = f"{latest_text} · 지연"
+        if "지연" not in latest_text:
+            latest_text = f"{latest_text} · 지연"
     elif note == "확인 불가":
         latest_text = "확인 불가"
     return {
@@ -8623,6 +8677,8 @@ def _macro6_indicator_data_status_row(
         "latest_date": latest_date,
         "note": note,
         "latest_text": latest_text,
+        "expected_latest_date": expected_latest,
+        "lag_trading_days": lag_trading_days,
     }
 
 
@@ -9212,6 +9268,9 @@ def _build_macro3_component_chart(
         name=benchmark["label"],
         line=dict(color="rgba(182,182,182,0.88)", width=1.55),
     ))
+    component_event_df = combo.reset_index()
+    component_event_df = component_event_df.rename(columns={component_event_df.columns[0]: "date"})
+    _add_macro_combo_risk_cycle_background(fig, component_event_df, price.index)
     start_y = price.reindex(combo.index[combo["combo_start_signal"].fillna(False)])
     end_y = price.reindex(combo.index[combo["combo_end_signal"].fillna(False)])
     if not start_y.empty:
@@ -9391,6 +9450,9 @@ def _build_macro6_component_chart(
         name=benchmark["label"],
         line=dict(color="rgba(182,182,182,0.88)", width=1.55),
     ))
+    component_event_df = combo.reset_index()
+    component_event_df = component_event_df.rename(columns={component_event_df.columns[0]: "date"})
+    _add_macro_combo_risk_cycle_background(fig, component_event_df, price.index)
     start_y = price.reindex(combo.index[combo["combo_start_signal"].fillna(False)])
     end_y = price.reindex(combo.index[combo["combo_end_signal"].fillna(False)])
     if not start_y.empty:
@@ -14697,18 +14759,6 @@ def main(page="signal"):
             _macro6_duration_html = _macro6_state_duration_html(_macro6_full_event_df)
             if _macro6_duration_html:
                 st.markdown(_macro6_duration_html, unsafe_allow_html=True)
-
-            with st.expander("임시 디버그: 데이터 최신일 진단", expanded=False):
-                st.caption("배포 환경에서 S&P500/Yahoo/FRED/앱 내부 경로별 최신일을 확인하는 임시 패널입니다. 버튼을 누를 때만 조회합니다.")
-                if st.button("최신일 진단 실행", key=f"macro6_latest_debug_{_macro6_preset}_{_macro6_years}"):
-                    with st.spinner("데이터 최신일 진단 중..."):
-                        _macro6_debug_df = _macro6_latest_date_debug_rows(
-                            years=int(_macro6_years),
-                            benchmark_name="S&P500",
-                            sync_bucket=_macro6_sync_bucket,
-                        )
-                    st.dataframe(_macro6_debug_df, use_container_width=True, hide_index=True)
-                    st.caption("확인 후 이 패널은 제거 예정입니다. latest_date와 note 열을 그대로 알려주면 원인 분리가 가능합니다.")
 
             _macro6_bt_compare_combo2_html = _build_macro6_backtest_panel(
                 _macro6_preset,
