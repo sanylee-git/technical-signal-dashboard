@@ -6640,6 +6640,125 @@ def _macro6_vix_spread_with_fallback(
     }
 
 
+def _macro6_debug_series_latest_summary(obj) -> dict:
+    if obj is None or getattr(obj, "empty", True):
+        return {"rows": 0, "first_date": None, "latest_date": None, "tail": ""}
+    data = obj.copy()
+    if isinstance(data, pd.DataFrame):
+        normalized = _normalize_yf_ohlcv(data)
+        if normalized is not None and not normalized.empty and "Close" in normalized.columns:
+            data = normalized["Close"]
+        elif "Close" in data.columns:
+            data = data["Close"]
+        else:
+            data = data.iloc[:, 0]
+    if isinstance(data, pd.DataFrame):
+        data = data.squeeze("columns")
+    series = pd.to_numeric(pd.Series(data), errors="coerce").dropna()
+    if series.empty:
+        return {"rows": 0, "first_date": None, "latest_date": None, "tail": ""}
+    idx = pd.DatetimeIndex(pd.to_datetime(series.index, errors="coerce")).tz_localize(None).normalize()
+    series = pd.Series(series.to_numpy(), index=idx).dropna().sort_index()
+    series = series[~series.index.duplicated(keep="last")]
+    tail = " | ".join(f"{d.strftime('%Y-%m-%d')}={v:.4g}" for d, v in series.tail(3).items())
+    return {
+        "rows": int(len(series)),
+        "first_date": series.index.min().strftime("%Y-%m-%d"),
+        "latest_date": series.index.max().strftime("%Y-%m-%d"),
+        "tail": tail,
+    }
+
+
+def _macro6_latest_date_debug_rows(years: int, benchmark_name: str, sync_bucket: str | None = None) -> pd.DataFrame:
+    rows = []
+
+    def _append(label: str, route: str, obj=None, note: str = "", **extra):
+        summary = _macro6_debug_series_latest_summary(obj)
+        row = {
+            "label": label,
+            "route": route,
+            "rows": summary["rows"],
+            "first_date": summary["first_date"],
+            "latest_date": summary["latest_date"],
+            "tail": summary["tail"],
+            "note": note,
+        }
+        row.update(extra)
+        rows.append(row)
+
+    benchmark = _get_macro_benchmark(benchmark_name)
+    ticker = benchmark["code"]
+    try:
+        raw_download = yf.download(ticker, period="1mo", interval="1d", progress=False, auto_adjust=False, threads=False)
+        _append("S&P500", "yf.download(period=1mo)", raw_download)
+    except Exception as exc:
+        _append("S&P500", "yf.download(period=1mo)", None, note=f"ERROR: {exc}")
+    try:
+        raw_history = yf.Ticker(ticker).history(period="1mo", interval="1d", auto_adjust=False)
+        _append("S&P500", "Ticker.history(period=1mo)", raw_history)
+    except Exception as exc:
+        _append("S&P500", "Ticker.history(period=1mo)", None, note=f"ERROR: {exc}")
+    try:
+        _append("S&P500", "_yf_close cached route", _yf_close(ticker, years, sync_bucket=sync_bucket), sync_bucket=sync_bucket or "")
+    except Exception as exc:
+        _append("S&P500", "_yf_close cached route", None, note=f"ERROR: {exc}", sync_bucket=sync_bucket or "")
+    try:
+        ohlc = _macro3_fetch_benchmark_ohlcv(benchmark_name, years)
+        _append("Bollinger Band", "_macro3_fetch_benchmark_ohlcv", ohlc)
+    except Exception as exc:
+        _append("Bollinger Band", "_macro3_fetch_benchmark_ohlcv", None, note=f"ERROR: {exc}")
+
+    try:
+        expected_latest, benchmark_index = _macro6_expected_latest_trading_date(
+            benchmark_name=benchmark_name,
+            years=years,
+            sync_bucket=sync_bucket,
+        )
+        rows.append({
+            "label": "Expected latest",
+            "route": "_macro6_expected_latest_trading_date",
+            "rows": int(len(benchmark_index)),
+            "first_date": None if len(benchmark_index) == 0 else pd.Timestamp(benchmark_index[0]).strftime("%Y-%m-%d"),
+            "latest_date": None if expected_latest is None or pd.isna(expected_latest) else pd.Timestamp(expected_latest).strftime("%Y-%m-%d"),
+            "tail": "",
+            "note": "현재 코드는 외부 거래소 캘린더가 아니라 benchmark series 최신일을 기대 최신일로 사용",
+        })
+    except Exception as exc:
+        expected_latest, benchmark_index = None, pd.DatetimeIndex([])
+        _append("Expected latest", "_macro6_expected_latest_trading_date", None, note=f"ERROR: {exc}")
+
+    for indicator in _MACRO3_INDICATOR_ORDER:
+        try:
+            status = _macro6_indicator_data_status_row(
+                indicator,
+                years,
+                benchmark_name=benchmark_name,
+                sync_bucket=sync_bucket,
+            )
+            latest = status.get("latest_date")
+            note_parts = [str(status.get("latest_text") or "")]
+            if status.get("source_status"):
+                note_parts.append(f"source={status.get('source_status')}")
+            if status.get("lag_trading_days") is not None:
+                note_parts.append(f"lag={status.get('lag_trading_days')}거래일")
+            if status.get("yahoo_common_latest_date") is not None:
+                note_parts.append(f"yahoo={_macro_date_text(status.get('yahoo_common_latest_date'))}")
+            if status.get("fred_common_latest_date") is not None:
+                note_parts.append(f"fred={_macro_date_text(status.get('fred_common_latest_date'))}")
+            rows.append({
+                "label": _MACRO3_INDICATOR_LABELS.get(indicator, indicator),
+                "route": "_macro6_indicator_data_status_row",
+                "rows": None,
+                "first_date": None,
+                "latest_date": None if latest is None or pd.isna(latest) else pd.Timestamp(latest).strftime("%Y-%m-%d"),
+                "tail": "",
+                "note": " | ".join(part for part in note_parts if part),
+            })
+        except Exception as exc:
+            _append(indicator, "_macro6_indicator_data_status_row", None, note=f"ERROR: {exc}")
+
+    return pd.DataFrame(rows)
+
 def _macro3_next_execution_date(signal_date, benchmark_index) -> pd.Timestamp | None:
     try:
         signal_date = pd.Timestamp(signal_date).normalize()
@@ -14578,6 +14697,18 @@ def main(page="signal"):
             _macro6_duration_html = _macro6_state_duration_html(_macro6_full_event_df)
             if _macro6_duration_html:
                 st.markdown(_macro6_duration_html, unsafe_allow_html=True)
+
+            with st.expander("임시 디버그: 데이터 최신일 진단", expanded=False):
+                st.caption("배포 환경에서 S&P500/Yahoo/FRED/앱 내부 경로별 최신일을 확인하는 임시 패널입니다. 버튼을 누를 때만 조회합니다.")
+                if st.button("최신일 진단 실행", key=f"macro6_latest_debug_{_macro6_preset}_{_macro6_years}"):
+                    with st.spinner("데이터 최신일 진단 중..."):
+                        _macro6_debug_df = _macro6_latest_date_debug_rows(
+                            years=int(_macro6_years),
+                            benchmark_name="S&P500",
+                            sync_bucket=_macro6_sync_bucket,
+                        )
+                    st.dataframe(_macro6_debug_df, use_container_width=True, hide_index=True)
+                    st.caption("확인 후 이 패널은 제거 예정입니다. latest_date와 note 열을 그대로 알려주면 원인 분리가 가능합니다.")
 
             _macro6_bt_compare_combo2_html = _build_macro6_backtest_panel(
                 _macro6_preset,
