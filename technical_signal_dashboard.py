@@ -11613,6 +11613,137 @@ def _scanner3_build_ticker_snapshot(code: str, preset: dict, start_str: str, end
     return _scanner3_compute_from_ohlcv(lower, preset)
 
 
+def _scanner3_display_index(close: pd.Series, period_days: int) -> pd.Index:
+    close = close.dropna().sort_index()
+    if close.empty:
+        return close.index
+    end = close.index.max()
+    cutoff = end - pd.Timedelta(days=max(1, int(period_days)))
+    idx = close.loc[close.index >= cutoff].index
+    if len(idx) >= 3:
+        return idx
+    return close.index[-min(len(close), max(3, int(period_days))):]
+
+
+def _scanner3_series(raw: pd.DataFrame, column: str, idx: pd.Index) -> pd.Series:
+    if raw is None or raw.empty or column not in raw:
+        return pd.Series(np.nan, index=idx)
+    return pd.to_numeric(raw[column], errors="coerce").reindex(idx)
+
+
+def _scanner3_make_detail_chart(snapshot: dict, name: str, period_days: int, preset: dict, intraday_session=None) -> go.Figure | None:
+    if snapshot is None or snapshot.get("close") is None:
+        return None
+    close = pd.to_numeric(snapshot["close"], errors="coerce").dropna().sort_index()
+    if close.empty:
+        return None
+    idx = _scanner3_display_index(close, period_days)
+    if len(idx) < 3:
+        return None
+
+    combo = snapshot.get("combo", pd.DataFrame()).reindex(close.index)
+    state = combo.get("combo_risk_state", pd.Series(False, index=close.index)).reindex(idx).fillna(False).astype(bool)
+    starts = combo.index[combo.get("combo_start_signal", pd.Series(False, index=combo.index)).fillna(False).astype(bool)].intersection(idx)
+    ends = combo.index[combo.get("combo_end_signal", pd.Series(False, index=combo.index)).fillna(False).astype(bool)].intersection(idx)
+    holding = close.reindex(idx).where(state)
+
+    raw = snapshot.get("component_raw", {})
+    bb = raw.get("BB", pd.DataFrame())
+    ema = raw.get("EMA", pd.DataFrame())
+    rsi = raw.get("RSI", pd.DataFrame())
+    atr = raw.get("ATR", pd.DataFrame())
+
+    bb_window = _scanner2_parse_bb_param(preset.get("bb_param_id", "bb_w20_std2p0")).get("window", "BB")
+    rsi_param = _scanner2_parse_rsi_param(preset.get("rsi_param_id", "rsi_p14_lb80_q10_90"))
+    atr_param = _scanner2_parse_atr_param(preset.get("atr_param_id"))
+    atr_title = (
+        f"NATR ({atr_param['period']}d, {atr_param['lookback']}d)"
+        if atr_param else
+        "ATR 미사용 프리셋"
+    )
+
+    fig = make_subplots(
+        rows=3, cols=1,
+        row_heights=[0.52, 0.24, 0.24],
+        shared_xaxes=False,
+        vertical_spacing=0.08,
+        subplot_titles=[
+            "",
+            f"RSI ({rsi_param['period']}d, {rsi_param['lookback']}d)",
+            atr_title,
+        ],
+    )
+
+    bb_upper = _scanner3_series(bb, "bb_upper", idx)
+    bb_lower = _scanner3_series(bb, "bb_lower", idx)
+    bb_middle = _scanner3_series(bb, "bb_middle", idx)
+    ema_line = _scanner3_series(ema, "ema", idx)
+
+    fig.add_trace(go.Scatter(x=idx, y=bb_upper, line=dict(color="rgba(120,126,231,0.20)", width=1), showlegend=False, hoverinfo="skip"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=idx, y=bb_lower, line=dict(color="rgba(120,126,231,0.20)", width=1), fill="tonexty", fillcolor="rgba(120,126,231,0.04)", showlegend=False, hoverinfo="skip"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=idx, y=close.reindex(idx), name=name, line=dict(color="#EDEDED", width=1.5), hovertemplate="가격: %{y:,.0f}<extra></extra>"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=idx, y=holding, name="★ 리스크 사이클", line=dict(color="#C8C850", width=1.5), connectgaps=False, hoverinfo="skip"), row=1, col=1)
+    if ema_line.notna().any():
+        fig.add_trace(go.Scatter(x=idx, y=ema_line, name="EMA", line=dict(color="rgba(247,201,72,0.70)", width=1.0)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=idx, y=bb_middle, name=f"BB 중심 ({bb_window})", line=dict(color="rgba(216,195,106,0.70)", width=1.0)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=idx, y=bb_upper, name="BB 상단", line=dict(color="rgba(255,140,105,0.70)", width=1.0, dash="dot")), row=1, col=1)
+    fig.add_trace(go.Scatter(x=idx, y=bb_lower, name="BB 하단", line=dict(color="rgba(120,220,255,0.72)", width=1.0, dash="dot")), row=1, col=1)
+    fig.add_trace(go.Scatter(x=starts, y=close.reindex(starts), mode="markers", name="Risk 시작", marker=dict(symbol="triangle-down", size=11, color="#FF4B6E")), row=1, col=1)
+    fig.add_trace(go.Scatter(x=ends, y=close.reindex(ends), mode="markers", name="Risk 종료", marker=dict(symbol="triangle-up", size=11, color="#4F9CFF")), row=1, col=1)
+    _scanner2_add_risk_shapes(fig, state, row=1, col=1)
+
+    rsi_line = _scanner3_series(rsi, "rsi", idx)
+    rsi_upper = _scanner3_series(rsi, "upper_line", idx)
+    rsi_lower = _scanner3_series(rsi, "lower_line", idx)
+    fig.add_trace(go.Scatter(x=idx, y=rsi_upper, line=dict(color="rgba(255,215,0,0.20)", width=1), showlegend=False, hoverinfo="skip"), row=2, col=1)
+    fig.add_trace(go.Scatter(x=idx, y=rsi_lower, line=dict(color="rgba(75,255,179,0.20)", width=1), fill="tonexty", fillcolor="rgba(255,255,255,0.02)", showlegend=False, hoverinfo="skip"), row=2, col=1)
+    fig.add_trace(go.Scatter(x=idx, y=rsi_line, name="RSI", line=dict(color="#787EE7", width=1.5), showlegend=False), row=2, col=1)
+    fig.add_trace(go.Scatter(x=idx, y=rsi_upper, name="RSI 시작선", line=dict(color="#FFD700", width=1, dash="dash"), showlegend=False), row=2, col=1)
+    fig.add_trace(go.Scatter(x=idx, y=rsi_lower, name="RSI 종료선", line=dict(color="#4BFFB3", width=1, dash="dash"), showlegend=False), row=2, col=1)
+    if len(starts) > 0:
+        fig.add_trace(go.Scatter(x=starts, y=rsi_line.reindex(starts), mode="markers", marker=dict(symbol="triangle-down", color="#FF4B6E", size=8), showlegend=False, hoverinfo="skip"), row=2, col=1)
+    if len(ends) > 0:
+        fig.add_trace(go.Scatter(x=ends, y=rsi_line.reindex(ends), mode="markers", marker=dict(symbol="triangle-up", color="#4F9CFF", size=8), showlegend=False, hoverinfo="skip"), row=2, col=1)
+    fig.add_hline(y=50, line_color="rgba(255,255,255,0.08)", line_width=0.7, line_dash="dot", row=2, col=1)
+
+    natr = _scanner3_series(atr, "natr", idx)
+    atr_start = _scanner3_series(atr, "start_line", idx)
+    atr_end = _scanner3_series(atr, "end_line", idx)
+    if natr.notna().any():
+        fig.add_trace(go.Scatter(x=idx, y=natr, name="NATR", line=dict(color="#5EEAD4", width=1.5), showlegend=False), row=3, col=1)
+        fig.add_trace(go.Scatter(x=idx, y=atr_start, name="ATR 시작선", line=dict(color="#FFD700", width=1, dash="dash"), showlegend=False), row=3, col=1)
+        fig.add_trace(go.Scatter(x=idx, y=atr_end, name="ATR 종료선", line=dict(color="#4BFFB3", width=1, dash="dash"), showlegend=False), row=3, col=1)
+        if len(starts) > 0:
+            fig.add_trace(go.Scatter(x=starts, y=natr.reindex(starts), mode="markers", marker=dict(symbol="triangle-down", color="#FF4B6E", size=8), showlegend=False, hoverinfo="skip"), row=3, col=1)
+        if len(ends) > 0:
+            fig.add_trace(go.Scatter(x=ends, y=natr.reindex(ends), mode="markers", marker=dict(symbol="triangle-up", color="#4F9CFF", size=8), showlegend=False, hoverinfo="skip"), row=3, col=1)
+    else:
+        fig.add_annotation(text="이 프리셋은 ATR을 사용하지 않습니다.", x=0.5, y=0.5, xref="x3 domain", yref="y3 domain", showarrow=False, font=dict(color="#777", size=11))
+
+    fig.update_layout(
+        height=900,
+        title=dict(text=f"<b>{name}</b>", font=dict(size=14, color="#EDEDED"), x=0, y=0.99, yanchor="top"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1, font=dict(size=10), bgcolor="rgba(0,0,0,0)", traceorder="normal"),
+        **_base_layout(margin=dict(l=10, r=10, t=150, b=10)),
+    )
+    fig.update_xaxes(**_axis_kw())
+    fig.update_yaxes(**_axis_kw())
+    fig.update_xaxes(matches="x")
+    fig.update_xaxes(showticklabels=False, row=2, col=1)
+    fig.update_xaxes(tickangle=0, row=1, col=1)
+    fig.update_xaxes(tickangle=0, row=3, col=1)
+    fig.update_yaxes(range=[0, 100], dtick=20, row=2, col=1)
+    if intraday_session is not None:
+        close_h, open_h = intraday_session
+        _rb = [
+            dict(bounds=["sat", "mon"]),
+            dict(bounds=[close_h, open_h], pattern="hour"),
+        ]
+        for _r in [1, 2, 3]:
+            fig.update_xaxes(rangebreaks=_rb, row=_r, col=1)
+    return fig
+
+
 def _scanner3_rows_dataframe(rows: list[dict]) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame()
@@ -11664,6 +11795,7 @@ def _render_signal_scanner3_mode(
     favorites,
     chart_mode: str,
     yf_interval: str | None,
+    higher_interval: str | None = None,
     period_days: int,
     data_start: str,
     data_end: str,
@@ -11699,7 +11831,7 @@ def _render_signal_scanner3_mode(
             </div>""", unsafe_allow_html=True)
             return
 
-        interval = yf_interval or "1d"
+        interval = yf_interval if chart_mode == "분봉" and yf_interval else (higher_interval or "1d")
         with st.spinner("📡 프리셋 기반 종목 신호 계산..."):
             kr_rows = _scanner3_build_rows(
                 tuple((item["code"], item["name"]) for item in favorites),
@@ -11798,7 +11930,7 @@ def _render_signal_scanner3_mode(
                     kr_rows,
                     market='kr',
                     current_chart_mode=chart_mode,
-                    current_intra_interval=None,
+                    current_intra_interval=yf_interval if chart_mode == "분봉" else None,
                 ),
                 unsafe_allow_html=True,
             )
@@ -11809,7 +11941,7 @@ def _render_signal_scanner3_mode(
                     us_rows,
                     market='us',
                     current_chart_mode=chart_mode,
-                    current_intra_interval=None,
+                    current_intra_interval=yf_interval if chart_mode == "분봉" else None,
                 ),
                 unsafe_allow_html=True,
             )
@@ -11871,14 +12003,15 @@ def _render_signal_scanner3_mode(
             unsafe_allow_html=True,
         )
 
-        display_years = 3 if chart_mode in ("분봉", "일봉") else 10
-        fig = _scanner2_make_main_chart(snapshot, years=display_years)
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False}, key=f"scanner3_main_{selected['code']}_{preset['preset_key']}_{chart_mode}")
-
-        component_figs = _scanner2_make_component_charts(snapshot, years=display_years)
-        for key in ("index", "rsi", "bb", "atr"):
-            if key in component_figs:
-                st.plotly_chart(component_figs[key], width="stretch", config={"displayModeBar": False}, key=f"scanner3_{key}_{selected['code']}_{preset['preset_key']}_{chart_mode}")
+        intraday_session = None
+        if chart_mode == "분봉":
+            is_korean = selected["code"].endswith((".KS", ".KQ")) or selected["code"] in ("^KS11", "^KQ11")
+            intraday_session = (15, 9) if is_korean else (16, 9)
+        fig = _scanner3_make_detail_chart(snapshot, selected["name"], period_days, preset, intraday_session=intraday_session)
+        if fig:
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False}, key=f"scanner3_detail_{selected['code']}_{preset['preset_key']}_{chart_mode}_{period_days}")
+        else:
+            st.warning("상세 차트를 그릴 수 있는 데이터가 부족합니다.")
 
 
 def _render_signal_scanner3_section(container, favorites=None):
@@ -14160,6 +14293,7 @@ def main(page="signal"):
                         favorites=favorites,
                         chart_mode=chart_mode,
                         yf_interval=yf_interval,
+                        higher_interval=higher_interval if chart_mode != "분봉" else None,
                         period_days=period_days,
                         data_start=data_start,
                         data_end=data_end,
