@@ -11463,6 +11463,10 @@ def _scanner3_ohlcv_from_batch(code: str, closes: pd.DataFrame, highs: pd.DataFr
     return _scanner3_prepare_ohlc_index(out)
 
 
+def _scanner3_is_intraday_interval(interval: str | None) -> bool:
+    return str(interval or "") in {"5m", "15m", "30m", "60m"}
+
+
 def _scanner3_index_has_intraday_time(index) -> bool:
     idx = pd.DatetimeIndex(_strip_tz(index))
     return bool(((idx.hour != 0) | (idx.minute != 0) | (idx.second != 0)).any())
@@ -11470,6 +11474,13 @@ def _scanner3_index_has_intraday_time(index) -> bool:
 
 def _scanner3_prepare_ohlc_index(ohlc: pd.DataFrame) -> pd.DataFrame:
     out = ohlc.copy()
+    rename_map = {
+        col: str(col).strip().lower().replace(" ", "_")
+        for col in out.columns
+    }
+    out = out.rename(columns=rename_map)
+    if "adj_close" in out.columns and "close" not in out.columns:
+        out["close"] = out["adj_close"]
     idx = pd.DatetimeIndex(_strip_tz(out.index))
     if not _scanner3_index_has_intraday_time(idx):
         idx = idx.normalize()
@@ -11509,16 +11520,64 @@ def _scanner3_align_signal(signal: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.
     }, index=dates)
 
 
+def _scanner3_required_bars(preset: dict) -> int:
+    try:
+        idx_param = _scanner2_parse_index_param(preset["index_param_id"])
+        rsi_param = _scanner2_parse_rsi_param(preset["rsi_param_id"])
+        bb_param = _scanner2_parse_bb_param(preset["bb_param_id"])
+        atr_param = _scanner2_parse_atr_param(preset.get("atr_param_id"))
+        needs = [
+            int(idx_param["window"]) + max(3, int(idx_param["ema_span"]) // 2),
+            int(rsi_param["period"]) + max(int(rsi_param["lookback"]) // 2, 10),
+            int(bb_param["window"]),
+            80,
+        ]
+        if atr_param:
+            needs.append(int(atr_param["period"]) + max(int(atr_param["lookback"]) // 2, 20))
+        return int(max(needs) + 5)
+    except Exception:
+        return 120
+
+
+def _scanner3_display_bar_count(period_days: int, chart_mode: str = "일봉", interval: str | None = None) -> int:
+    if chart_mode == "분봉":
+        bars_per_day = {"5m": 78, "15m": 26, "30m": 13, "60m": 7}
+        return max(1, int(period_days) * bars_per_day.get(str(interval or ""), 78))
+    if chart_mode == "주봉":
+        return max(1, round(int(period_days) / 5))
+    if chart_mode == "월봉":
+        return max(1, round(int(period_days) / 21))
+    return max(1, int(period_days))
+
+
+def _scanner3_request_start_date(period_days: int, chart_mode: str, interval: str | None, preset: dict) -> str:
+    today = datetime.now().date()
+    display_bars = _scanner3_display_bar_count(period_days, chart_mode=chart_mode, interval=interval)
+    required_bars = _scanner3_required_bars(preset)
+    total_bars = display_bars + required_bars + 20
+    if chart_mode == "월봉":
+        calendar_days = total_bars * 35
+    elif chart_mode == "주봉":
+        calendar_days = total_bars * 8
+    elif chart_mode == "분봉":
+        calendar_days = max(int(period_days) + 120, 180)
+    else:
+        calendar_days = total_bars * 2
+    return str(today - timedelta(days=int(calendar_days)))
+
+
 def _scanner3_compute_from_ohlcv(ohlc: pd.DataFrame, preset: dict) -> dict | None:
-    if ohlc is None or ohlc.empty or "close" not in ohlc:
+    if ohlc is None or ohlc.empty:
         return None
     ohlc = _scanner3_prepare_ohlc_index(ohlc)
+    if "close" not in ohlc:
+        return None
     for col in ["close", "high", "low"]:
         if col not in ohlc:
             ohlc[col] = ohlc["close"]
         ohlc[col] = pd.to_numeric(ohlc[col], errors="coerce")
     ohlc = ohlc.dropna(subset=["close", "high", "low"])
-    if len(ohlc) < 80:
+    if len(ohlc) < _scanner3_required_bars(preset):
         return None
     close = ohlc["close"].dropna()
     dates = close.index
@@ -11621,11 +11680,34 @@ def _scanner3_adapt_to_scanner1_signal_row(code: str, name: str, snap: dict | No
 def _scanner3_build_rows(items_tuple, preset: dict, start_str: str, end_str: str, interval: str = "1d"):
     items = [{"code": code, "name": name} for code, name in items_tuple]
     tickers = tuple(item["code"] for item in items)
-    closes, highs, lows = fetch_ohlcv_batch(tickers, start_str, end_str, interval=interval)
+    if _scanner3_is_intraday_interval(interval):
+        closes = _fetch_intraday_batch_guarded(tickers, interval, "분봉", "scanner3_watchlist_batch")
+        highs = lows = pd.DataFrame()
+        if closes is None:
+            closes = pd.DataFrame()
+        for item in items:
+            code = item["code"]
+            if code in closes.columns and not closes[code].dropna().empty:
+                continue
+            try:
+                single, _err = _fetch_intraday_guarded(code, interval, "분봉", "scanner3_watchlist_single")
+                if single is not None and not single.empty and "Close" in single:
+                    closes[code] = single["Close"]
+                    if "High" in single:
+                        highs[code] = single["High"]
+                    if "Low" in single:
+                        lows[code] = single["Low"]
+            except Exception:
+                pass
+    else:
+        closes, highs, lows = fetch_ohlcv_batch(tickers, start_str, end_str, interval=interval)
     rows = []
     for item in items:
         code = item["code"]
-        snap = _scanner3_compute_from_ohlcv(_scanner3_ohlcv_from_batch(code, closes, highs, lows), preset)
+        try:
+            snap = _scanner3_compute_from_ohlcv(_scanner3_ohlcv_from_batch(code, closes, highs, lows), preset)
+        except Exception:
+            snap = None
         rows.append(_scanner3_adapt_to_scanner1_signal_row(code, item["name"], snap, preset))
     rows.sort(key=_signal_row_sort_key)
     return rows
@@ -11634,14 +11716,13 @@ def _scanner3_build_rows(items_tuple, preset: dict, start_str: str, end_str: str
 @st.cache_data(ttl=300, show_spinner=False)
 def _scanner3_build_multitimeframe_signal_maps(items_tuple, preset: dict, data_end: str):
     tf_specs = [
-        ("일봉", "1d", 63),
-        ("주봉", "1wk", 504),
-        ("월봉", "1mo", 2520),
+        ("일봉", "1d", 63, "일봉"),
+        ("주봉", "1wk", 504, "주봉"),
+        ("월봉", "1mo", 2520, "월봉"),
     ]
-    today = datetime.now().date()
     tf_maps = {}
-    for tf_label, tf_interval, tf_days in tf_specs:
-        tf_start = str(today - timedelta(days=tf_days + 900))
+    for tf_label, tf_interval, tf_days, tf_mode in tf_specs:
+        tf_start = _scanner3_request_start_date(tf_days, tf_mode, tf_interval, preset)
         tf_rows = _scanner3_build_rows(items_tuple, preset, tf_start, data_end, tf_interval)
         tf_maps[tf_label] = {row["code"]: row for row in tf_rows}
     return tf_maps
@@ -11649,27 +11730,24 @@ def _scanner3_build_multitimeframe_signal_maps(items_tuple, preset: dict, data_e
 
 @st.cache_data(ttl=180, show_spinner=False)
 def _scanner3_build_ticker_snapshot(code: str, preset: dict, start_str: str, end_str: str, interval: str = "1d"):
-    ohlcv = fetch_ohlcv(code, start_str, end_str, interval=interval)
+    ohlcv, _err = _scanner3_fetch_ticker_ohlcv(code, start_str, end_str, interval)
     if ohlcv is None or ohlcv.empty:
         return None
     lower = ohlcv.rename(columns={c: c.lower() for c in ohlcv.columns})
     return _scanner3_compute_from_ohlcv(lower, preset)
 
 
+def _scanner3_fetch_ticker_ohlcv(code: str, start_str: str, end_str: str, interval: str = "1d"):
+    if _scanner3_is_intraday_interval(interval):
+        return _fetch_intraday_guarded(code, interval, "분봉", "scanner3_detail_chart")
+    return fetch_ohlcv(code, start_str, end_str, interval=interval), None
+
+
 def _scanner3_display_index(close: pd.Series, period_days: int, chart_mode: str = "일봉", interval: str | None = None) -> pd.Index:
     close = close.dropna().sort_index()
     if close.empty:
         return close.index
-    if chart_mode == "분봉":
-        bars_per_day = {"5m": 78, "15m": 26, "30m": 13, "60m": 7}
-        display_bars = int(period_days) * bars_per_day.get(str(interval or ""), 78)
-    elif chart_mode == "주봉":
-        display_bars = round(int(period_days) / 5)
-    elif chart_mode == "월봉":
-        display_bars = round(int(period_days) / 21)
-    else:
-        display_bars = int(period_days)
-    display_bars = max(1, int(display_bars))
+    display_bars = _scanner3_display_bar_count(period_days, chart_mode=chart_mode, interval=interval)
     return close.index[-min(len(close), display_bars):]
 
 
@@ -11800,6 +11878,41 @@ def _scanner3_make_detail_chart(
     return fig
 
 
+def _scanner3_make_price_only_chart(ohlc: pd.DataFrame, name: str, period_days: int, chart_mode: str = "일봉", interval: str | None = None, intraday_session=None) -> go.Figure | None:
+    if ohlc is None or ohlc.empty:
+        return None
+    lower = ohlc.rename(columns={c: c.lower() for c in ohlc.columns})
+    if "close" not in lower:
+        return None
+    prepared = _scanner3_prepare_ohlc_index(lower)
+    close = pd.to_numeric(prepared["close"], errors="coerce").dropna().sort_index()
+    if len(close) < 3:
+        return None
+    idx = _scanner3_display_index(close, period_days, chart_mode=chart_mode, interval=interval)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=idx,
+        y=close.reindex(idx),
+        line=dict(color="#787EE7", width=1.7),
+        name=name,
+        showlegend=False,
+    ))
+    fig.update_layout(
+        height=320,
+        title=dict(text=f"{name} · 가격만 표시", font=dict(size=13, color="#9B9B9B")),
+        **_base_layout(),
+    )
+    fig.update_xaxes(**_axis_kw())
+    fig.update_yaxes(**_axis_kw())
+    if intraday_session is not None:
+        close_h, open_h = intraday_session
+        fig.update_xaxes(rangebreaks=[
+            dict(bounds=["sat", "mon"]),
+            dict(bounds=[close_h, open_h], pattern="hour"),
+        ])
+    return fig
+
+
 def _scanner3_rows_dataframe(rows: list[dict]) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame()
@@ -11872,6 +11985,8 @@ def _render_signal_scanner3_mode(
 
         preset_key = st.session_state.get("scanner3_sidebar_preset_key")
         _, preset = _scanner3_find_preset(manifest, preset_key)
+        interval = yf_interval if chart_mode == "분봉" and yf_interval else (higher_interval or "1d")
+        data_start = _scanner3_request_start_date(period_days, chart_mode, interval, preset)
         st.caption(
             "신호스캐너3은 신호스캐너1의 종목 조회 흐름을 그대로 쓰고, "
             "선택한 지수 백테스트 프리셋의 EMA·RSI·BB·ATR·K/L 규칙만 각 종목 가격에 다시 계산합니다."
@@ -11887,7 +12002,6 @@ def _render_signal_scanner3_mode(
             </div>""", unsafe_allow_html=True)
             return
 
-        interval = yf_interval if chart_mode == "분봉" and yf_interval else (higher_interval or "1d")
         with st.spinner("📡 프리셋 기반 종목 신호 계산..."):
             kr_rows = _scanner3_build_rows(
                 tuple((item["code"], item["name"]) for item in favorites),
@@ -11986,7 +12100,7 @@ def _render_signal_scanner3_mode(
                     kr_rows,
                     market='kr',
                     current_chart_mode=chart_mode,
-                    current_intra_interval=yf_interval if chart_mode == "분봉" else None,
+                    current_intra_interval={"5m": "5분", "15m": "15분", "30m": "30분", "60m": "60분"}.get(yf_interval) if chart_mode == "분봉" else None,
                 ),
                 unsafe_allow_html=True,
             )
@@ -11997,7 +12111,7 @@ def _render_signal_scanner3_mode(
                     us_rows,
                     market='us',
                     current_chart_mode=chart_mode,
-                    current_intra_interval=yf_interval if chart_mode == "분봉" else None,
+                    current_intra_interval={"5m": "5분", "15m": "15분", "30m": "30분", "60m": "60분"}.get(yf_interval) if chart_mode == "분봉" else None,
                 ),
                 unsafe_allow_html=True,
             )
@@ -12036,10 +12150,41 @@ def _render_signal_scanner3_mode(
             selected = next((item for item in US_WATCHLIST if item["name"] == selected_name), US_WATCHLIST[0])
 
         with st.spinner(f"📈 {selected['name']} 상세 차트 계산..."):
-            snapshot = _scanner3_build_ticker_snapshot(selected["code"], preset, data_start, data_end, interval)
+            detail_ohlcv, detail_err = _scanner3_fetch_ticker_ohlcv(selected["code"], data_start, data_end, interval)
+            snapshot = None
+            if detail_ohlcv is not None and not detail_ohlcv.empty:
+                snapshot = _scanner3_compute_from_ohlcv(
+                    detail_ohlcv.rename(columns={c: c.lower() for c in detail_ohlcv.columns}),
+                    preset,
+                )
 
         if snapshot is None:
-            st.warning(f"{selected['name']} 데이터를 가져오거나 신호를 계산할 수 없습니다.")
+            have = 0
+            if detail_ohlcv is not None and not detail_ohlcv.empty and "Close" in detail_ohlcv:
+                have = int(detail_ohlcv["Close"].dropna().shape[0])
+            need = _scanner3_required_bars(preset)
+            st.markdown(
+                f'<div style="background:#141416;border:1px solid rgba(255,140,0,0.3);'
+                f'border-radius:8px;padding:10px 16px;margin-bottom:10px;font-size:12px;color:#FFB347;">'
+                f'⏳ 신호 계산 데이터 부족 — 현재 <b>{have}봉</b> / 필요 <b>{need}봉</b></div>',
+                unsafe_allow_html=True,
+            )
+            if detail_err:
+                st.caption(f"데이터 로딩 경고: {detail_err}")
+            intraday_session = None
+            if chart_mode == "분봉":
+                is_korean = selected["code"].endswith((".KS", ".KQ")) or selected["code"] in ("^KS11", "^KQ11")
+                intraday_session = (15.5, 9) if is_korean else (16, 9)
+            price_fig = _scanner3_make_price_only_chart(
+                detail_ohlcv,
+                selected["name"],
+                period_days,
+                chart_mode=chart_mode,
+                interval=interval,
+                intraday_session=intraday_session,
+            )
+            if price_fig:
+                st.plotly_chart(price_fig, width="stretch", config={"displayModeBar": False}, key=f"scanner3_price_only_{selected['code']}_{preset['preset_key']}_{chart_mode}_{period_days}")
             return
 
         meta = _scanner3_cycle_meta(snapshot["combo"])
@@ -12062,7 +12207,7 @@ def _render_signal_scanner3_mode(
         intraday_session = None
         if chart_mode == "분봉":
             is_korean = selected["code"].endswith((".KS", ".KQ")) or selected["code"] in ("^KS11", "^KQ11")
-            intraday_session = (15, 9) if is_korean else (16, 9)
+            intraday_session = (15.5, 9) if is_korean else (16, 9)
         fig = _scanner3_make_detail_chart(
             snapshot,
             selected["name"],
@@ -12079,6 +12224,36 @@ def _render_signal_scanner3_mode(
 
 
 def _render_signal_scanner3_section(container, favorites=None):
+    with container:
+        _render_dashboard_common_ui_css()
+    chart_mode = st.session_state.get("chart_mode", "일봉")
+    _intra_interval_map = {"5분": "5m", "15분": "15m", "30분": "30m", "60분": "60m"}
+    _higher_interval_map = {"일봉": "1d", "주봉": "1wk", "월봉": "1mo"}
+    if chart_mode == "분봉":
+        intra_label = st.session_state.get("intra_interval", "15분")
+        yf_interval = _intra_interval_map.get(intra_label, "15m")
+        higher_interval = None
+    else:
+        yf_interval = None
+        higher_interval = _higher_interval_map.get(chart_mode, "1d")
+    _default_period_map = {"분봉": "3일", "일봉": "3개월", "주봉": "2년", "월봉": "10년"}
+    period_name = st.session_state.get("sidebar_period", _default_period_map.get(chart_mode, "3개월"))
+    period_days = PERIOD_OPTIONS.get(period_name, PERIOD_OPTIONS["3개월"])
+    today = datetime.now().date()
+    _render_signal_scanner3_mode(
+        container,
+        favorites=favorites or [],
+        chart_mode=chart_mode,
+        yf_interval=yf_interval,
+        higher_interval=higher_interval,
+        period_days=period_days,
+        data_start="",
+        data_end=str(today + timedelta(days=1)),
+        auto_refresh=False,
+        refresh_ms=300_000,
+    )
+    return
+
     with container:
         _render_dashboard_common_ui_css()
         try:
