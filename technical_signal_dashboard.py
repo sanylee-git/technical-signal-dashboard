@@ -11452,13 +11452,17 @@ def _render_signal_scanner2_section(container, favorites=None):
             """)
 
 
-def _scanner3_ohlcv_from_batch(code: str, closes: pd.DataFrame, highs: pd.DataFrame, lows: pd.DataFrame) -> pd.DataFrame:
+def _scanner3_ohlcv_from_batch(code: str, closes: pd.DataFrame, highs: pd.DataFrame, lows: pd.DataFrame, require_high_low: bool = False) -> pd.DataFrame:
     if closes is None or closes.empty or code not in closes.columns:
+        return pd.DataFrame()
+    has_high = highs is not None and code in highs.columns and not highs[code].dropna().empty
+    has_low = lows is not None and code in lows.columns and not lows[code].dropna().empty
+    if require_high_low and (not has_high or not has_low):
         return pd.DataFrame()
     out = pd.DataFrame({
         "close": pd.to_numeric(closes[code], errors="coerce"),
-        "high": pd.to_numeric(highs[code], errors="coerce") if highs is not None and code in highs.columns else pd.to_numeric(closes[code], errors="coerce"),
-        "low": pd.to_numeric(lows[code], errors="coerce") if lows is not None and code in lows.columns else pd.to_numeric(closes[code], errors="coerce"),
+        "high": pd.to_numeric(highs[code], errors="coerce") if has_high else pd.to_numeric(closes[code], errors="coerce"),
+        "low": pd.to_numeric(lows[code], errors="coerce") if has_low else pd.to_numeric(closes[code], errors="coerce"),
     }).dropna(subset=["close"]).sort_index()
     return _scanner3_prepare_ohlc_index(out)
 
@@ -11527,14 +11531,13 @@ def _scanner3_required_bars(preset: dict) -> int:
         bb_param = _scanner2_parse_bb_param(preset["bb_param_id"])
         atr_param = _scanner2_parse_atr_param(preset.get("atr_param_id"))
         needs = [
-            int(idx_param["window"]) + max(3, int(idx_param["ema_span"]) // 2),
-            int(rsi_param["period"]) + max(int(rsi_param["lookback"]) // 2, 10),
+            int(idx_param["window"]) + int(idx_param["ema_span"]),
+            int(rsi_param["period"]) + int(rsi_param["lookback"]),
             int(bb_param["window"]),
-            80,
         ]
         if atr_param:
-            needs.append(int(atr_param["period"]) + max(int(atr_param["lookback"]) // 2, 20))
-        return int(max(needs) + 5)
+            needs.append(int(atr_param["period"]) + int(atr_param["lookback"]))
+        return int(max(needs) + 15)
     except Exception:
         return 120
 
@@ -11574,7 +11577,7 @@ def _scanner3_compute_from_ohlcv(ohlc: pd.DataFrame, preset: dict) -> dict | Non
         return None
     for col in ["close", "high", "low"]:
         if col not in ohlc:
-            ohlc[col] = ohlc["close"]
+            return None
         ohlc[col] = pd.to_numeric(ohlc[col], errors="coerce")
     ohlc = ohlc.dropna(subset=["close", "high", "low"])
     if len(ohlc) < _scanner3_required_bars(preset):
@@ -11676,6 +11679,25 @@ def _scanner3_adapt_to_scanner1_signal_row(code: str, name: str, snap: dict | No
     return row
 
 
+def _scanner3_price_only_signal_row(code: str, name: str, ohlc: pd.DataFrame | None) -> dict:
+    row = _empty_signal_row(code, name)
+    if ohlc is None or ohlc.empty:
+        return row
+    prepared = _scanner3_prepare_ohlc_index(ohlc)
+    if "close" not in prepared:
+        return row
+    close = pd.to_numeric(prepared["close"], errors="coerce").dropna().sort_index()
+    if len(close) >= 1:
+        row["close"] = float(close.iloc[-1])
+    if len(close) >= 2:
+        prev = float(close.iloc[-2])
+        row["pct_change"] = (float(close.iloc[-1]) / prev - 1.0) * 100 if prev else 0.0
+        rsi_display = calculate_rsi(close, 14).dropna()
+        if not rsi_display.empty:
+            row["rsi"] = float(rsi_display.iloc[-1])
+    return row
+
+
 @st.cache_data(ttl=180, show_spinner=False)
 def _scanner3_build_rows(items_tuple, preset: dict, start_str: str, end_str: str, interval: str = "1d"):
     items = [{"code": code, "name": name} for code, name in items_tuple]
@@ -11685,30 +11707,30 @@ def _scanner3_build_rows(items_tuple, preset: dict, start_str: str, end_str: str
         highs = lows = pd.DataFrame()
         if closes is None:
             closes = pd.DataFrame()
-        for item in items:
-            code = item["code"]
-            if code in closes.columns and not closes[code].dropna().empty:
-                continue
-            try:
-                single, _err = _fetch_intraday_guarded(code, interval, "분봉", "scanner3_watchlist_single")
-                if single is not None and not single.empty and "Close" in single:
-                    closes[code] = single["Close"]
-                    if "High" in single:
-                        highs[code] = single["High"]
-                    if "Low" in single:
-                        lows[code] = single["Low"]
-            except Exception:
-                pass
     else:
         closes, highs, lows = fetch_ohlcv_batch(tickers, start_str, end_str, interval=interval)
     rows = []
     for item in items:
         code = item["code"]
+        snap = None
+        price_ohlc = pd.DataFrame()
         try:
-            snap = _scanner3_compute_from_ohlcv(_scanner3_ohlcv_from_batch(code, closes, highs, lows), preset)
+            if _scanner3_is_intraday_interval(interval):
+                single, _err = _fetch_intraday_guarded(code, interval, "분봉", "scanner3_watchlist_ohlc")
+                if single is not None and not single.empty and {"Open", "High", "Low", "Close"}.issubset(single.columns):
+                    price_ohlc = single
+                    snap = _scanner3_compute_from_ohlcv(single, preset)
+                elif closes is not None and code in closes.columns:
+                    price_ohlc = pd.DataFrame({"close": pd.to_numeric(closes[code], errors="coerce")}).dropna()
+            else:
+                price_ohlc = _scanner3_ohlcv_from_batch(code, closes, highs, lows)
+                snap = _scanner3_compute_from_ohlcv(price_ohlc, preset)
         except Exception:
             snap = None
-        rows.append(_scanner3_adapt_to_scanner1_signal_row(code, item["name"], snap, preset))
+        row = _scanner3_adapt_to_scanner1_signal_row(code, item["name"], snap, preset)
+        if snap is None:
+            row = _scanner3_price_only_signal_row(code, item["name"], price_ohlc)
+        rows.append(row)
     rows.sort(key=_signal_row_sort_key)
     return rows
 
@@ -11911,6 +11933,213 @@ def _scanner3_make_price_only_chart(ohlc: pd.DataFrame, name: str, period_days: 
             dict(bounds=[close_h, open_h], pattern="hour"),
         ])
     return fig
+
+
+def _scanner3_all_final_presets(manifest: dict) -> list[dict]:
+    presets = []
+    for market_key, market_info in manifest.get("markets", {}).items():
+        market_label = market_info.get("label", market_key)
+        for preset in market_info.get("presets", []):
+            item = dict(preset)
+            item["_market_key"] = market_key
+            item["_market_label"] = market_label
+            presets.append(item)
+    return presets
+
+
+def _scanner3_first_valid_date(snapshot: dict | None) -> pd.Timestamp | None:
+    if snapshot is None or snapshot.get("close") is None:
+        return None
+    close = pd.to_numeric(snapshot["close"], errors="coerce").dropna()
+    if close.empty:
+        return None
+    valid = pd.Series(True, index=close.index)
+    for frame in snapshot.get("components", {}).values():
+        if frame is None or frame.empty or "valid_signal" not in frame:
+            return None
+        valid &= frame["valid_signal"].reindex(close.index).fillna(False).astype(bool)
+    valid_dates = valid.index[valid]
+    return valid_dates.min() if len(valid_dates) else None
+
+
+def _scanner3_cycle_count_for_window(risk_state: pd.Series) -> int:
+    if risk_state is None or risk_state.empty:
+        return 0
+    state = risk_state.fillna(False).astype(bool)
+    starts = state & ~state.shift(1, fill_value=False)
+    return int(starts.sum())
+
+
+def _scanner3_backtest_common_window(close: pd.Series, risk_state: pd.Series, start_date, end_date) -> dict:
+    close = pd.to_numeric(close, errors="coerce").dropna().sort_index()
+    if close.empty:
+        return {}
+    start = pd.Timestamp(start_date)
+    end = pd.Timestamp(end_date)
+    close = close.loc[(close.index >= start) & (close.index <= end)]
+    if len(close) < 3:
+        return {}
+    state = risk_state.reindex(close.index).fillna(False).astype(bool)
+    ret = close.pct_change().fillna(0.0)
+    position = (~state).shift(1, fill_value=True).astype(float)
+    strat = (1.0 + ret * position).cumprod()
+    bh = (1.0 + ret).cumprod()
+    elapsed_years = max((close.index.max() - close.index.min()).days / 365.25, 1e-9)
+
+    def _mdd(series):
+        return float((series / series.cummax() - 1.0).min())
+
+    return {
+        "start_date": close.index.min(),
+        "end_date": close.index.max(),
+        "years": elapsed_years,
+        "cagr": float(strat.iloc[-1] ** (1.0 / elapsed_years) - 1.0),
+        "mdd": _mdd(strat),
+        "buyhold_cagr": float(bh.iloc[-1] ** (1.0 / elapsed_years) - 1.0),
+        "buyhold_mdd": _mdd(bh),
+        "risk_off_share": float(state.mean()),
+        "cycle_count": _scanner3_cycle_count_for_window(state),
+        "risk_state": bool(state.iloc[-1]),
+    }
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _scanner3_compare_presets_for_ticker(ticker: str, years: int, end_str: str, manifest_hash: str) -> dict:
+    manifest = _load_scanner2_preset_manifest()
+    presets = _scanner3_all_final_presets(manifest)
+    if len(presets) != 15:
+        return {"error": f"Final 프리셋 수가 15개가 아닙니다: {len(presets)}개", "rows": []}
+    max_required = max(_scanner3_required_bars(preset) for preset in presets)
+    end_date = pd.Timestamp(end_str).normalize()
+    request_days = int(years * 365.25 + max_required * 3 + 90)
+    start_str = str((end_date - pd.Timedelta(days=request_days)).date())
+    ohlcv = fetch_ohlcv(ticker, start_str, end_str, interval="1d")
+    if ohlcv is None or ohlcv.empty:
+        return {"error": "선택 종목의 일봉 데이터를 가져올 수 없습니다.", "rows": []}
+    ohlc = _scanner3_prepare_ohlc_index(ohlcv)
+    if "close" not in ohlc:
+        return {"error": "선택 종목 일봉 데이터에 Close 컬럼이 없습니다.", "rows": []}
+    close = pd.to_numeric(ohlc["close"], errors="coerce").dropna().sort_index()
+    if len(close) < 30:
+        return {"error": f"백테스트 비교에 필요한 데이터가 부족합니다: {len(close)}봉", "rows": []}
+
+    target_start = max(close.index.min(), close.index.max() - pd.DateOffset(years=int(years)))
+    target_end = close.index.max()
+    snapshots = []
+    valid_starts = []
+    rows = []
+    for preset in presets:
+        try:
+            snap = _scanner3_compute_from_ohlcv(ohlc, preset)
+            first_valid = _scanner3_first_valid_date(snap)
+            if snap is None or first_valid is None:
+                snapshots.append((preset, None))
+                rows.append({"preset": preset, "status": "계산 불가", "reason": "warmup 또는 지표 계산 실패"})
+                continue
+            snapshots.append((preset, snap))
+            valid_starts.append(first_valid)
+        except Exception as exc:
+            snapshots.append((preset, None))
+            rows.append({"preset": preset, "status": "계산 불가", "reason": str(exc)[:80]})
+
+    if not valid_starts:
+        return {"error": "15개 프리셋 모두 계산할 수 없습니다.", "rows": []}
+    common_start = max([pd.Timestamp(target_start)] + [pd.Timestamp(dt) for dt in valid_starts])
+    common_end = pd.Timestamp(target_end)
+    if common_start >= common_end:
+        return {"error": "공통 평가 구간을 만들 수 없습니다.", "rows": []}
+
+    result_rows = []
+    for preset, snap in snapshots:
+        base = {
+            "market": preset.get("_market_label", preset.get("market", "")),
+            "preset_key": preset.get("preset_key"),
+            "preset_label": preset.get("label", preset.get("preset_key")),
+            "kl": f"K{preset.get('start_k')}/L{preset.get('end_l')}",
+            "candidate_id": preset.get("candidate_id"),
+            "status": "계산 불가",
+            "reason": "",
+        }
+        if snap is None:
+            fail = next((row for row in rows if row.get("preset", {}).get("preset_key") == preset.get("preset_key")), {})
+            base["reason"] = fail.get("reason", "계산 실패")
+            result_rows.append(base)
+            continue
+        metrics = _scanner3_backtest_common_window(
+            snap["close"],
+            snap["combo"]["combo_risk_state"],
+            common_start,
+            common_end,
+        )
+        if not metrics:
+            base["reason"] = "공통 평가 구간 데이터 부족"
+            result_rows.append(base)
+            continue
+        base.update({
+            "status": "OK",
+            "start_date": metrics["start_date"].strftime("%Y-%m-%d"),
+            "end_date": metrics["end_date"].strftime("%Y-%m-%d"),
+            "years": metrics["years"],
+            "cagr": metrics["cagr"],
+            "mdd": metrics["mdd"],
+            "buyhold_cagr": metrics["buyhold_cagr"],
+            "buyhold_mdd": metrics["buyhold_mdd"],
+            "risk_off_share": metrics["risk_off_share"],
+            "cycle_count": metrics["cycle_count"],
+            "current_state": "Risk ON" if metrics["risk_state"] else "Risk OFF",
+        })
+        result_rows.append(base)
+
+    ok_rows = sorted([row for row in result_rows if row.get("status") == "OK"], key=lambda row: row.get("cagr", -999), reverse=True)
+    ranks = {row["preset_key"]: i + 1 for i, row in enumerate(ok_rows)}
+    for row in result_rows:
+        row["rank"] = ranks.get(row.get("preset_key"))
+    return {
+        "rows": result_rows,
+        "common_start": common_start.strftime("%Y-%m-%d"),
+        "common_end": common_end.strftime("%Y-%m-%d"),
+        "manifest_hash": manifest_hash,
+    }
+
+
+def _scanner3_format_backtest_table(result: dict, current_preset_key: str | None) -> pd.DataFrame:
+    rows = []
+    for row in sorted(result.get("rows", []), key=lambda r: (r.get("rank") is None, r.get("rank") or 999)):
+        if row.get("status") != "OK":
+            rows.append({
+                "순위": "—",
+                "시장": row.get("market", ""),
+                "프리셋": row.get("preset_label", row.get("preset_key", "")),
+                "K/L": row.get("kl", ""),
+                "실제 기간": "계산 불가",
+                "데이터 연수": "—",
+                "전략 CAGR": "계산 불가",
+                "전략 MDD": "—",
+                "B&H CAGR": "—",
+                "B&H MDD": "—",
+                "Risk-off 비중": "—",
+                "완료 사이클 수": "—",
+                "현재 상태": row.get("reason", "계산 불가"),
+                "현재 선택 프리셋 여부": "현재" if row.get("preset_key") == current_preset_key else "",
+            })
+            continue
+        rows.append({
+            "순위": int(row.get("rank")),
+            "시장": row.get("market", ""),
+            "프리셋": row.get("preset_label", row.get("preset_key", "")),
+            "K/L": row.get("kl", ""),
+            "실제 기간": f"{row.get('start_date')} ~ {row.get('end_date')}",
+            "데이터 연수": f"{row.get('years', 0):.1f}년",
+            "전략 CAGR": _scanner2_fmt_pct(row.get("cagr"), 2),
+            "전략 MDD": _scanner2_fmt_pct(row.get("mdd"), 2),
+            "B&H CAGR": _scanner2_fmt_pct(row.get("buyhold_cagr"), 2),
+            "B&H MDD": _scanner2_fmt_pct(row.get("buyhold_mdd"), 2),
+            "Risk-off 비중": _scanner2_fmt_pct(row.get("risk_off_share"), 1),
+            "완료 사이클 수": int(row.get("cycle_count") or 0),
+            "현재 상태": row.get("current_state", ""),
+            "현재 선택 프리셋 여부": "현재" if row.get("preset_key") == current_preset_key else "",
+        })
+    return pd.DataFrame(rows)
 
 
 def _scanner3_rows_dataframe(rows: list[dict]) -> pd.DataFrame:
@@ -12148,6 +12377,40 @@ def _render_signal_scanner3_mode(
         else:
             selected_name = st.session_state.get("scanner3_us_name", us_names[0])
             selected = next((item for item in US_WATCHLIST if item["name"] == selected_name), US_WATCHLIST[0])
+
+        with st.expander("📊 백테스트 비교 보기", expanded=False):
+            bt_years = st.radio(
+                "비교 기간",
+                [10, 20],
+                index=0,
+                horizontal=True,
+                format_func=lambda y: f"{y}년",
+                key=f"scanner3_backtest_years_{selected['code']}",
+            )
+            st.caption("선택 종목의 일봉 OHLCV에 Final15 프리셋을 각각 다시 적용해 같은 평가 구간으로 비교합니다.")
+            if st.button("15개 프리셋 비교 실행", key=f"scanner3_run_backtest_compare_{selected['code']}", width="stretch"):
+                started = time.perf_counter()
+                try:
+                    manifest_hash = _scanner2_sha256(_SCANNER2_PRESET_PATH)
+                    result = _scanner3_compare_presets_for_ticker(
+                        selected["code"],
+                        int(bt_years),
+                        data_end,
+                        manifest_hash,
+                    )
+                    elapsed = time.perf_counter() - started
+                    if result.get("error"):
+                        st.warning(result["error"])
+                    else:
+                        df_bt = _scanner3_format_backtest_table(result, preset.get("preset_key"))
+                        st.dataframe(df_bt, width="stretch", hide_index=True)
+                        st.caption(
+                            f"공통 평가 구간: {result.get('common_start')} ~ {result.get('common_end')} · "
+                            f"계산 시간 {elapsed:.1f}초"
+                        )
+                        st.caption("과거 성과 비교 결과이며 종목별 운영 확정 모델을 의미하지 않습니다. CAGR뿐 아니라 MDD와 사이클 수를 함께 확인하세요.")
+                except Exception as exc:
+                    st.warning(f"백테스트 비교 계산 중 오류가 발생했습니다: {exc}")
 
         with st.spinner(f"📈 {selected['name']} 상세 차트 계산..."):
             detail_ohlcv, detail_err = _scanner3_fetch_ticker_ohlcv(selected["code"], data_start, data_end, interval)
