@@ -11538,6 +11538,42 @@ def _scanner3_cycle_meta(combo: pd.DataFrame) -> dict:
     }
 
 
+def _scanner3_adapt_to_scanner1_signal_row(code: str, name: str, snap: dict | None, preset: dict) -> dict:
+    row = _empty_signal_row(code, name)
+    if snap is None:
+        return row
+    close = snap.get("close", pd.Series(dtype=float)).dropna()
+    if len(close) >= 2:
+        last = float(close.iloc[-1])
+        prev = float(close.iloc[-2])
+        row["close"] = last
+        row["pct_change"] = (last / prev - 1) * 100 if prev else 0.0
+        rsi_display = calculate_rsi(close, 14).dropna()
+        if not rsi_display.empty:
+            row["rsi"] = float(rsi_display.iloc[-1])
+    meta = _scanner3_cycle_meta(snap.get("combo", pd.DataFrame()))
+    if meta["latest_date"] is None:
+        return row
+    start_k = int(preset.get("start_k", 1))
+    end_l = int(preset.get("end_l", 0))
+    active_count = int(meta.get("active_count", 0))
+    risk_state = bool(meta.get("risk_state", False))
+    start_signal = bool(meta.get("start_signal", False))
+    end_signal = bool(meta.get("end_signal", False))
+
+    row["dyn_buy_signal"] = start_signal
+    row["dyn_sell_signal"] = end_signal
+    row["dyn_holding"] = risk_state and not start_signal and not end_signal
+    row["dyn_buy_flag"] = (not risk_state) and (not start_signal) and active_count >= max(1, start_k - 1)
+    row["dyn_sell_flag"] = risk_state and (not end_signal) and active_count <= end_l + 1
+    row["scanner3_latest_date"] = meta["latest_date"]
+    row["scanner3_active_count"] = active_count
+    row["scanner3_component_count"] = len(snap.get("components", {}))
+    row["scanner3_cycle_start"] = meta.get("cycle_start")
+    row["scanner3_cycle_duration"] = meta.get("duration")
+    return row
+
+
 @st.cache_data(ttl=180, show_spinner=False)
 def _scanner3_build_rows(items_tuple, preset: dict, start_str: str, end_str: str, interval: str = "1d"):
     items = [{"code": code, "name": name} for code, name in items_tuple]
@@ -11547,37 +11583,25 @@ def _scanner3_build_rows(items_tuple, preset: dict, start_str: str, end_str: str
     for item in items:
         code = item["code"]
         snap = _scanner3_compute_from_ohlcv(_scanner3_ohlcv_from_batch(code, closes, highs, lows), preset)
-        if snap is None:
-            rows.append({
-                "name": item["name"],
-                "code": code,
-                "latest_date": "—",
-                "risk_state": "데이터 부족",
-                "active": "—",
-                "event": "—",
-                "cycle_start": "—",
-                "duration": "—",
-                "components": "—",
-            })
-            continue
-        meta = _scanner3_cycle_meta(snap["combo"])
-        comp_latest = {
-            name: bool(frame.reindex(snap["combo"].index).loc[meta["latest_date"]].get("risk_state", False))
-            for name, frame in snap["components"].items()
-        }
-        event = "Risk 시작" if meta["start_signal"] else "Risk 종료" if meta["end_signal"] else "신규 신호 없음"
-        rows.append({
-            "name": item["name"],
-            "code": code,
-            "latest_date": meta["latest_date"].strftime("%Y-%m-%d") if meta["latest_date"] is not None else "—",
-            "risk_state": "Risk ON" if meta["risk_state"] else "Risk OFF",
-            "active": f"{meta['active_count']} / {len(snap['components'])}",
-            "event": event,
-            "cycle_start": meta["cycle_start"].strftime("%Y-%m-%d") if meta["cycle_start"] is not None else "—",
-            "duration": meta["duration"],
-            "components": " · ".join(f"{k}:{'ON' if v else 'OFF'}" for k, v in comp_latest.items()),
-        })
+        rows.append(_scanner3_adapt_to_scanner1_signal_row(code, item["name"], snap, preset))
+    rows.sort(key=_signal_row_sort_key)
     return rows
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _scanner3_build_multitimeframe_signal_maps(items_tuple, preset: dict, data_end: str):
+    tf_specs = [
+        ("일봉", "1d", 63),
+        ("주봉", "1wk", 504),
+        ("월봉", "1mo", 2520),
+    ]
+    today = datetime.now().date()
+    tf_maps = {}
+    for tf_label, tf_interval, tf_days in tf_specs:
+        tf_start = str(today - timedelta(days=tf_days + 900))
+        tf_rows = _scanner3_build_rows(items_tuple, preset, tf_start, data_end, tf_interval)
+        tf_maps[tf_label] = {row["code"]: row for row in tf_rows}
+    return tf_maps
 
 
 @st.cache_data(ttl=180, show_spinner=False)
@@ -11691,40 +11715,104 @@ def _render_signal_scanner3_mode(
                 data_end,
                 interval,
             )
+            if ENABLE_SIGNAL_TABLE_TF_BADGES:
+                kr_tf_maps = _scanner3_build_multitimeframe_signal_maps(
+                    tuple((item["code"], item["name"]) for item in favorites),
+                    preset,
+                    data_end,
+                )
+                us_tf_maps = _scanner3_build_multitimeframe_signal_maps(
+                    tuple((item["code"], item["name"]) for item in US_WATCHLIST),
+                    preset,
+                    data_end,
+                )
+                for row in kr_rows:
+                    row["tf_signals"] = {
+                        tf_label: kr_tf_maps.get(tf_label, {}).get(row["code"], _empty_signal_row(row["code"], row["name"]))
+                        for tf_label in ("일봉", "주봉", "월봉")
+                    }
+                for row in us_rows:
+                    row["tf_signals"] = {
+                        tf_label: us_tf_maps.get(tf_label, {}).get(row["code"], _empty_signal_row(row["code"], row["name"]))
+                        for tf_label in ("일봉", "주봉", "월봉")
+                    }
 
-        def _counts(rows):
-            return {
-                "risk_on": sum(1 for r in rows if r.get("risk_state") == "Risk ON"),
-                "start": sum(1 for r in rows if r.get("event") == "Risk 시작"),
-                "end": sum(1 for r in rows if r.get("event") == "Risk 종료"),
-            }
+        n_dyn_buy_flag = sum(1 for r in kr_rows if r.get("dyn_buy_flag") and not r.get("dyn_buy_signal"))
+        n_dyn_buy = sum(1 for r in kr_rows if r.get("dyn_buy_signal"))
+        n_dyn_hold = sum(1 for r in kr_rows if r.get("dyn_holding"))
+        n_dyn_sell_flag = sum(1 for r in kr_rows if r.get("dyn_sell_flag") and not r.get("dyn_sell_signal"))
+        n_dyn_sell = sum(1 for r in kr_rows if r.get("dyn_sell_signal"))
+        n_us_buy_flag = sum(1 for r in us_rows if r.get("dyn_buy_flag") and not r.get("dyn_buy_signal"))
+        n_us_buy = sum(1 for r in us_rows if r.get("dyn_buy_signal"))
+        n_us_hold = sum(1 for r in us_rows if r.get("dyn_holding"))
+        n_us_sell_flag = sum(1 for r in us_rows if r.get("dyn_sell_flag") and not r.get("dyn_sell_signal"))
+        n_us_sell = sum(1 for r in us_rows if r.get("dyn_sell_signal"))
 
-        kr_counts = _counts(kr_rows)
-        us_counts = _counts(us_rows)
-        mini_cols = st.columns(6)
-        metrics = [
-            ("🇰🇷 Risk ON", kr_counts["risk_on"]),
-            ("🇰🇷 시작", kr_counts["start"]),
-            ("🇰🇷 종료", kr_counts["end"]),
-            ("🇺🇸 Risk ON", us_counts["risk_on"]),
-            ("🇺🇸 시작", us_counts["start"]),
-            ("🇺🇸 종료", us_counts["end"]),
-        ]
-        for col, (label, value) in zip(mini_cols, metrics):
-            with col:
-                st.metric(label, value)
+        def _mini_card(label, value, accent="#787EE7"):
+            return (f'<div style="flex:1;min-width:0;background:#141416;'
+                    f'border:1px solid rgba(255,255,255,0.06);border-radius:6px;'
+                    f'padding:5px 10px 6px;">'
+                    f'<div style="font-size:9px;color:#444;text-transform:uppercase;'
+                    f'letter-spacing:0.7px;white-space:nowrap;overflow:hidden;'
+                    f'text-overflow:ellipsis;">{label}</div>'
+                    f'<div style="font-size:17px;font-weight:600;color:{accent};'
+                    f'margin-top:1px;font-variant-numeric:tabular-nums;">{value}</div>'
+                    f'</div>')
 
-        st.info(
-            f"적용 프리셋: {preset.get('label')} · {preset.get('candidate_id')} · "
-            f"K{preset.get('start_k')}/L{preset.get('end_l')} · "
-            "official_operating_model=False"
+        def _mini_label(flag):
+            return (f'<div style="display:flex;align-items:center;justify-content:center;'
+                    f'min-width:32px;background:#141416;'
+                    f'border:1px solid rgba(255,255,255,0.06);border-radius:6px;'
+                    f'font-size:13px;flex-shrink:0;">{flag}</div>')
+
+        def _mini_row(prefix, items, flag=''):
+            label = _mini_label(flag) if flag else ''
+            cards = "".join(_mini_card(f"{prefix} {lbl}", val, acc) for lbl, val, acc in items)
+            return (f'<div style="display:flex;gap:5px;margin-bottom:5px;align-items:stretch;">'
+                    f'{label}{cards}</div>')
+
+        st.markdown(
+            '<div style="margin-bottom:12px">' +
+            _mini_row("★", [
+                ("매수 플래그", f"{n_dyn_buy_flag}", "#7AAFD4"),
+                ("매수 신호", f"{n_dyn_buy}", "#4BFFB3"),
+                ("보유 중", f"{n_dyn_hold}", "#C8C850"),
+                ("매도 플래그", f"{n_dyn_sell_flag}", "#D47A9F"),
+                ("매도 신호", f"{n_dyn_sell}", "#FF4B6E"),
+            ], flag='🇰🇷') +
+            _mini_row("★", [
+                ("매수 플래그", f"{n_us_buy_flag}", "#7AAFD4"),
+                ("매수 신호", f"{n_us_buy}", "#4BFFB3"),
+                ("보유 중", f"{n_us_hold}", "#C8C850"),
+                ("매도 플래그", f"{n_us_sell_flag}", "#D47A9F"),
+                ("매도 신호", f"{n_us_sell}", "#FF4B6E"),
+            ], flag='🇺🇸') +
+            '</div>',
+            unsafe_allow_html=True,
         )
+        st.caption(f"적용 프리셋: {preset.get('label')} · K{preset.get('start_k')}/L{preset.get('end_l')} · 지수 백테스트 기반 연구 프리셋")
 
         with st.expander(f"📋 🇰🇷 한국 즐겨찾기 현황 ({len(kr_rows)}개)", expanded=False):
-            st.dataframe(_scanner3_rows_dataframe(kr_rows), width="stretch", hide_index=True)
+            st.markdown(
+                render_signal_table(
+                    kr_rows,
+                    market='kr',
+                    current_chart_mode=chart_mode,
+                    current_intra_interval=None,
+                ),
+                unsafe_allow_html=True,
+            )
 
         with st.expander(f"📋 🇺🇸 미국 지수/ETF 현황 ({len(us_rows)}개)", expanded=False):
-            st.dataframe(_scanner3_rows_dataframe(us_rows), width="stretch", hide_index=True)
+            st.markdown(
+                render_signal_table(
+                    us_rows,
+                    market='us',
+                    current_chart_mode=chart_mode,
+                    current_intra_interval=None,
+                ),
+                unsafe_allow_html=True,
+            )
 
         kr_names = [f["name"] for f in favorites]
         us_names = [t["name"] for t in US_WATCHLIST]
@@ -14051,18 +14139,17 @@ def main(page="signal"):
     if page in ("all", "signal"):
         with tab1:
             if page == "signal":
+                _signal_mode_options = ["신호스캐너1", "신호스캐너3"]
+                if st.session_state.get("signal_scanner_mode") not in _signal_mode_options:
+                    st.session_state["signal_scanner_mode"] = "신호스캐너1"
                 scanner_mode = st.radio(
                     "신호 스캐너 모드",
-                    ["신호스캐너1", "신호스캐너2", "신호스캐너3"],
-                    index=["신호스캐너1", "신호스캐너2", "신호스캐너3"].index(st.session_state.get("signal_scanner_mode", "신호스캐너1")),
+                    _signal_mode_options,
+                    index=_signal_mode_options.index(st.session_state.get("signal_scanner_mode", "신호스캐너1")),
                     horizontal=True,
                     key="signal_scanner_mode",
                     help="신호스캐너1은 기존 BB+동적 RSI 규칙, 신호스캐너3은 선택한 조합 프리셋을 각 종목 가격에 적용합니다.",
                 )
-                if scanner_mode == "신호스캐너2":
-                    _render_signal_scanner2_section(st.container(), favorites=favorites)
-                    return
-
                 if scanner_mode == "신호스캐너3":
                     today = datetime.now().date()
                     data_end = str(today + timedelta(days=1))
