@@ -11460,16 +11460,59 @@ def _scanner3_ohlcv_from_batch(code: str, closes: pd.DataFrame, highs: pd.DataFr
         "high": pd.to_numeric(highs[code], errors="coerce") if highs is not None and code in highs.columns else pd.to_numeric(closes[code], errors="coerce"),
         "low": pd.to_numeric(lows[code], errors="coerce") if lows is not None and code in lows.columns else pd.to_numeric(closes[code], errors="coerce"),
     }).dropna(subset=["close"]).sort_index()
-    out.index = pd.DatetimeIndex(out.index).normalize()
-    return out
+    return _scanner3_prepare_ohlc_index(out)
+
+
+def _scanner3_index_has_intraday_time(index) -> bool:
+    idx = pd.DatetimeIndex(_strip_tz(index))
+    return bool(((idx.hour != 0) | (idx.minute != 0) | (idx.second != 0)).any())
+
+
+def _scanner3_prepare_ohlc_index(ohlc: pd.DataFrame) -> pd.DataFrame:
+    out = ohlc.copy()
+    idx = pd.DatetimeIndex(_strip_tz(out.index))
+    if not _scanner3_index_has_intraday_time(idx):
+        idx = idx.normalize()
+    out.index = idx
+    out = out.sort_index()
+    return out.loc[~out.index.duplicated(keep="last")]
+
+
+def _scanner3_align_signal(signal: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFrame:
+    dates = pd.DatetimeIndex(_strip_tz(dates))
+    if not _scanner3_index_has_intraday_time(dates):
+        dates = dates.normalize()
+    dates = dates.drop_duplicates().sort_values()
+    if signal is None or signal.empty:
+        return pd.DataFrame(index=dates, data={
+            "risk_state": False,
+            "risk_start_signal": False,
+            "risk_end_signal": False,
+            "valid_signal": False,
+        })
+    source = signal.copy()
+    source.index = pd.DatetimeIndex(_strip_tz(source.index))
+    if not _scanner3_index_has_intraday_time(dates):
+        source.index = source.index.normalize()
+    source = source.sort_index().loc[~source.index.duplicated(keep="last")]
+    union = source.index.union(dates).sort_values()
+    state = source["risk_state"].astype(bool).reindex(union).ffill().fillna(False).reindex(dates).fillna(False)
+    prev = state.shift(1, fill_value=False)
+    valid_source = source.get("valid_signal", pd.Series(True, index=source.index)).astype(bool)
+    valid_dates = source.index[valid_source]
+    first_valid = valid_dates.min() if len(valid_dates) else dates.max()
+    return pd.DataFrame({
+        "risk_state": state.astype(bool),
+        "risk_start_signal": (state & ~prev).astype(bool),
+        "risk_end_signal": (~state & prev).astype(bool),
+        "valid_signal": pd.Series(dates >= first_valid, index=dates, dtype=bool),
+    }, index=dates)
 
 
 def _scanner3_compute_from_ohlcv(ohlc: pd.DataFrame, preset: dict) -> dict | None:
     if ohlc is None or ohlc.empty or "close" not in ohlc:
         return None
-    ohlc = ohlc.copy()
-    ohlc.index = pd.DatetimeIndex(ohlc.index).normalize()
-    ohlc = ohlc.sort_index().drop_duplicates(keep="last")
+    ohlc = _scanner3_prepare_ohlc_index(ohlc)
     for col in ["close", "high", "low"]:
         if col not in ohlc:
             ohlc[col] = ohlc["close"]
@@ -11479,17 +11522,17 @@ def _scanner3_compute_from_ohlcv(ohlc: pd.DataFrame, preset: dict) -> dict | Non
         return None
     close = ohlc["close"].dropna()
     dates = close.index
-    index_frame = _scanner2_align_signal(
+    rsi_raw = _scanner2_compute_rsi_signal(close, _scanner2_parse_rsi_param(preset["rsi_param_id"]))
+    index_frame = _scanner3_align_signal(
         _scanner2_compute_index_signal(close, _scanner2_parse_index_param(preset["index_param_id"])),
         dates,
     )
-    rsi_raw = _scanner2_compute_rsi_signal(close, _scanner2_parse_rsi_param(preset["rsi_param_id"]))
-    rsi_frame = _scanner2_align_signal(rsi_raw, dates)
+    rsi_frame = _scanner3_align_signal(rsi_raw, dates)
     bb_raw = _scanner2_compute_bb_signal(ohlc, _scanner2_parse_bb_param(preset["bb_param_id"]))
-    bb_frame = _scanner2_align_signal(bb_raw, dates)
+    bb_frame = _scanner3_align_signal(bb_raw, dates)
     atr_param = _scanner2_parse_atr_param(preset.get("atr_param_id"))
     atr_raw = _scanner2_compute_atr_signal(ohlc, atr_param)
-    atr_frame = _scanner2_align_signal(atr_raw, dates)
+    atr_frame = _scanner3_align_signal(atr_raw, dates)
     components = {"EMA": index_frame, "RSI": rsi_frame, "BB": bb_frame}
     raw = {"EMA": _scanner2_compute_index_signal(close, _scanner2_parse_index_param(preset["index_param_id"])), "RSI": rsi_raw, "BB": bb_raw, "ATR": atr_raw}
     if atr_param:
