@@ -8656,6 +8656,8 @@ def _macro6_indicator_data_status_row(
     latest_text = _macro_date_text(latest_date)
     expected_latest = None
     lag_trading_days = None
+    if indicator == "Credit Stress" and latest_text != "확인 불가":
+        latest_text = f"{latest_text} · 주간 업데이트"
     if indicator in {"Index", "VIX", "Bollinger Band"}:
         expected_latest, benchmark_index = _macro6_expected_latest_trading_date(
             benchmark_name=benchmark_name,
