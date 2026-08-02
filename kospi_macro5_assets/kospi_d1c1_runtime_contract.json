@@ -1,0 +1,56 @@
+{
+  "gate": "PASS_KOSPI_MACRO5_D1C1_RUNTIME_CONTRACT_READY",
+  "created_at_utc": "2026-08-02T05:54:06.205037+00:00",
+  "research_stage": "D1-C1_RUNTIME_CONTRACT_AND_FROZEN_SOURCE_BASE",
+  "official_operating_model": false,
+  "dashboard_applied": false,
+  "shadow_mode": true,
+  "signal_semantics": {
+    "core15_component": "RAW_RISK_STATE",
+    "combo1": "RAW_RISK_STATE_FROM_CORE15_COMPONENTS",
+    "combo2_input": "CHILD_COMBO1_RAW_RISK_STATE",
+    "combo2_child_t1_forbidden": true,
+    "final_t1_applied_once": true,
+    "missing_as_risk_on_forbidden": true
+  },
+  "frozen_replay_required_gate": "PASS_KOSPI_MACRO5_D1C1A_FROZEN_REPLAY_PARITY_READY",
+  "c1b_requires_c1a_pass": true,
+  "source_base": {
+    "path": "kospi_macro5_assets/kospi_d1c1_frozen_core15_source_base.parquet",
+    "sha256": "f35d7c941704fcccf429705feb55d15c326ee69ce4526e5439158bd9cbc654a1",
+    "rows": 7292,
+    "date_start": "1996-12-11",
+    "date_end": "2026-07-28",
+    "component_columns": 64,
+    "core15_component_columns": 47,
+    "child_combo1_raw_state_columns": 17
+  },
+  "required_core15_metadata": {
+    "path": "kospi_macro5_assets/kospi_d1c1_required_core15_metadata.parquet",
+    "sha256": "39fdd38d43c621410cd2f283b09b447399947120df4db6f6328e0750abad666b",
+    "csv_path": "kospi_macro5_assets/kospi_d1c1_required_core15_metadata.csv",
+    "csv_sha256": "032bd7dd2997a5565e36da5d0be7afc80a8add531aa305a9c1ca8e7cec329ae2",
+    "rows": 47
+  },
+  "dependency_graph": {
+    "path": "kospi_macro5_assets/kospi_d1c1_dependency_graph.json",
+    "sha256": "2130fdc523b960fca434723e4e3c1077b7a91a3683b263a6a88628503812b307",
+    "required_core15_component_count": 47,
+    "required_child_combo1_count": 17,
+    "dependency_missing_count": 0
+  },
+  "source_manifests": {
+    "stage3c": {
+      "path": "macro_dashboard_kospi/manifests/stage3c_extended_latest_signal_bank.json",
+      "sha256": "dcd56c2b22c14fc843dac503fc34ba9e2cfe87d67060c354370ea42c0098759f"
+    },
+    "stage6a": {
+      "path": "macro_dashboard_kospi/manifests/stage6a_latest_combo2_m2_m5_exhaustive_review.json",
+      "sha256": "d66268ec65c245b9c6b7dd9c1204a8d446ae032470d7933c217c148b28d71122"
+    },
+    "stage7c2": {
+      "path": "macro_dashboard_kospi/manifests/stage7c2_latest_combo2_union58_decision10_proposal.json",
+      "sha256": "7befe7c0ed53e596564ec2ca8ae19b4493564d8db4114c585ec1ae4a9c3d7460"
+    }
+  }
+}

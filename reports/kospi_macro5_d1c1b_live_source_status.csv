@@ -1,0 +1,2 @@
+source_id,adapter,reachable,rows,latest_date,error
+kospi_ohlcv,yfinance.download,True,10,2026-07-31,

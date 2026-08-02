@@ -1,0 +1,2169 @@
+{
+  "created_at_utc": "2026-08-02T05:54:05.815613+00:00",
+  "final9_count": 9,
+  "required_child_combo1_count": 17,
+  "required_core15_component_count": 47,
+  "dependency_missing_count": 0,
+  "missing_child_combo1_ids": [],
+  "nodes": {
+    "combo1_n11_k9_l5_b984a8e53ad69a2d": {
+      "node_type": "combo1",
+      "K": 9,
+      "L": 5,
+      "component_count": 11
+    },
+    "global_credit_stress__EMA5_W120_S35_E10__9a1a865e38d8": {
+      "node_type": "core15_component"
+    },
+    "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43": {
+      "node_type": "core15_component"
+    },
+    "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c": {
+      "node_type": "core15_component"
+    },
+    "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6": {
+      "node_type": "core15_component"
+    },
+    "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532": {
+      "node_type": "core15_component"
+    },
+    "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a": {
+      "node_type": "core15_component"
+    },
+    "us_10y_real_yield_level__EMA40_W480_S90_E25__34170b129534": {
+      "node_type": "core15_component"
+    },
+    "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222": {
+      "node_type": "core15_component"
+    },
+    "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d": {
+      "node_type": "core15_component"
+    },
+    "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7": {
+      "node_type": "core15_component"
+    },
+    "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3": {
+      "node_type": "core15_component"
+    },
+    "combo1_n11_k8_l5_93919287424179bd": {
+      "node_type": "child_combo1_raw_state",
+      "K": 8,
+      "L": 5,
+      "component_count": 11,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb": {
+      "node_type": "core15_component"
+    },
+    "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5": {
+      "node_type": "core15_component"
+    },
+    "kospi_rsi__RSI28_LB80_Q10_80__dbbc066a9e69": {
+      "node_type": "core15_component"
+    },
+    "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08": {
+      "node_type": "core15_component"
+    },
+    "us_10y_slope__SW160_EMA5_W240_S75_E40__3d8da8f736af": {
+      "node_type": "core15_component"
+    },
+    "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43": {
+      "node_type": "core15_component"
+    },
+    "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89": {
+      "node_type": "core15_component"
+    },
+    "vix_spread__EMA10_W120_S35_E10__7696d16a802e": {
+      "node_type": "core15_component"
+    },
+    "combo1_n11_k9_l6_ad654f06d0d609cb": {
+      "node_type": "combo1",
+      "K": 9,
+      "L": 6,
+      "component_count": 11
+    },
+    "kospi_hv_n80__HV80_EMA10_W120_S90_E65__09d89fcd32af": {
+      "node_type": "core15_component"
+    },
+    "kospi_natr_n80__NATR80_EMA20_W480_S75_E40__53e1711720b6": {
+      "node_type": "core15_component"
+    },
+    "us_10y_3m_spread__EMA80_W120_S90_E65__80d0fee310a6": {
+      "node_type": "core15_component"
+    },
+    "combo1_n11_k9_l6_9f0105582a0f0745": {
+      "node_type": "combo1",
+      "K": 9,
+      "L": 6,
+      "component_count": 11
+    },
+    "us_10y_slope__SW160_EMA1_W240_S75_E65__1e08769c51a3": {
+      "node_type": "core15_component"
+    },
+    "vix_level__EMA5_W480_S35_E10__f1b7969f9f76": {
+      "node_type": "core15_component"
+    },
+    "m6::combo2_m6_k4_l2_2d90a80e824f7336": {
+      "node_type": "combo2",
+      "K": 4,
+      "L": 2,
+      "component_count": 6
+    },
+    "combo1_n10_k8_l5_3b047b7b9992b0dd": {
+      "node_type": "child_combo1_raw_state",
+      "K": 8,
+      "L": 5,
+      "component_count": 10,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "us_10y_2y_spread__EMA40_W480_S90_E65__4b1d14114472": {
+      "node_type": "core15_component"
+    },
+    "us_hy_oas_level__EMA5_W120_S75_E10__7242bc2397f2": {
+      "node_type": "core15_component"
+    },
+    "combo1_n10_k8_l5_818f33babbcdb687": {
+      "node_type": "child_combo1_raw_state",
+      "K": 8,
+      "L": 5,
+      "component_count": 10,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "kospi_rsi__RSI56_LB80_Q10_90__f2cc9b35b7d4": {
+      "node_type": "core15_component"
+    },
+    "combo1_n11_k8_l5_8572230026b9857b": {
+      "node_type": "child_combo1_raw_state",
+      "K": 8,
+      "L": 5,
+      "component_count": 11,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "kospi_index_level__EMA80_W30_S90_E25__7bf8650fd277": {
+      "node_type": "core15_component"
+    },
+    "combo1_n11_k9_l4_52a66ee12ced8c2f": {
+      "node_type": "child_combo1_raw_state",
+      "K": 9,
+      "L": 4,
+      "component_count": 11,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "combo1_n9_k7_l4_3674f6539bce5a34": {
+      "node_type": "child_combo1_raw_state",
+      "K": 7,
+      "L": 4,
+      "component_count": 9,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "kospi_index_level__EMA40_W240_S90_E80__e5b20cca1fae": {
+      "node_type": "core15_component"
+    },
+    "vix_level__EMA5_W240_S50_E10__f4ede6458387": {
+      "node_type": "core15_component"
+    },
+    "m6::combo2_m6_k4_l3_f976de57b8b4a80e": {
+      "node_type": "combo2",
+      "K": 4,
+      "L": 3,
+      "component_count": 6
+    },
+    "combo1_n10_k8_l5_290a60cb5f34f575": {
+      "node_type": "child_combo1_raw_state",
+      "K": 8,
+      "L": 5,
+      "component_count": 10,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "us_10y_2y_spread__EMA80_W480_S90_E65__b48e91e2b5d3": {
+      "node_type": "core15_component"
+    },
+    "us_10y_slope__SW160_EMA40_W240_S75_E65__f4bb3d0ad09d": {
+      "node_type": "core15_component"
+    },
+    "combo1_n11_k9_l4_3370f9e912d3725f": {
+      "node_type": "child_combo1_raw_state",
+      "K": 9,
+      "L": 4,
+      "component_count": 11,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "usdkrw_level__EMA40_W30_S90_E80__b3e4e09b8f99": {
+      "node_type": "core15_component"
+    },
+    "combo1_n11_k9_l5_3de08b5458716f22": {
+      "node_type": "child_combo1_raw_state",
+      "K": 9,
+      "L": 5,
+      "component_count": 11,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "kospi_hv_n80__HV80_EMA20_W480_S50_E10__bb2b7f42ca2a": {
+      "node_type": "core15_component"
+    },
+    "vix_level__EMA1_W480_S20_E10__a8456afa3015": {
+      "node_type": "core15_component"
+    },
+    "combo1_n11_k9_l6_b6c22ce5972ed2ee": {
+      "node_type": "child_combo1_raw_state",
+      "K": 9,
+      "L": 6,
+      "component_count": 11,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "us_10y_3m_spread__EMA20_W480_S90_E65__597b645a4963": {
+      "node_type": "core15_component"
+    },
+    "usdkrw_level__EMA80_W480_S75_E25__ed038e4dd10d": {
+      "node_type": "core15_component"
+    },
+    "m5::combo2_m5_k2_l1_2bc7e194fdecfd9e": {
+      "node_type": "combo2",
+      "K": 2,
+      "L": 1,
+      "component_count": 5
+    },
+    "combo1_n11_k8_l4_5fae25126881c080": {
+      "node_type": "child_combo1_raw_state",
+      "K": 8,
+      "L": 4,
+      "component_count": 11,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "kospi_rsi__RSI28_LB80_Q20_90__0ade1e17e567": {
+      "node_type": "core15_component"
+    },
+    "us_ig_oas_level__EMA5_W240_S35_E10__d4500918aee9": {
+      "node_type": "core15_component"
+    },
+    "combo1_n11_k8_l5_11ec0a3108665b40": {
+      "node_type": "child_combo1_raw_state",
+      "K": 8,
+      "L": 5,
+      "component_count": 11,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "kospi_bollinger__BBW40_STD2p0__969923a71f91": {
+      "node_type": "core15_component"
+    },
+    "us_10y_real_yield_level__EMA20_W480_S90_E10__67b442269d41": {
+      "node_type": "core15_component"
+    },
+    "combo1_n9_k8_l5_4a57a4873ef71826": {
+      "node_type": "child_combo1_raw_state",
+      "K": 8,
+      "L": 5,
+      "component_count": 9,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "m10::combo2_m10_k7_l4_bbd8c760d49b44bb": {
+      "node_type": "combo2",
+      "K": 7,
+      "L": 4,
+      "component_count": 10
+    },
+    "combo1_n11_k8_l6_bd84926c3959a3fd": {
+      "node_type": "child_combo1_raw_state",
+      "K": 8,
+      "L": 6,
+      "component_count": 11,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "combo1_n11_k9_l4_790a1e65e865104e": {
+      "node_type": "child_combo1_raw_state",
+      "K": 9,
+      "L": 4,
+      "component_count": 11,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "kospi_hv_n20__HV20_EMA5_W120_S50_E10__2ec36ee068a2": {
+      "node_type": "core15_component"
+    },
+    "us_ig_oas_level__EMA1_W120_S50_E10__11ec354fd661": {
+      "node_type": "core15_component"
+    },
+    "vix_spread__EMA10_W120_S75_E25__b2ceeec94288": {
+      "node_type": "core15_component"
+    },
+    "combo1_n11_k9_l5_40f4a3ccb9b38978": {
+      "node_type": "child_combo1_raw_state",
+      "K": 9,
+      "L": 5,
+      "component_count": 11,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "kospi_bollinger__BBW80_STD1p5__1396c565edce": {
+      "node_type": "core15_component"
+    },
+    "combo1_n9_k7_l3_2390f26dee4401d1": {
+      "node_type": "child_combo1_raw_state",
+      "K": 7,
+      "L": 3,
+      "component_count": 9,
+      "source": "stage06a_main32_raw_state_dictionary"
+    },
+    "global_credit_stress__EMA1_W120_S50_E10__c4ab861de44c": {
+      "node_type": "core15_component"
+    },
+    "kospi_natr_n10__NATR10_EMA80_W480_S35_E10__a45c51e4f324": {
+      "node_type": "core15_component"
+    },
+    "m8::combo2_m8_k5_l4_cee6978af4789711": {
+      "node_type": "combo2",
+      "K": 5,
+      "L": 4,
+      "component_count": 8
+    }
+  },
+  "edges": [
+    {
+      "parent": "combo1_n11_k9_l5_b984a8e53ad69a2d",
+      "child": "global_credit_stress__EMA5_W120_S35_E10__9a1a865e38d8"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_b984a8e53ad69a2d",
+      "child": "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_b984a8e53ad69a2d",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_b984a8e53ad69a2d",
+      "child": "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_b984a8e53ad69a2d",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_b984a8e53ad69a2d",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_b984a8e53ad69a2d",
+      "child": "us_10y_real_yield_level__EMA40_W480_S90_E25__34170b129534"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_b984a8e53ad69a2d",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_b984a8e53ad69a2d",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_b984a8e53ad69a2d",
+      "child": "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_b984a8e53ad69a2d",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "kospi_rsi__RSI28_LB80_Q10_80__dbbc066a9e69"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "us_10y_slope__SW160_EMA5_W240_S75_E40__3d8da8f736af"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "vix_spread__EMA10_W120_S35_E10__7696d16a802e"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_ad654f06d0d609cb",
+      "child": "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_ad654f06d0d609cb",
+      "child": "kospi_hv_n80__HV80_EMA10_W120_S90_E65__09d89fcd32af"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_ad654f06d0d609cb",
+      "child": "kospi_natr_n80__NATR80_EMA20_W480_S75_E40__53e1711720b6"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_ad654f06d0d609cb",
+      "child": "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_ad654f06d0d609cb",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_ad654f06d0d609cb",
+      "child": "us_10y_3m_spread__EMA80_W120_S90_E65__80d0fee310a6"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_ad654f06d0d609cb",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_ad654f06d0d609cb",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_ad654f06d0d609cb",
+      "child": "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_ad654f06d0d609cb",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_ad654f06d0d609cb",
+      "child": "vix_spread__EMA10_W120_S35_E10__7696d16a802e"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_9f0105582a0f0745",
+      "child": "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_9f0105582a0f0745",
+      "child": "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_9f0105582a0f0745",
+      "child": "kospi_natr_n80__NATR80_EMA20_W480_S75_E40__53e1711720b6"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_9f0105582a0f0745",
+      "child": "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_9f0105582a0f0745",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_9f0105582a0f0745",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_9f0105582a0f0745",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_9f0105582a0f0745",
+      "child": "us_10y_slope__SW160_EMA1_W240_S75_E65__1e08769c51a3"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_9f0105582a0f0745",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_9f0105582a0f0745",
+      "child": "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_9f0105582a0f0745",
+      "child": "vix_level__EMA5_W480_S35_E10__f1b7969f9f76"
+    },
+    {
+      "parent": "m6::combo2_m6_k4_l2_2d90a80e824f7336",
+      "child": "combo1_n10_k8_l5_3b047b7b9992b0dd"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_3b047b7b9992b0dd",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_3b047b7b9992b0dd",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_3b047b7b9992b0dd",
+      "child": "kospi_rsi__RSI28_LB80_Q10_80__dbbc066a9e69"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_3b047b7b9992b0dd",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E65__4b1d14114472"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_3b047b7b9992b0dd",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_3b047b7b9992b0dd",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_3b047b7b9992b0dd",
+      "child": "us_hy_oas_level__EMA5_W120_S75_E10__7242bc2397f2"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_3b047b7b9992b0dd",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_3b047b7b9992b0dd",
+      "child": "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_3b047b7b9992b0dd",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m6::combo2_m6_k4_l2_2d90a80e824f7336",
+      "child": "combo1_n10_k8_l5_818f33babbcdb687"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "global_credit_stress__EMA5_W120_S35_E10__9a1a865e38d8"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "kospi_hv_n80__HV80_EMA10_W120_S90_E65__09d89fcd32af"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "kospi_rsi__RSI56_LB80_Q10_90__f2cc9b35b7d4"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7"
+    },
+    {
+      "parent": "m6::combo2_m6_k4_l2_2d90a80e824f7336",
+      "child": "combo1_n11_k8_l5_8572230026b9857b"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "kospi_index_level__EMA80_W30_S90_E25__7bf8650fd277"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "kospi_rsi__RSI28_LB80_Q10_80__dbbc066a9e69"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E65__4b1d14114472"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m6::combo2_m6_k4_l2_2d90a80e824f7336",
+      "child": "combo1_n11_k8_l5_93919287424179bd"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "kospi_rsi__RSI28_LB80_Q10_80__dbbc066a9e69"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "us_10y_slope__SW160_EMA5_W240_S75_E40__3d8da8f736af"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "vix_spread__EMA10_W120_S35_E10__7696d16a802e"
+    },
+    {
+      "parent": "m6::combo2_m6_k4_l2_2d90a80e824f7336",
+      "child": "combo1_n11_k9_l4_52a66ee12ced8c2f"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "global_credit_stress__EMA5_W120_S35_E10__9a1a865e38d8"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_10y_real_yield_level__EMA40_W480_S90_E25__34170b129534"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m6::combo2_m6_k4_l2_2d90a80e824f7336",
+      "child": "combo1_n9_k7_l4_3674f6539bce5a34"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "kospi_index_level__EMA40_W240_S90_E80__e5b20cca1fae"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "us_10y_slope__SW160_EMA5_W240_S75_E40__3d8da8f736af"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "vix_level__EMA5_W240_S50_E10__f4ede6458387"
+    },
+    {
+      "parent": "m6::combo2_m6_k4_l3_f976de57b8b4a80e",
+      "child": "combo1_n10_k8_l5_290a60cb5f34f575"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_10y_2y_spread__EMA80_W480_S90_E65__b48e91e2b5d3"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_10y_real_yield_level__EMA40_W480_S90_E25__34170b129534"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E65__f4bb3d0ad09d"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_hy_oas_level__EMA5_W120_S75_E10__7242bc2397f2"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m6::combo2_m6_k4_l3_f976de57b8b4a80e",
+      "child": "combo1_n11_k9_l4_3370f9e912d3725f"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_3370f9e912d3725f",
+      "child": "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_3370f9e912d3725f",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_3370f9e912d3725f",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_3370f9e912d3725f",
+      "child": "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_3370f9e912d3725f",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_3370f9e912d3725f",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_3370f9e912d3725f",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_3370f9e912d3725f",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_3370f9e912d3725f",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_3370f9e912d3725f",
+      "child": "usdkrw_level__EMA40_W30_S90_E80__b3e4e09b8f99"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_3370f9e912d3725f",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m6::combo2_m6_k4_l3_f976de57b8b4a80e",
+      "child": "combo1_n11_k9_l4_52a66ee12ced8c2f"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "global_credit_stress__EMA5_W120_S35_E10__9a1a865e38d8"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_10y_real_yield_level__EMA40_W480_S90_E25__34170b129534"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m6::combo2_m6_k4_l3_f976de57b8b4a80e",
+      "child": "combo1_n11_k9_l5_3de08b5458716f22"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "kospi_hv_n80__HV80_EMA20_W480_S50_E10__bb2b7f42ca2a"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "kospi_natr_n80__NATR80_EMA20_W480_S75_E40__53e1711720b6"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "kospi_rsi__RSI56_LB80_Q10_90__f2cc9b35b7d4"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "us_10y_slope__SW160_EMA5_W240_S75_E40__3d8da8f736af"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "us_hy_oas_level__EMA5_W120_S75_E10__7242bc2397f2"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "vix_level__EMA1_W480_S20_E10__a8456afa3015"
+    },
+    {
+      "parent": "m6::combo2_m6_k4_l3_f976de57b8b4a80e",
+      "child": "combo1_n11_k9_l6_b6c22ce5972ed2ee"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "kospi_hv_n80__HV80_EMA10_W120_S90_E65__09d89fcd32af"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "kospi_rsi__RSI56_LB80_Q10_90__f2cc9b35b7d4"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "us_10y_3m_spread__EMA20_W480_S90_E65__597b645a4963"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "usdkrw_level__EMA80_W480_S75_E25__ed038e4dd10d"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "vix_level__EMA5_W480_S35_E10__f1b7969f9f76"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "vix_spread__EMA10_W120_S35_E10__7696d16a802e"
+    },
+    {
+      "parent": "m6::combo2_m6_k4_l3_f976de57b8b4a80e",
+      "child": "combo1_n9_k7_l4_3674f6539bce5a34"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "kospi_index_level__EMA40_W240_S90_E80__e5b20cca1fae"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "us_10y_slope__SW160_EMA5_W240_S75_E40__3d8da8f736af"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "vix_level__EMA5_W240_S50_E10__f4ede6458387"
+    },
+    {
+      "parent": "m5::combo2_m5_k2_l1_2bc7e194fdecfd9e",
+      "child": "combo1_n10_k8_l5_290a60cb5f34f575"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_10y_2y_spread__EMA80_W480_S90_E65__b48e91e2b5d3"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_10y_real_yield_level__EMA40_W480_S90_E25__34170b129534"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E65__f4bb3d0ad09d"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_hy_oas_level__EMA5_W120_S75_E10__7242bc2397f2"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m5::combo2_m5_k2_l1_2bc7e194fdecfd9e",
+      "child": "combo1_n11_k8_l4_5fae25126881c080"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "global_credit_stress__EMA5_W120_S35_E10__9a1a865e38d8"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "kospi_index_level__EMA80_W30_S90_E25__7bf8650fd277"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "kospi_rsi__RSI28_LB80_Q20_90__0ade1e17e567"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "us_10y_real_yield_level__EMA40_W480_S90_E25__34170b129534"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "us_10y_slope__SW160_EMA5_W240_S75_E40__3d8da8f736af"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "us_ig_oas_level__EMA5_W240_S35_E10__d4500918aee9"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "usdkrw_level__EMA40_W30_S90_E80__b3e4e09b8f99"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m5::combo2_m5_k2_l1_2bc7e194fdecfd9e",
+      "child": "combo1_n11_k8_l5_11ec0a3108665b40"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_11ec0a3108665b40",
+      "child": "global_credit_stress__EMA5_W120_S35_E10__9a1a865e38d8"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_11ec0a3108665b40",
+      "child": "kospi_bollinger__BBW40_STD2p0__969923a71f91"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_11ec0a3108665b40",
+      "child": "kospi_index_level__EMA80_W30_S90_E25__7bf8650fd277"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_11ec0a3108665b40",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_11ec0a3108665b40",
+      "child": "kospi_rsi__RSI28_LB80_Q20_90__0ade1e17e567"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_11ec0a3108665b40",
+      "child": "us_10y_3m_spread__EMA20_W480_S90_E65__597b645a4963"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_11ec0a3108665b40",
+      "child": "us_10y_real_yield_level__EMA20_W480_S90_E10__67b442269d41"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_11ec0a3108665b40",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E65__f4bb3d0ad09d"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_11ec0a3108665b40",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_11ec0a3108665b40",
+      "child": "usdkrw_level__EMA80_W480_S75_E25__ed038e4dd10d"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_11ec0a3108665b40",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m5::combo2_m5_k2_l1_2bc7e194fdecfd9e",
+      "child": "combo1_n11_k8_l5_8572230026b9857b"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "kospi_index_level__EMA80_W30_S90_E25__7bf8650fd277"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "kospi_rsi__RSI28_LB80_Q10_80__dbbc066a9e69"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E65__4b1d14114472"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m5::combo2_m5_k2_l1_2bc7e194fdecfd9e",
+      "child": "combo1_n9_k8_l5_4a57a4873ef71826"
+    },
+    {
+      "parent": "combo1_n9_k8_l5_4a57a4873ef71826",
+      "child": "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43"
+    },
+    {
+      "parent": "combo1_n9_k8_l5_4a57a4873ef71826",
+      "child": "kospi_natr_n80__NATR80_EMA20_W480_S75_E40__53e1711720b6"
+    },
+    {
+      "parent": "combo1_n9_k8_l5_4a57a4873ef71826",
+      "child": "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6"
+    },
+    {
+      "parent": "combo1_n9_k8_l5_4a57a4873ef71826",
+      "child": "us_10y_3m_spread__EMA20_W480_S90_E65__597b645a4963"
+    },
+    {
+      "parent": "combo1_n9_k8_l5_4a57a4873ef71826",
+      "child": "us_10y_real_yield_level__EMA40_W480_S90_E25__34170b129534"
+    },
+    {
+      "parent": "combo1_n9_k8_l5_4a57a4873ef71826",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222"
+    },
+    {
+      "parent": "combo1_n9_k8_l5_4a57a4873ef71826",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n9_k8_l5_4a57a4873ef71826",
+      "child": "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7"
+    },
+    {
+      "parent": "combo1_n9_k8_l5_4a57a4873ef71826",
+      "child": "vix_level__EMA5_W480_S35_E10__f1b7969f9f76"
+    },
+    {
+      "parent": "m10::combo2_m10_k7_l4_bbd8c760d49b44bb",
+      "child": "combo1_n10_k8_l5_290a60cb5f34f575"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_10y_2y_spread__EMA80_W480_S90_E65__b48e91e2b5d3"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_10y_real_yield_level__EMA40_W480_S90_E25__34170b129534"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E65__f4bb3d0ad09d"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_hy_oas_level__EMA5_W120_S75_E10__7242bc2397f2"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m10::combo2_m10_k7_l4_bbd8c760d49b44bb",
+      "child": "combo1_n10_k8_l5_818f33babbcdb687"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "global_credit_stress__EMA5_W120_S35_E10__9a1a865e38d8"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "kospi_hv_n80__HV80_EMA10_W120_S90_E65__09d89fcd32af"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "kospi_rsi__RSI56_LB80_Q10_90__f2cc9b35b7d4"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_818f33babbcdb687",
+      "child": "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7"
+    },
+    {
+      "parent": "m10::combo2_m10_k7_l4_bbd8c760d49b44bb",
+      "child": "combo1_n11_k8_l5_8572230026b9857b"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "kospi_index_level__EMA80_W30_S90_E25__7bf8650fd277"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "kospi_rsi__RSI28_LB80_Q10_80__dbbc066a9e69"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E65__4b1d14114472"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_8572230026b9857b",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m10::combo2_m10_k7_l4_bbd8c760d49b44bb",
+      "child": "combo1_n11_k8_l5_93919287424179bd"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "kospi_rsi__RSI28_LB80_Q10_80__dbbc066a9e69"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "us_10y_slope__SW160_EMA5_W240_S75_E40__3d8da8f736af"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "vix_spread__EMA10_W120_S35_E10__7696d16a802e"
+    },
+    {
+      "parent": "m10::combo2_m10_k7_l4_bbd8c760d49b44bb",
+      "child": "combo1_n11_k8_l6_bd84926c3959a3fd"
+    },
+    {
+      "parent": "combo1_n11_k8_l6_bd84926c3959a3fd",
+      "child": "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb"
+    },
+    {
+      "parent": "combo1_n11_k8_l6_bd84926c3959a3fd",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n11_k8_l6_bd84926c3959a3fd",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k8_l6_bd84926c3959a3fd",
+      "child": "kospi_rsi__RSI28_LB80_Q20_90__0ade1e17e567"
+    },
+    {
+      "parent": "combo1_n11_k8_l6_bd84926c3959a3fd",
+      "child": "us_10y_2y_spread__EMA80_W480_S90_E65__b48e91e2b5d3"
+    },
+    {
+      "parent": "combo1_n11_k8_l6_bd84926c3959a3fd",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k8_l6_bd84926c3959a3fd",
+      "child": "us_10y_slope__SW160_EMA5_W240_S75_E40__3d8da8f736af"
+    },
+    {
+      "parent": "combo1_n11_k8_l6_bd84926c3959a3fd",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n11_k8_l6_bd84926c3959a3fd",
+      "child": "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89"
+    },
+    {
+      "parent": "combo1_n11_k8_l6_bd84926c3959a3fd",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "combo1_n11_k8_l6_bd84926c3959a3fd",
+      "child": "vix_spread__EMA10_W120_S35_E10__7696d16a802e"
+    },
+    {
+      "parent": "m10::combo2_m10_k7_l4_bbd8c760d49b44bb",
+      "child": "combo1_n11_k9_l4_52a66ee12ced8c2f"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "global_credit_stress__EMA5_W120_S35_E10__9a1a865e38d8"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_10y_real_yield_level__EMA40_W480_S90_E25__34170b129534"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m10::combo2_m10_k7_l4_bbd8c760d49b44bb",
+      "child": "combo1_n11_k9_l4_790a1e65e865104e"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_790a1e65e865104e",
+      "child": "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_790a1e65e865104e",
+      "child": "kospi_bollinger__BBW40_STD2p0__969923a71f91"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_790a1e65e865104e",
+      "child": "kospi_hv_n20__HV20_EMA5_W120_S50_E10__2ec36ee068a2"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_790a1e65e865104e",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_790a1e65e865104e",
+      "child": "kospi_rsi__RSI28_LB80_Q20_90__0ade1e17e567"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_790a1e65e865104e",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_790a1e65e865104e",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_790a1e65e865104e",
+      "child": "us_10y_slope__SW160_EMA1_W240_S75_E65__1e08769c51a3"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_790a1e65e865104e",
+      "child": "us_ig_oas_level__EMA1_W120_S50_E10__11ec354fd661"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_790a1e65e865104e",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_790a1e65e865104e",
+      "child": "vix_spread__EMA10_W120_S75_E25__b2ceeec94288"
+    },
+    {
+      "parent": "m10::combo2_m10_k7_l4_bbd8c760d49b44bb",
+      "child": "combo1_n11_k9_l5_40f4a3ccb9b38978"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "kospi_bollinger__BBW80_STD1p5__1396c565edce"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "kospi_rsi__RSI28_LB80_Q10_80__dbbc066a9e69"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m10::combo2_m10_k7_l4_bbd8c760d49b44bb",
+      "child": "combo1_n9_k7_l3_2390f26dee4401d1"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "global_credit_stress__EMA1_W120_S50_E10__c4ab861de44c"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "kospi_hv_n80__HV80_EMA20_W480_S50_E10__bb2b7f42ca2a"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "kospi_natr_n10__NATR10_EMA80_W480_S35_E10__a45c51e4f324"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m10::combo2_m10_k7_l4_bbd8c760d49b44bb",
+      "child": "combo1_n9_k7_l4_3674f6539bce5a34"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "kospi_index_level__EMA40_W240_S90_E80__e5b20cca1fae"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "us_10y_slope__SW160_EMA5_W240_S75_E40__3d8da8f736af"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7"
+    },
+    {
+      "parent": "combo1_n9_k7_l4_3674f6539bce5a34",
+      "child": "vix_level__EMA5_W240_S50_E10__f4ede6458387"
+    },
+    {
+      "parent": "m8::combo2_m8_k5_l4_cee6978af4789711",
+      "child": "combo1_n10_k8_l5_290a60cb5f34f575"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_10y_2y_spread__EMA80_W480_S90_E65__b48e91e2b5d3"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_10y_real_yield_level__EMA40_W480_S90_E25__34170b129534"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E65__f4bb3d0ad09d"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_hy_oas_level__EMA5_W120_S75_E10__7242bc2397f2"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7"
+    },
+    {
+      "parent": "combo1_n10_k8_l5_290a60cb5f34f575",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m8::combo2_m8_k5_l4_cee6978af4789711",
+      "child": "combo1_n11_k8_l4_5fae25126881c080"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "global_credit_stress__EMA5_W120_S35_E10__9a1a865e38d8"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "kospi_index_level__EMA80_W30_S90_E25__7bf8650fd277"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "kospi_rsi__RSI28_LB80_Q20_90__0ade1e17e567"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "us_10y_real_yield_level__EMA40_W480_S90_E25__34170b129534"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "us_10y_slope__SW160_EMA5_W240_S75_E40__3d8da8f736af"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "us_ig_oas_level__EMA5_W240_S35_E10__d4500918aee9"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "usdkrw_level__EMA40_W30_S90_E80__b3e4e09b8f99"
+    },
+    {
+      "parent": "combo1_n11_k8_l4_5fae25126881c080",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m8::combo2_m8_k5_l4_cee6978af4789711",
+      "child": "combo1_n11_k8_l5_93919287424179bd"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "kospi_rsi__RSI28_LB80_Q10_80__dbbc066a9e69"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "us_10y_slope__SW160_EMA5_W240_S75_E40__3d8da8f736af"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "combo1_n11_k8_l5_93919287424179bd",
+      "child": "vix_spread__EMA10_W120_S35_E10__7696d16a802e"
+    },
+    {
+      "parent": "m8::combo2_m8_k5_l4_cee6978af4789711",
+      "child": "combo1_n11_k9_l4_52a66ee12ced8c2f"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "global_credit_stress__EMA5_W120_S35_E10__9a1a865e38d8"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_10y_real_yield_level__EMA40_W480_S90_E25__34170b129534"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89"
+    },
+    {
+      "parent": "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m8::combo2_m8_k5_l4_cee6978af4789711",
+      "child": "combo1_n11_k9_l5_3de08b5458716f22"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "kospi_hv_n80__HV80_EMA20_W480_S50_E10__bb2b7f42ca2a"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "kospi_natr_n80__NATR80_EMA20_W480_S75_E40__53e1711720b6"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "kospi_rsi__RSI56_LB80_Q10_90__f2cc9b35b7d4"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "us_10y_slope__SW160_EMA5_W240_S75_E40__3d8da8f736af"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "us_hy_oas_level__EMA5_W120_S75_E10__7242bc2397f2"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_3de08b5458716f22",
+      "child": "vix_level__EMA1_W480_S20_E10__a8456afa3015"
+    },
+    {
+      "parent": "m8::combo2_m8_k5_l4_cee6978af4789711",
+      "child": "combo1_n11_k9_l5_40f4a3ccb9b38978"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "kospi_bollinger__BBW80_STD1p5__1396c565edce"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "kospi_rsi__RSI28_LB80_Q10_80__dbbc066a9e69"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89"
+    },
+    {
+      "parent": "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    },
+    {
+      "parent": "m8::combo2_m8_k5_l4_cee6978af4789711",
+      "child": "combo1_n11_k9_l6_b6c22ce5972ed2ee"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "kospi_hv_n80__HV80_EMA10_W120_S90_E65__09d89fcd32af"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "kospi_rsi__RSI56_LB80_Q10_90__f2cc9b35b7d4"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "us_10y_3m_spread__EMA20_W480_S90_E65__597b645a4963"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "usdkrw_level__EMA80_W480_S75_E25__ed038e4dd10d"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "vix_level__EMA5_W480_S35_E10__f1b7969f9f76"
+    },
+    {
+      "parent": "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "child": "vix_spread__EMA10_W120_S35_E10__7696d16a802e"
+    },
+    {
+      "parent": "m8::combo2_m8_k5_l4_cee6978af4789711",
+      "child": "combo1_n9_k7_l3_2390f26dee4401d1"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "global_credit_stress__EMA1_W120_S50_E10__c4ab861de44c"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "kospi_hv_n80__HV80_EMA20_W480_S50_E10__bb2b7f42ca2a"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "kospi_natr_n10__NATR10_EMA80_W480_S35_E10__a45c51e4f324"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89"
+    },
+    {
+      "parent": "combo1_n9_k7_l3_2390f26dee4401d1",
+      "child": "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    }
+  ],
+  "required_core15_components": [
+    "global_credit_stress__EMA1_W120_S50_E10__c4ab861de44c",
+    "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb",
+    "global_credit_stress__EMA5_W120_S35_E10__9a1a865e38d8",
+    "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43",
+    "kospi_bollinger__BBW40_STD2p0__969923a71f91",
+    "kospi_bollinger__BBW80_STD1p5__1396c565edce",
+    "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5",
+    "kospi_hv_n20__HV20_EMA5_W120_S50_E10__2ec36ee068a2",
+    "kospi_hv_n80__HV80_EMA10_W120_S90_E65__09d89fcd32af",
+    "kospi_hv_n80__HV80_EMA20_W480_S50_E10__bb2b7f42ca2a",
+    "kospi_index_level__EMA40_W240_S90_E80__e5b20cca1fae",
+    "kospi_index_level__EMA80_W30_S90_E25__7bf8650fd277",
+    "kospi_natr_n10__NATR10_EMA80_W480_S35_E10__a45c51e4f324",
+    "kospi_natr_n80__NATR80_EMA20_W480_S75_E40__53e1711720b6",
+    "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c",
+    "kospi_rsi__RSI28_LB80_Q10_80__dbbc066a9e69",
+    "kospi_rsi__RSI28_LB80_Q20_90__0ade1e17e567",
+    "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6",
+    "kospi_rsi__RSI56_LB80_Q10_90__f2cc9b35b7d4",
+    "us_10y_2y_spread__EMA40_W480_S90_E65__4b1d14114472",
+    "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532",
+    "us_10y_2y_spread__EMA80_W480_S90_E65__b48e91e2b5d3",
+    "us_10y_3m_spread__EMA20_W480_S90_E65__597b645a4963",
+    "us_10y_3m_spread__EMA80_W120_S90_E65__80d0fee310a6",
+    "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a",
+    "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08",
+    "us_10y_real_yield_level__EMA20_W480_S90_E10__67b442269d41",
+    "us_10y_real_yield_level__EMA40_W480_S90_E25__34170b129534",
+    "us_10y_slope__SW160_EMA1_W240_S75_E65__1e08769c51a3",
+    "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222",
+    "us_10y_slope__SW160_EMA40_W240_S75_E65__f4bb3d0ad09d",
+    "us_10y_slope__SW160_EMA5_W240_S75_E40__3d8da8f736af",
+    "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43",
+    "us_hy_oas_level__EMA5_W120_S75_E10__7242bc2397f2",
+    "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d",
+    "us_ig_oas_level__EMA1_W120_S50_E10__11ec354fd661",
+    "us_ig_oas_level__EMA5_W240_S35_E10__d4500918aee9",
+    "usdkrw_level__EMA40_W30_S90_E80__b3e4e09b8f99",
+    "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7",
+    "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89",
+    "usdkrw_level__EMA80_W480_S75_E25__ed038e4dd10d",
+    "vix_level__EMA1_W480_S20_E10__a8456afa3015",
+    "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3",
+    "vix_level__EMA5_W240_S50_E10__f4ede6458387",
+    "vix_level__EMA5_W480_S35_E10__f1b7969f9f76",
+    "vix_spread__EMA10_W120_S35_E10__7696d16a802e",
+    "vix_spread__EMA10_W120_S75_E25__b2ceeec94288"
+  ],
+  "required_child_combo1": [
+    "combo1_n10_k8_l5_290a60cb5f34f575",
+    "combo1_n10_k8_l5_3b047b7b9992b0dd",
+    "combo1_n10_k8_l5_818f33babbcdb687",
+    "combo1_n11_k8_l4_5fae25126881c080",
+    "combo1_n11_k8_l5_11ec0a3108665b40",
+    "combo1_n11_k8_l5_8572230026b9857b",
+    "combo1_n11_k8_l5_93919287424179bd",
+    "combo1_n11_k8_l6_bd84926c3959a3fd",
+    "combo1_n11_k9_l4_3370f9e912d3725f",
+    "combo1_n11_k9_l4_52a66ee12ced8c2f",
+    "combo1_n11_k9_l4_790a1e65e865104e",
+    "combo1_n11_k9_l5_3de08b5458716f22",
+    "combo1_n11_k9_l5_40f4a3ccb9b38978",
+    "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+    "combo1_n9_k7_l3_2390f26dee4401d1",
+    "combo1_n9_k7_l4_3674f6539bce5a34",
+    "combo1_n9_k8_l5_4a57a4873ef71826"
+  ],
+  "dependency_graph_hash": "3cde410d877b9e469193d676c2d37b9fe40ac9da2fec9631ab28c1fd383366ec"
+}

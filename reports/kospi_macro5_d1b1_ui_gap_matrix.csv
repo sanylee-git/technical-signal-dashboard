@@ -1,0 +1,16 @@
+ui_item,macro6_structure,macro5_current_structure,difference,data_required_difference,codex_arbitrary_change,can_clone_future,evidence
+상단 helper text,실시간 Yahoo/FRED + availability 재계산 안내,Frozen Final9 + Live extension 미연결 안내,문구 성격 다름,YES,NO,Keep explicit Frozen/Live badge,screenshots in kospi_macro5_assets and technical_signal_dashboard.py render blocks
+계산 가능/그룹 상태 요약,조합2/조합1 계산 가능 수와 Risk-off consensus 표시,없음 또는 개별 후보 frozen 상태만 표시,Macro5 그룹 consensus 없음,NO,PARTIAL,Clone after live engine,screenshots in kospi_macro5_assets and technical_signal_dashboard.py render blocks
+컨트롤 첫 줄,"프리셋, 기준지수, 기간, 보조선 표시","프리셋, KOSPI disabled, 기간, 원본선 표시",비슷하나 Macro5 기간 20년 default/frozen,PARTIAL,NO,Mostly cloneable,screenshots in kospi_macro5_assets and technical_signal_dashboard.py render blocks
+조합 지표 multiselect,선택된 조합 component tags 기본 표시,빈 선택처럼 보이는 component select 가능,Macro5 screenshot shows Choose options,NO,YES,Should default selected component list like Macro6,screenshots in kospi_macro5_assets and technical_signal_dashboard.py render blocks
+리스크 기준 설명,시작/종료 ON 기준 오른쪽 표시,진입 K/종료 L 표시,유사하나 문구 위치/밀도 다름,NO,NO,Cloneable,screenshots in kospi_macro5_assets and technical_signal_dashboard.py render blocks
+현재 상태 라인,"기준일, 현재 플래그, 상태, 실행 안내, 상태 시작일",Frozen 기준일/후보구분/Raw/T+1 세로 텍스트,큰 차이,NO,YES,D1-C3 should clone Macro6 panel,screenshots in kospi_macro5_assets and technical_signal_dashboard.py render blocks
+백테스트 비교 보기,"HTML table, 조합2/조합1 분리, B&H 포함",st.dataframe 단일 Final9 표,큰 차이,NO,YES,Rebuild with KOSPI B&H and Final9 groups,screenshots in kospi_macro5_assets and technical_signal_dashboard.py render blocks
+전체 후보 비교,Macro6 grouped final candidates,Macro5 Final9 metric dataframe,표 형식/컬럼명 다름,NO,PARTIAL,Clone Macro6 table style,screenshots in kospi_macro5_assets and technical_signal_dashboard.py render blocks
+데이터 최신일 표,source별 status/lag/fallback 표시,없음,Live 준비 전 필수 gap,YES,NO,D1-C2/D1-C3,screenshots in kospi_macro5_assets and technical_signal_dashboard.py render blocks
+대표 차트,S&P line + risk spans + markers,KOSPI line + frozen risk spans + markers,"대체로 유사, frozen only",PARTIAL,NO,Keep,screenshots in kospi_macro5_assets and technical_signal_dashboard.py render blocks
+개별 indicator chart,raw line/threshold/indicator event 표시,component frozen state chart 위주,raw/threshold 누락,YES,NO,Needs live parser,screenshots in kospi_macro5_assets and technical_signal_dashboard.py render blocks
+Combo2 component chart,하위 Combo1 chart 구성,frozen component state chart,"raw state only, source lineage limited",PARTIAL,NO,Needs Combo1 raw live reconstruction,screenshots in kospi_macro5_assets and technical_signal_dashboard.py render blocks
+debug expander,latest debug rows available,없음,Macro5 stale 분석 불가,YES,NO,D1-C2,screenshots in kospi_macro5_assets and technical_signal_dashboard.py render blocks
+warning/error,blocking reasons panel,asset load failure only,실시간 source warning 없음,YES,NO,D1-C2,screenshots in kospi_macro5_assets and technical_signal_dashboard.py render blocks
+CSS/card style,Macro6 HTML panels,Macro5 some custom CSS + dataframe,시각 차이 있음,NO,YES,Clone exact Macro6 HTML helpers after live,screenshots in kospi_macro5_assets and technical_signal_dashboard.py render blocks
