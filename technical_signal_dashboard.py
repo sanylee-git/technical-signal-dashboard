@@ -12942,6 +12942,13 @@ def _load_macro5_kospi_frozen_assets():
     }
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _load_macro5_kospi_live_page_data_cached(sync_bucket: str):
+    from kospi_macro5_runtime.page_adapter import load_macro5_live_page_data
+
+    return load_macro5_live_page_data()
+
+
 def _macro5_kospi_suffix(candidate_id: str) -> str:
     return str(candidate_id).split("_")[-1][-8:]
 
@@ -12985,11 +12992,17 @@ def _macro5_kospi_fmt_num(value, digits: int = 2) -> str:
 
 
 def _macro5_kospi_state_label(raw_state: int | bool) -> str:
-    return "Risk-off" if int(raw_state) == 1 else "Risk-on"
+    try:
+        return "Risk-off" if int(raw_state) == 1 else "Risk-on"
+    except Exception:
+        return "계산 불가"
 
 
 def _macro5_kospi_t1_label(position: int | bool) -> str:
-    return "T+1 투자 가능" if int(position) == 1 else "T+1 비투자"
+    try:
+        return "T+1 투자 가능" if int(position) == 1 else "T+1 비투자"
+    except Exception:
+        return "계산 불가"
 
 
 def _macro5_kospi_reference_label(reference_type: str) -> str:
@@ -14482,7 +14495,7 @@ def main(page="signal"):
         with container:
             _started = time.perf_counter()
             st.markdown(
-                '<div class="macro2-helper-text">KOSPI Final9 후보의 Frozen Risk-on/off 신호를 공식 T+1·10bp 계약 기준으로 비교합니다. 현재는 2026-07-28 기준 Shadow 검토 단계이며 Live extension은 아직 연결되지 않았습니다.</div>',
+                '<div class="macro2-helper-text">KOSPI Final9 후보의 Live Shadow 상태를 표시합니다. 성과 지표와 차트는 Frozen reference 기준입니다.</div>',
                 unsafe_allow_html=True,
             )
             _render_macro_combo_common_css()
@@ -14539,6 +14552,13 @@ def main(page="signal"):
             _component_dict5k = _assets5k["component_dictionary"]
             _preset_order5k = _metrics5k["candidate_id"].tolist()
             _candidate_map5k = {row["candidate_id"]: row for _, row in _metrics5k.iterrows()}
+            _live5k = None
+            _live_error5k = ""
+            _live_sync_bucket5k = _macro_sync_bucket(60)
+            try:
+                _live5k = _load_macro5_kospi_live_page_data_cached(_live_sync_bucket5k)
+            except Exception as _exc:
+                _live_error5k = str(_exc)
             if st.session_state.get("macro5_kospi_preset") not in _preset_order5k:
                 st.session_state["macro5_kospi_preset"] = _preset_order5k[0]
 
@@ -14624,23 +14644,48 @@ def main(page="signal"):
             _last_transition_date5k = pd.to_datetime(_last_transition_rows5k.iloc[-1]["date"]) if len(_last_transition_rows5k) else _latest_date5k
             _duration5k = int((_candidate_signal5k["date"] >= _last_transition_date5k).sum())
             _reference_label5k = _macro5_kospi_reference_label(_selected_row5k["source_signal_parity"])
+            _live_row_map5k = {}
+            if isinstance(_live5k, dict):
+                _live_row_map5k = {str(row.get("candidate_id")): row for row in _live5k.get("candidate_rows", [])}
+            _live_selected5k = _live_row_map5k.get(_macro5_kospi_preset)
+            _live_selected_ok5k = bool(_live_selected5k and _live_selected5k.get("calculable"))
+            if _live_selected_ok5k:
+                _display_basis5k = str(_live_selected5k.get("basis_date") or "—")
+                _display_raw5k = _macro5_kospi_state_label(_live_selected5k.get("raw_risk_state"))
+                _display_t15k = _macro5_kospi_t1_label(_live_selected5k.get("t1_position"))
+                _display_active5k = f"{int(_live_selected5k.get('active_count') or 0)} / {len(_selected_components5k)}"
+                _display_duration5k = _live_selected5k.get("current_state_trading_days")
+                _display_duration5k = "—" if pd.isna(_display_duration5k) else int(_display_duration5k)
+                _display_freshness5k = "Fresh" if bool(_live_selected5k.get("freshness_qualified")) else "Review"
+            else:
+                _display_basis5k = "계산 불가"
+                _display_raw5k = "계산 불가"
+                _display_t15k = "계산 불가"
+                _display_active5k = "계산 불가"
+                _display_duration5k = "계산 불가"
+                _display_freshness5k = "계산 불가"
 
             _state_cards5k = [
-                ("Frozen 기준일", _latest_date5k.strftime("%Y-%m-%d")),
+                ("Live 기준일", _display_basis5k),
                 ("후보 구분", str(_selected_row5k["model_type"]).upper()),
-                ("Raw 상태", _macro5_kospi_state_label(_latest_signal5k["raw_risk_state"])),
-                ("T+1 적용 상태", _macro5_kospi_t1_label(_latest_signal5k["t1_position"])),
-                ("Active Count", f"{_active_count5k} / {len(_selected_components5k)}"),
+                ("Raw 상태", _display_raw5k),
+                ("T+1 적용 상태", _display_t15k),
+                ("Active Count", _display_active5k),
                 ("진입 K", int(_selected_row5k["K"])),
                 ("종료 L", int(_selected_row5k["L"])),
-                ("지속 거래일", _duration5k),
+                ("지속 거래일", _display_duration5k),
             ]
             _card_html5k = "<div class='macro2-card-grid'>" + "".join(
                 f"<div class='macro2-card'><div class='macro2-card-label'>{label}</div><div class='macro2-card-value'>{value}</div></div>"
                 for label, value in _state_cards5k
             ) + "</div>"
             st.markdown(_card_html5k, unsafe_allow_html=True)
-            st.caption(f"reference source: {_reference_label5k} · Live extension 미연결 · Shadow 검토 단계")
+            if _live_selected_ok5k:
+                st.caption(f"reference source: {_reference_label5k} · Live Shadow 상태 · freshness={_display_freshness5k} · 성과/차트는 Frozen 기준")
+            else:
+                st.caption(f"reference source: {_reference_label5k} · Live 상태 계산 불가 · Frozen 성과/차트 유지")
+                if _live_error5k:
+                    st.warning(f"Live 상태를 계산할 수 없습니다: {_live_error5k[:180]}")
 
             _bt_metrics5k = [
                 ("CAGR", _macro5_kospi_fmt_pct(_selected_row5k["cagr"])),
@@ -14670,8 +14715,35 @@ def main(page="signal"):
                 st.dataframe(_compare5k, width="stretch", hide_index=True)
 
             _status5k = _snapshot5k.copy()
+            _status5k["date"] = "계산 불가"
+            _status5k["raw_risk_state"] = pd.NA
+            _status5k["t1_position"] = pd.NA
+            _status5k["active_count"] = pd.NA
+            _status5k["last_transition_date"] = "계산 불가"
+            _status5k["current_state_trading_days"] = pd.NA
+            _status5k["valid"] = False
+            _status5k["freshness_qualified"] = False
+            _status5k["freshness_status"] = "계산 불가"
+            for _row_idx5k, _row5k in _status5k.iterrows():
+                _live_row5k = _live_row_map5k.get(str(_row5k.get("candidate_id")))
+                if not _live_row5k or not _live_row5k.get("calculable"):
+                    continue
+                _status5k.loc[_row_idx5k, "date"] = _live_row5k.get("basis_date")
+                _status5k.loc[_row_idx5k, "raw_risk_state"] = _live_row5k.get("raw_risk_state")
+                _status5k.loc[_row_idx5k, "t1_position"] = _live_row5k.get("t1_position")
+                _status5k.loc[_row_idx5k, "active_count"] = _live_row5k.get("active_count")
+                _status5k.loc[_row_idx5k, "last_transition_date"] = _live_row5k.get("current_state_start_date")
+                _status5k.loc[_row_idx5k, "current_state_trading_days"] = _live_row5k.get("current_state_trading_days")
+                _status5k.loc[_row_idx5k, "valid"] = True
+                _status5k.loc[_row_idx5k, "freshness_qualified"] = bool(_live_row5k.get("freshness_qualified"))
+                _status5k.loc[_row_idx5k, "freshness_status"] = _live_row5k.get("freshness_status")
             with st.expander("지표별 상태 보기", expanded=False):
-                _status_view5k = _status5k[["model_type", "role", "suffix", "date", "raw_risk_state", "t1_position", "active_count", "K", "L", "last_transition_date", "current_state_trading_days", "reference_type", "valid"]].copy()
+                _status_cols5k = ["model_type", "role", "suffix", "date", "raw_risk_state", "t1_position", "active_count", "K", "L", "last_transition_date", "current_state_trading_days", "reference_type", "valid"]
+                if "freshness_qualified" in _status5k.columns:
+                    _status_cols5k.append("freshness_qualified")
+                if "freshness_status" in _status5k.columns:
+                    _status_cols5k.append("freshness_status")
+                _status_view5k = _status5k[_status_cols5k].copy()
                 _status_view5k["Raw 상태"] = _status_view5k["raw_risk_state"].map(_macro5_kospi_state_label)
                 _status_view5k["T+1 상태"] = _status_view5k["t1_position"].map(_macro5_kospi_t1_label)
                 _status_view5k["reference type"] = _status_view5k["reference_type"].map(_macro5_kospi_reference_label)
@@ -14734,6 +14806,7 @@ def main(page="signal"):
                 years=_macro5_kospi_years,
                 component_count=len(_selected_components5k),
                 frozen_end=_latest_date5k.strftime("%Y-%m-%d"),
+                live_connected=bool(_live_selected_ok5k),
                 d1a_gate=_manifest5k.get("gate"),
                 d1b_gate=_ui_manifest5k.get("gate"),
                 elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
