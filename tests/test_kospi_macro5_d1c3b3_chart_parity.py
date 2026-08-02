@@ -55,7 +55,7 @@ def test_macro5_main_chart_uses_basis_date_and_macro4_height():
     assert {"KOSPI", "Risk 시작", "Risk 종료"}.issubset(names)
 
 
-def test_macro5_combo2_component_chart_uses_dual_axis_events_and_no_on_square():
+def test_macro5_combo2_component_chart_uses_kospi_events_annotation_and_no_binary_step():
     fig = dashboard._macro5_kospi_build_component_chart(
         _component_signal(),
         _benchmark(),
@@ -67,9 +67,14 @@ def test_macro5_combo2_component_chart_uses_dual_axis_events_and_no_on_square():
     assert fig is not None
     assert fig.layout.height == 260
     assert pd.to_datetime(fig.layout.xaxis.range[1]).normalize() == pd.Timestamp("2026-07-31")
-    assert fig.layout.yaxis2.overlaying == "y"
+    assert fig.layout.yaxis.title.text == "KOSPI"
+    assert len(fig.layout.annotations or []) >= 1
     names = {trace.name for trace in fig.data}
-    assert {"ON 수", "K", "L", "KOSPI", "Risk 시작", "Risk 종료"}.issubset(names)
+    assert {"KOSPI", "Risk 시작", "Risk 종료"}.issubset(names)
+    assert "ON 수" not in names
+    assert "K" not in names
+    assert "L" not in names
+    assert "Raw state" not in names
     assert "component ON" not in names
 
 

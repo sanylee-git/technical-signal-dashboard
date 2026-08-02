@@ -13157,6 +13157,11 @@ def _macro5_kospi_display_label(value: str) -> str:
         "global_credit_stress": "신용 스트레스",
         "kospi_bollinger": "KOSPI 볼린저밴드",
         "kospi_hv": "KOSPI 변동성",
+        "kospi_hv_n5": "KOSPI 변동성 5",
+        "kospi_hv_n10": "KOSPI 변동성 10",
+        "kospi_hv_n20": "KOSPI 변동성 20",
+        "kospi_hv_n40": "KOSPI 변동성 40",
+        "kospi_hv_n80": "KOSPI 변동성 80",
         "kospi_index_level": "KOSPI 지수",
         "kospi_natr": "KOSPI NATR",
         "kospi_natr_n5": "KOSPI NATR 5",
@@ -13950,6 +13955,16 @@ def _macro5_kospi_component_indicator_frame(component_id: str, source_base: pd.D
     return out
 
 
+def _macro5_kospi_ema_columns(frame: pd.DataFrame) -> list[str]:
+    if frame is None:
+        return []
+    return [
+        str(col)
+        for col in frame.columns
+        if str(col).lower().startswith("ema") and re.fullmatch(r"ema\d+", str(col), flags=re.IGNORECASE)
+    ]
+
+
 def _macro5_kospi_fmt_pct(value, digits: int = 1) -> str:
     try:
         return f"{float(value) * 100:.{digits}f}%"
@@ -14124,73 +14139,35 @@ def _macro5_kospi_build_component_chart(
     _add_macro_combo_risk_cycle_background(fig, merged[["date", "combo_risk_state"]], merged["date"])
     component_id = str(component_df["component_id"].dropna().iloc[0]) if "component_id" in component_df and len(component_df["component_id"].dropna()) else ""
     is_combo2_component = str(model_type).lower() == "combo2"
+    chart_title = _macro5_kospi_component_display_label(component_id) if is_combo2_component else title
     left_axis_title = "지표"
 
     if is_combo2_component:
-        active = pd.to_numeric(merged.get("component_active_count"), errors="coerce")
-        if active.notna().any():
-            fig.add_trace(go.Scatter(
-                x=merged["date"],
-                y=active,
-                mode="lines",
-                name="ON 수",
-                line=dict(color="#7C7CF7", width=1.8),
-            ))
-            left_axis_title = "ON 수"
-            k_val = pd.to_numeric(merged.get("component_K"), errors="coerce").dropna()
-            l_val = pd.to_numeric(merged.get("component_L"), errors="coerce").dropna()
-            if len(k_val):
-                fig.add_trace(go.Scatter(
-                    x=merged["date"],
-                    y=np.full(len(merged), float(k_val.iloc[-1])),
-                    mode="lines",
-                    name="K",
-                    line=dict(color="#EAB308", width=1, dash="dash"),
-                    hoverinfo="skip",
-                ))
-            if len(l_val):
-                fig.add_trace(go.Scatter(
-                    x=merged["date"],
-                    y=np.full(len(merged), float(l_val.iloc[-1])),
-                    mode="lines",
-                    name="L",
-                    line=dict(color="#34D399", width=1, dash="dash"),
-                    hoverinfo="skip",
-                ))
-        else:
-            fig.add_trace(go.Scatter(
-                x=merged["date"],
-                y=pd.to_numeric(merged["component_risk_state"], errors="coerce"),
-                mode="lines",
-                name="Raw state",
-                line=dict(color="#7C7CF7", width=1.4, shape="hv"),
-            ))
-            left_axis_title = "State"
+        pass
     else:
         indicator = _macro5_kospi_component_indicator_frame(component_id, source_base=source_base)
-        indicator_cols = ["value", "close", "rsi"]
-        trace_col = next((col for col in indicator_cols if col in indicator.columns), None)
-        if trace_col:
+        if not indicator.empty:
             indicator_visible = _macro5_kospi_join_on_benchmark(visible_benchmark, indicator, list(indicator.columns))
-            fig.add_trace(go.Scatter(
-                x=indicator_visible["date"],
-                y=pd.to_numeric(indicator_visible[trace_col], errors="coerce"),
-                mode="lines",
-                name={"value": "원자료", "close": "KOSPI Close", "rsi": "RSI"}.get(trace_col, trace_col),
-                line=dict(color="#A8A29E", width=1.25),
-            ))
-            left_axis_title = {"value": "지표", "close": "가격", "rsi": "RSI"}.get(trace_col, "지표")
-            if show_aux:
-                aux_specs = [
-                    ("risk_start_line", "시작 기준", "#EF4444", "dash"),
-                    ("risk_end_line", "종료 기준", "#60A5FA", "dash"),
-                    ("dyn_upper", "상단 기준", "#EF4444", "dash"),
-                    ("dyn_lower", "하단 기준", "#34D399", "dash"),
+            kind = str(indicator.get("macro5_chart_kind", pd.Series([""])).dropna().iloc[0]) if "macro5_chart_kind" in indicator else ""
+            mandatory_trace_count = 0
+            ema_cols = _macro5_kospi_ema_columns(indicator_visible)
+
+            if kind == "bollinger":
+                if "close" in indicator_visible.columns:
+                    fig.add_trace(go.Scatter(
+                        x=indicator_visible["date"],
+                        y=pd.to_numeric(indicator_visible["close"], errors="coerce"),
+                        mode="lines",
+                        name="가격",
+                        line=dict(color="#A8A29E", width=1.25),
+                    ))
+                    mandatory_trace_count += 1
+                    left_axis_title = "가격"
+                for col, name, color, dash in [
                     ("bb_middle", "BB 중심", "#D4D454", "solid"),
                     ("bb_upper", "BB 상단", "#F97316", "dash"),
                     ("bb_lower", "BB 하단", "#38BDF8", "dash"),
-                ]
-                for col, name, color, dash in aux_specs:
+                ]:
                     if col in indicator_visible.columns:
                         fig.add_trace(go.Scatter(
                             x=indicator_visible["date"],
@@ -14198,9 +14175,33 @@ def _macro5_kospi_build_component_chart(
                             mode="lines",
                             name=name,
                             line=dict(color=color, width=1, dash=dash),
-                            hoverinfo="skip",
                         ))
-                ema_cols = [col for col in indicator_visible.columns if re.fullmatch(r"ema\\d+", str(col))]
+                        mandatory_trace_count += 1
+            elif kind == "rsi":
+                if "rsi" in indicator_visible.columns:
+                    fig.add_trace(go.Scatter(
+                        x=indicator_visible["date"],
+                        y=pd.to_numeric(indicator_visible["rsi"], errors="coerce"),
+                        mode="lines",
+                        name="RSI",
+                        line=dict(color="#7C7CF7", width=1.35),
+                    ))
+                    mandatory_trace_count += 1
+                    left_axis_title = "RSI"
+                for col, name, color in [
+                    ("dyn_upper", "상단 기준", "#EF4444"),
+                    ("dyn_lower", "하단 기준", "#34D399"),
+                ]:
+                    if col in indicator_visible.columns:
+                        fig.add_trace(go.Scatter(
+                            x=indicator_visible["date"],
+                            y=pd.to_numeric(indicator_visible[col], errors="coerce"),
+                            mode="lines",
+                            name=name,
+                            line=dict(color=color, width=1, dash="dash"),
+                        ))
+                        mandatory_trace_count += 1
+            else:
                 for col in ema_cols[:1]:
                     fig.add_trace(go.Scatter(
                         x=indicator_visible["date"],
@@ -14209,30 +14210,77 @@ def _macro5_kospi_build_component_chart(
                         name=col.upper(),
                         line=dict(color="#CCD539", width=1.35),
                     ))
+                    mandatory_trace_count += 1
+                    left_axis_title = "지표"
+                for col, name, color in [
+                    ("risk_start_line", "시작선", "#F97316"),
+                    ("risk_end_line", "종료선", "#38BDF8"),
+                ]:
+                    if col in indicator_visible.columns:
+                        fig.add_trace(go.Scatter(
+                            x=indicator_visible["date"],
+                            y=pd.to_numeric(indicator_visible[col], errors="coerce"),
+                            mode="lines",
+                            name=name,
+                            line=dict(color=color, width=1, dash="dash"),
+                        ))
+                        mandatory_trace_count += 1
+
+            if mandatory_trace_count == 0:
+                return None
+            if show_aux:
+                raw_col = next((col for col in ["value", "close", "rsi"] if col in indicator_visible.columns), None)
+                if raw_col and not (kind == "rsi" and raw_col == "rsi") and not (kind == "bollinger" and raw_col == "close"):
+                    fig.add_trace(go.Scatter(
+                        x=indicator_visible["date"],
+                        y=pd.to_numeric(indicator_visible[raw_col], errors="coerce"),
+                        mode="lines",
+                        name="원자료",
+                        line=dict(color="#A8A29E", width=1.05),
+                    ))
         else:
-            fig.add_trace(go.Scatter(
-                x=merged["date"],
-                y=pd.to_numeric(merged["component_risk_state"], errors="coerce"),
-                mode="lines",
-                name="Raw state",
-                line=dict(color="#7C7CF7", width=1.4, shape="hv"),
-            ))
-            left_axis_title = "State"
+            return None
 
     fig.add_trace(go.Scatter(
         x=merged["date"],
         y=merged["kospi_close"],
-        yaxis="y2",
+        yaxis="y" if is_combo2_component else "y2",
         mode="lines",
         name="KOSPI",
         line=dict(color="rgba(226,232,240,0.72)", width=1.4),
     ))
-    _macro5_kospi_add_price_markers(fig, merged, yaxis="y2")
-    _macro5_kospi_apply_macro4_chart_layout(fig, title, 260 if is_combo2_component else 300, x_start, x_end)
-    fig.update_layout(
-        yaxis=dict(title=left_axis_title, side="left", showgrid=True),
-        yaxis2=dict(title="KOSPI", overlaying="y", side="right", showgrid=False, zeroline=False),
-    )
+    _macro5_kospi_add_price_markers(fig, merged, yaxis="y" if is_combo2_component else "y2")
+    _macro5_kospi_apply_macro4_chart_layout(fig, chart_title, 260 if is_combo2_component else 300, x_start, x_end)
+    if is_combo2_component:
+        try:
+            parsed_child = re.match(r"^combo1_n(?P<n>\d+)_k(?P<k>\d+)_l(?P<l>\d+)_", component_id)
+            k_series = pd.to_numeric(merged.get("component_K"), errors="coerce").dropna()
+            l_series = pd.to_numeric(merged.get("component_L"), errors="coerce").dropna()
+            k_val = int(k_series.iloc[-1]) if len(k_series) else int(parsed_child.group("k"))
+            l_val = int(l_series.iloc[-1]) if len(l_series) else int(parsed_child.group("l"))
+            count_val = int(parsed_child.group("n")) if parsed_child else int(pd.to_numeric(merged.get("component_active_count"), errors="coerce").max())
+            annotation_text = f"K{k_val}/L{l_val} · 조합1 {count_val}개"
+        except Exception:
+            annotation_text = "Child Combo1"
+        fig.add_annotation(
+            xref="paper",
+            yref="paper",
+            x=0.015,
+            y=0.92,
+            showarrow=False,
+            align="left",
+            text=annotation_text,
+            font=dict(size=11, color="rgba(255,255,255,0.72)"),
+            bgcolor="rgba(0,0,0,0.18)",
+            bordercolor="rgba(255,255,255,0.08)",
+            borderwidth=1,
+        )
+        fig.update_layout(yaxis=dict(title="KOSPI", side="right", showgrid=True))
+    else:
+        fig.update_layout(
+            yaxis=dict(title=left_axis_title, side="left", showgrid=True),
+            yaxis2=dict(title="KOSPI", overlaying="y", side="right", showgrid=False, zeroline=False),
+        )
     return fig
 
 
@@ -15958,7 +16006,7 @@ def main(page="signal"):
                     key=f"macro5_kospi_main_chart_{_macro5_kospi_preset}_{_macro5_kospi_years}_{int(_show_raw_macro5_kospi)}",
                 )
             else:
-                st.warning("KOSPI Macro5 대표 차트 데이터 로딩 실패 — Frozen asset을 확인해 주세요.")
+                st.warning("최신 대표 차트를 표시할 수 없습니다.")
 
             for _idx5k, (_component_id5k, _component_df5k) in enumerate(_candidate_components5k.groupby("component_id", sort=False), start=1):
                 if str(_component_id5k) in _candidate_map5k:

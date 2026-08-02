@@ -154,6 +154,10 @@ def _candidate_rows(candidate_freshness: pd.DataFrame) -> list[dict[str, Any]]:
 
 def _candidate_signal_history(ctx: D1C1Context, final9_live: pd.DataFrame) -> pd.DataFrame:
     frozen = _read_asset_frame(ctx, "kospi_final9_reference_signals.parquet")
+    if "valid_signal" not in frozen.columns:
+        frozen["valid_signal"] = True
+    else:
+        frozen["valid_signal"] = frozen["valid_signal"].fillna(True).astype(bool)
     metrics = pd.read_csv(ctx.asset_dir / "kospi_final9_candidate_metrics.csv")
     slot_by_id = dict(zip(metrics["candidate_id"], metrics["slot"]))
     live = final9_live.copy()
@@ -219,6 +223,10 @@ def _child_combo1_history(child_live: pd.DataFrame) -> pd.DataFrame:
 
 def _component_signal_history(ctx: D1C1Context, live: dict[str, pd.DataFrame]) -> pd.DataFrame:
     frozen = _read_asset_frame(ctx, "kospi_final9_component_reference_signals.parquet")
+    if "valid_signal" not in frozen.columns:
+        frozen["valid_signal"] = True
+    else:
+        frozen["valid_signal"] = frozen["valid_signal"].fillna(True).astype(bool)
     final9 = read_json(ctx.asset_dir / "kospi_final9_component_dictionary.json")
     metrics = pd.read_csv(ctx.asset_dir / "kospi_final9_candidate_metrics.csv")
     slot_by_id = dict(zip(metrics["candidate_id"], metrics["slot"]))

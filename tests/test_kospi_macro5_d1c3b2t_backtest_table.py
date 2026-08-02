@@ -108,7 +108,7 @@ def test_b2t_current_column_still_uses_live_active_denominator() -> None:
 
 def test_b2t_chart_macro4_and_runtime_functions_are_unchanged() -> None:
     assert _function_hash("_macro5_kospi_build_main_chart") == "5490198253679b541a58041b037e8371b90ab2f45871430fdeaf63813c92bc37"
-    assert _function_hash("_macro5_kospi_build_component_chart") == "f9e7ac04cbd73c41d6984b5c4c9b1cd8adc92f8e09cb9eaae743d6eae4b8cfdb"
+    assert _function_hash("_macro5_kospi_build_component_chart") == "4ab1f7b49e8bfc8c67f5ef2b4b60f56d071e0d3e0b557e4c332a2a74dfaa9818"
     assert _function_hash("render_macro6_proxy_final_section") == "6eb77cead55b025adf2b10cad2ddd49807852732bd1ba6b87188fe8ca543fc27"
     assert _function_hash("_build_macro6_backtest_panel") == "f0abfee7e2d7df9db87a2c5dd0d30645f135565f42ac8cbfd0632ecc29476f08"
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"
