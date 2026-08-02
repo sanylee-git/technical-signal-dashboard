@@ -40,12 +40,14 @@ def test_macro5_b1_group_summary_uses_existing_candidate_rows() -> None:
 
     html = dash._macro5_kospi_group_summary_html(rows, metrics)
 
-    assert "Combo2 계산 가능 1 / 2" in html
+    assert "조합2 계산 가능 1 / 2" in html
     assert "계산 불가 1" in html
-    assert "Combo2 Risk-off 1 / 2" in html
-    assert "Combo1 계산 가능 1 / 1" in html
-    assert "Combo1 Risk-off 0 / 1" in html
+    assert "조합2 Risk-off 1/2" in html
+    assert "조합1 계산 가능 1 / 1" in html
+    assert "조합1 Risk-off 0/1" in html
     assert "기준일 2026-07-31" in html
+    assert "Combo2" not in html
+    assert "Combo1" not in html
 
 
 def test_macro5_b1_backtest_panel_splits_models_and_hides_internal_fields() -> None:
@@ -78,8 +80,8 @@ def test_macro5_b1_backtest_panel_splits_models_and_hides_internal_fields() -> N
         ]
     )
     live = {
-        "combo2_hash_should_not_render": {"calculable": True, "raw_risk_state": 1},
-        "combo1_hash_should_not_render": {"calculable": True, "raw_risk_state": 0},
+        "combo2_hash_should_not_render": {"calculable": True, "raw_risk_state": 1, "active_count": 4, "component_count": 6},
+        "combo1_hash_should_not_render": {"calculable": True, "raw_risk_state": 0, "active_count": 7, "component_count": 11},
     }
 
     combo2_html = dash._macro5_kospi_build_backtest_panel(metrics, live, "combo2_hash_should_not_render", "combo2")
@@ -87,10 +89,10 @@ def test_macro5_b1_backtest_panel_splits_models_and_hides_internal_fields() -> N
 
     assert "균형" in combo2_html
     assert "방어" not in combo2_html
-    assert "Risk-off" in combo2_html
+    assert "4/6" in combo2_html
     assert "방어" in combo1_html
     assert "균형" not in combo1_html
-    assert "Risk-on" in combo1_html
+    assert "7/11" in combo1_html
     for html in (combo2_html, combo1_html):
         assert "source_signal_parity" not in html
         assert "hidden_suffix" not in html
@@ -152,6 +154,7 @@ def test_macro5_b1_render_section_has_split_expanders_and_no_general_dataframe()
     assert "st.dataframe(_compare5k" not in section
     assert "st.dataframe(_status_view5k" not in section
     assert "고급 설정 · 모델 및 데이터 정보" in section
+    assert "_bt_html5k" not in section
 
 
 def test_macro5_b1_chart_and_macro4_functions_are_unchanged() -> None:

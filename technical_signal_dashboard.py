@@ -12970,8 +12970,17 @@ def _macro5_kospi_model_type(value) -> str:
 
 
 def _macro5_kospi_preset_label(row: pd.Series) -> str:
-    prefix = "Combo1" if _macro5_kospi_model_type(row["model_type"]) == "combo1" else "Combo2"
-    return f"[{prefix}] {row['role']}"
+    model_type = _macro5_kospi_model_type(row["model_type"])
+    prefix = "조합1" if model_type == "combo1" else "조합2"
+    try:
+        slot = int(row.get("slot"))
+    except Exception:
+        slot = -1
+    if (model_type == "combo1" and slot == 1) or (model_type == "combo2" and slot == 5):
+        role = "Main"
+    else:
+        role = str(row.get("role") or "")
+    return f"[{prefix}] {role}"
 
 
 def _macro5_kospi_component_family(component_id: str) -> str:
@@ -13017,7 +13026,7 @@ def _macro5_kospi_display_label(value: str) -> str:
             suffix = ""
         return f"{labels[family]} · {suffix}" if suffix else labels[family]
     if raw.startswith("combo1_"):
-        return f"Combo1 · {_macro5_kospi_suffix(raw)}"
+        return f"조합1 · {_macro5_kospi_suffix(raw)}"
     return raw
 
 
@@ -13100,8 +13109,8 @@ def _macro5_kospi_source_latest_text(source_rows: list[dict] | None, component_i
 def _macro5_kospi_group_summary_html(candidate_rows: list[dict] | None, metrics: pd.DataFrame) -> str:
     candidate_rows = candidate_rows or []
     by_id = {str(row.get("candidate_id")): row for row in candidate_rows}
-    chunks = []
-    for label, model_type in [("Combo2", "combo2"), ("Combo1", "combo1")]:
+    summary = {}
+    for label, model_type in [("조합2", "combo2"), ("조합1", "combo1")]:
         group = metrics[metrics["model_type"].map(_macro5_kospi_model_type).eq(model_type)]
         total = int(group["candidate_id"].nunique())
         rows = [by_id.get(str(candidate_id), {}) for candidate_id in group["candidate_id"]]
@@ -13113,22 +13122,78 @@ def _macro5_kospi_group_summary_html(candidate_rows: list[dict] | None, metrics:
         availability_color = "#54F2A3" if unavailable == 0 else "rgba(255,255,255,0.92)"
         unavailable_color = "#FF8C69" if unavailable else "rgba(255,255,255,0.72)"
         risk_color = "#FF8C69" if risk_off else "#4BFFB3"
-        chunks.append(
-            f"<span style='color:{availability_color};font-weight:700;'>{label} 계산 가능 {calculable} / {total}</span>"
-            f"<span style='color:rgba(255,255,255,0.55);'> · </span>"
-            f"<span style='color:{unavailable_color};font-weight:700;'>계산 불가 {unavailable}</span>"
-            f"<span style='color:rgba(255,255,255,0.36);padding:0 8px;'>|</span>"
-            f"<span style='color:{risk_color};font-weight:700;'>{label} Risk-off {risk_off} / {total}</span>"
-            f"<span style='color:rgba(255,255,255,0.55);'> · 기준일 {_macro5_kospi_escape(basis)}</span>"
-        )
+        summary[label] = {
+            "availability": (
+                f"<span style='color:{availability_color};font-weight:700;'>{label} 계산 가능 {calculable} / {total}</span>"
+                f"<span style='color:rgba(255,255,255,0.55);'> · </span>"
+                f"<span style='color:{unavailable_color};font-weight:700;'>계산 불가 {unavailable}</span>"
+            ),
+            "risk": (
+                f"<span style='color:{risk_color};font-weight:700;'>{label} Risk-off {risk_off}/{total}</span>"
+                f"<span style='color:rgba(255,255,255,0.55);'> · 기준일 {_macro5_kospi_escape(basis)}</span>"
+            ),
+        }
+    sep = "<span style='color:rgba(255,255,255,0.36);padding:0 10px;'>|</span>"
     return (
-        "<div class='macro2-helper-text' style='margin-top:6px;'>"
-        + "<br>".join(chunks)
-        + "</div>"
+        "<div class='macro2-helper-text' style='margin-top:6px;line-height:1.55;'>"
+        "<div>"
+        + summary.get("조합2", {}).get("availability", "")
+        + sep
+        + summary.get("조합1", {}).get("availability", "")
+        + "</div><div style='margin-top:2px;'>"
+        + summary.get("조합2", {}).get("risk", "")
+        + sep
+        + summary.get("조합1", {}).get("risk", "")
+        + "</div></div>"
     )
 
 
-def _macro5_kospi_current_status_html(selected_row: pd.Series, live_row: dict | None, component_count: int, live_ok: bool) -> str:
+def _macro5_kospi_active_label_list(component_df: pd.DataFrame, limit: int = 4) -> list[str]:
+    if component_df is None or component_df.empty:
+        return []
+    latest = (
+        component_df.sort_values("date")
+        .drop_duplicates("component_id", keep="last")
+        .sort_values("component_order")
+    )
+    active = latest[latest["component_risk_state"].fillna(0).astype(int).eq(1)]
+    labels = [
+        _macro5_kospi_display_label(_macro5_kospi_component_family(row.get("component_label") or row.get("component_id")))
+        for _, row in active.iterrows()
+    ]
+    if len(labels) > limit:
+        return labels[:limit] + [f"외 {len(labels) - limit}개"]
+    return labels
+
+
+def _macro5_kospi_freshness_display(status: str | None, provider: str | None = None, lag=None) -> str:
+    raw = str(status or "").upper()
+    provider_text = str(provider or "").upper()
+    try:
+        lag_int = int(lag)
+    except Exception:
+        lag_int = None
+    if raw == "FRESH":
+        return "최신" if lag_int in (None, 0) else f"{lag_int}거래일 지연"
+    if raw == "NO_NEW_RELEASE_EXPECTED":
+        return "주간 업데이트"
+    if raw == "FALLBACK":
+        return f"{provider_text} 보완" if provider_text else "보완값"
+    if raw == "STALE":
+        return f"{lag_int}거래일 지연" if lag_int is not None else "지연"
+    if not raw:
+        return ""
+    return "검토 필요"
+
+
+def _macro5_kospi_current_status_html(
+    selected_row: pd.Series,
+    live_row: dict | None,
+    component_count: int,
+    live_ok: bool,
+    active_labels: list[str] | None = None,
+) -> str:
+    active_label_text = ", ".join(active_labels or []) if active_labels else "없음"
     if live_ok and live_row:
         basis = _macro5_kospi_escape(live_row.get("basis_date") or "—")
         active_count = int(live_row.get("active_count") or 0)
@@ -13138,7 +13203,7 @@ def _macro5_kospi_current_status_html(selected_row: pd.Series, live_row: dict | 
         end_signal = bool(live_row.get("new_end_signal"))
         state_start = _macro5_kospi_date_text(live_row.get("current_state_start_date"))
         duration = live_row.get("current_state_trading_days")
-        duration_text = "확인 불가" if pd.isna(duration) else f"{int(duration)}거래일 지속"
+        duration_text = "확인 불가" if pd.isna(duration) else f"{int(duration)}"
         raw_text = "리스크 사이클 ON" if raw_state == 1 else "리스크 사이클 OFF"
         raw_color = "#FF8C69" if raw_state == 1 else "#4BFFB3"
         t1_text = _macro5_kospi_t1_label(t1_position)
@@ -13154,22 +13219,21 @@ def _macro5_kospi_current_status_html(selected_row: pd.Series, live_row: dict | 
         raw_text = "계산 불가"
         raw_color = "#FF8C69"
         t1_text = "계산 불가"
-        event_text = "Live 상태 계산 불가"
+        event_text = "계산 불가"
         state_start = "확인 불가"
         duration_text = "확인 불가"
 
     return (
         '<div style="display:flex;gap:12px 16px;align-items:center;flex-wrap:wrap;padding:0 0 8px 0;color:#CFCFCF;font-size:12px;line-height:1.42;">'
         f"<span><b>기준일</b> {basis}</span>"
-        f"<span><b>현재 플래그</b> {active_count} / {int(component_count)} ON</span>"
+        f"<span><b>현재 플래그</b> {active_count} / {int(component_count)} ON ({_macro5_kospi_escape(active_label_text)})</span>"
         f"<span><b>상태</b> <span style='color:{raw_color};font-weight:700;'>{raw_text}</span></span>"
         f"<span><b>실행 상태</b> {t1_text}</span>"
         "</div>"
         '<div style="display:flex;gap:12px 16px;align-items:center;flex-wrap:wrap;padding:0 0 14px 0;color:#AFAFAF;font-size:12px;line-height:1.42;">'
-        f"<span><b>현재 상태 시작</b> {state_start}</span>"
-        f"<span><b>지속</b> {duration_text}</span>"
+        f"<span><b>현재 상태 시작일</b> {state_start}</span>"
+        f"<span><b>지속 거래일</b> {duration_text}</span>"
         f"<span><b>실행 안내</b> {event_text}</span>"
-        f"<span><b>기준</b> 시작 {int(selected_row['K'])}개 이상 ON · 종료 {int(selected_row['L'])}개 이하 ON</span>"
         "</div>"
     )
 
@@ -13180,7 +13244,12 @@ def _macro5_kospi_current_chip(candidate_id: str, live_row_map: dict[str, dict])
         return "<span style='color:#FF8C69;font-weight:700;'>계산 불가</span>"
     raw_state = int(row.get("raw_risk_state") or 0)
     color = "#FF8C69" if raw_state == 1 else "#4BFFB3"
-    label = "Risk-off" if raw_state == 1 else "Risk-on"
+    try:
+        active_count = int(row.get("active_count"))
+        component_count = int(row.get("component_count"))
+        label = f"{active_count}/{component_count}"
+    except Exception:
+        label = "Risk-off" if raw_state == 1 else "Risk-on"
     return f"<span style='color:{color};font-weight:700;'>{label}</span>"
 
 
@@ -13210,10 +13279,10 @@ def _macro5_kospi_build_backtest_panel(metrics: pd.DataFrame, live_row_map: dict
         "<table style='width:100%;border-collapse:collapse;font-size:12px;'>"
         "<thead><tr>"
         "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>역할 / 후보</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>CAGR</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>MDD</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>전체 CAGR</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>전체 MDD</th>"
         "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>Calmar</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>Risk-off</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>전체 Risk-off</th>"
         "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>연 전환</th>"
         "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>현재</th>"
         f"</tr></thead><tbody>{''.join(rows_html)}</tbody></table>"
@@ -13246,7 +13315,13 @@ def _macro5_kospi_build_component_status_panel(
             child = live_row_map.get(component_id, {})
             latest_text = _macro5_kospi_date_text(child.get("basis_date") or row.get("date"))
             if child and child.get("freshness_status"):
-                latest_text = f"{latest_text} · {_macro5_kospi_escape(child.get('freshness_status'))}"
+                freshness_text = _macro5_kospi_freshness_display(
+                    child.get("freshness_status"),
+                    child.get("provider"),
+                    child.get("lag_krx_sessions"),
+                )
+                if freshness_text:
+                    latest_text = f"{latest_text} · {freshness_text}"
         else:
             latest_text = _macro5_kospi_source_latest_text(source_rows, component_id, fallback_date=row.get("date"))
         entries.append({
@@ -13281,12 +13356,12 @@ def _macro5_kospi_build_component_status_panel(
         "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>지표</th>"
         "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>선택</th>"
         "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>플래그</th>"
-        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>최신날짜</th>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>최신 사용값</th>"
         "<th style='width:12px;border-bottom:1px solid rgba(255,255,255,0.08);'></th>"
         "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>지표</th>"
         "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>선택</th>"
         "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>플래그</th>"
-        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>최신날짜</th>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>최신 사용값</th>"
         f"</tr></thead><tbody>{''.join(rows_html)}</tbody></table>"
     )
 
@@ -13334,7 +13409,7 @@ def _macro5_kospi_state_label(raw_state: int | bool) -> str:
 
 def _macro5_kospi_t1_label(position: int | bool) -> str:
     try:
-        return "T+1 투자 가능" if int(position) == 1 else "T+1 비투자"
+        return "투자" if int(position) == 1 else "비투자"
     except Exception:
         return "계산 불가"
 
@@ -14829,7 +14904,7 @@ def main(page="signal"):
         with container:
             _started = time.perf_counter()
             st.markdown(
-                '<div class="macro2-helper-text">KOSPI Final9 후보의 Live Shadow 상태를 표시합니다. 성과 지표와 차트는 Frozen reference 기준입니다.</div>',
+                '<div class="macro2-helper-text">KOSPI 후보를 최신 데이터로 판단하고 공식 백테스트 결과와 비교합니다.</div>',
                 unsafe_allow_html=True,
             )
             _render_macro_combo_common_css()
@@ -14856,6 +14931,21 @@ def main(page="signal"):
             .st-key-macro5_kospi_selected_codes [data-baseweb="tag"] {
                 background: rgba(92,79,214,0.96) !important;
                 color: #F6F4FF !important;
+                min-height: 24px !important;
+                height: 24px !important;
+                padding: 2px 8px !important;
+                border-radius: 6px !important;
+                line-height: 1.2 !important;
+                gap: 4px !important;
+                align-items: center !important;
+            }
+            .st-key-macro5_kospi_selected_codes [data-baseweb="tag"] span {
+                font-size: 11.5px !important;
+                line-height: 1.2 !important;
+            }
+            .st-key-macro5_kospi_selected_codes [data-baseweb="tag"] svg {
+                width: 12px !important;
+                height: 12px !important;
             }
             .st-key-macro5_kospi_show_raw [data-baseweb="checkbox"] > div {
                 border-color: rgba(95,86,214,0.78) !important;
@@ -14888,6 +14978,7 @@ def main(page="signal"):
             _metrics5k["_model_type_norm"] = _metrics5k["model_type"].map(_macro5_kospi_model_type)
             _combo2_order5k = _metrics5k[_metrics5k["_model_type_norm"].eq("combo2")]["candidate_id"].tolist()
             _combo1_order5k = _metrics5k[_metrics5k["_model_type_norm"].eq("combo1")]["candidate_id"].tolist()
+            _separator5k = "__macro5_kospi_combo1_separator__"
             _preset_order5k = _combo2_order5k + _combo1_order5k
             _candidate_map5k = {row["candidate_id"]: row for _, row in _metrics5k.iterrows()}
             _live5k = None
@@ -14900,6 +14991,8 @@ def main(page="signal"):
             _live_row_map5k = {}
             if isinstance(_live5k, dict):
                 _live_row_map5k = {str(row.get("candidate_id")): row for row in _live5k.get("candidate_rows", [])}
+            if st.session_state.get("macro5_kospi_preset") == _separator5k:
+                st.session_state["macro5_kospi_preset"] = _combo1_order5k[0] if _combo1_order5k else _default_preset5k
             if st.session_state.get("macro5_kospi_preset") not in _preset_order5k:
                 st.session_state["macro5_kospi_preset"] = _default_preset5k
 
@@ -14913,7 +15006,7 @@ def main(page="signal"):
             )
 
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
-            _l51, _l52, _l53, _l54 = st.columns([1.6, 1.2, 2.4, 1.0], vertical_alignment="bottom")
+            _l51, _l52, _l53, _l54 = st.columns([1.8, 1.0, 2.2, 1.0], vertical_alignment="bottom")
             with _l51:
                 st.markdown('<div class="macro2-control-label">조합 프리셋</div>', unsafe_allow_html=True)
             with _l52:
@@ -14924,8 +15017,8 @@ def main(page="signal"):
                 st.markdown('<div class="macro2-control-label">원본선 표시</div>', unsafe_allow_html=True)
             st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
 
-            _m51, _m52, _m53, _m54 = st.columns([1.6, 1.2, 2.4, 1.0], vertical_alignment="bottom")
-            _preset_options5k = _combo2_order5k + _combo1_order5k
+            _m51, _m52, _m53, _m54 = st.columns([1.8, 1.0, 2.2, 1.0], vertical_alignment="bottom")
+            _preset_options5k = _combo2_order5k + [_separator5k] + _combo1_order5k
             _current_preset5k = st.session_state["macro5_kospi_preset"]
             if _current_preset5k not in _preset_options5k:
                 _current_preset5k = _default_preset5k
@@ -14934,10 +15027,12 @@ def main(page="signal"):
                     "조합 프리셋",
                     options=_preset_options5k,
                     index=_preset_options5k.index(_current_preset5k),
-                    format_func=lambda x: _macro5_kospi_preset_label(_candidate_map5k[x]),
+                    format_func=lambda x: "──────── 조합1 ────────" if x == _separator5k else _macro5_kospi_preset_label(_candidate_map5k[x]),
                     key="macro5_kospi_preset",
                     label_visibility="collapsed",
                 )
+            if _macro5_kospi_preset == _separator5k:
+                _macro5_kospi_preset = _combo1_order5k[0] if _combo1_order5k else _default_preset5k
             _selected_row5k = _candidate_map5k[_macro5_kospi_preset]
             _selected_components5k = _component_dict5k[_macro5_kospi_preset]["component_ids"]
             with _m52:
@@ -15009,20 +15104,22 @@ def main(page="signal"):
             )
             _live_selected5k = _live_row_map5k.get(_macro5_kospi_preset)
             _live_selected_ok5k = bool(_live_selected5k and _live_selected5k.get("calculable") and _live_history_ready5k)
+            _current_component_status5k = _latest_components5k
+            if _live_history_ready5k:
+                _current_component_status5k = _live5k["component_signal_history"][
+                    _live5k["component_signal_history"]["parent_candidate_id"] == _macro5_kospi_preset
+                ].copy()
             st.markdown(
                 _macro5_kospi_current_status_html(
                     _selected_row5k,
                     _live_selected5k,
                     len(_selected_components5k),
                     _live_selected_ok5k,
+                    _macro5_kospi_active_label_list(_current_component_status5k),
                 ),
                 unsafe_allow_html=True,
             )
-            if _live_selected_ok5k:
-                _display_freshness5k = "Fresh" if bool(_live_selected5k.get("freshness_qualified")) else "Review"
-                st.caption(f"Live Shadow 상태 · freshness={_display_freshness5k} · 성과/차트는 Frozen 기준")
-            else:
-                st.caption("Live 상태 계산 불가 · Frozen 성과/차트 유지")
+            if not _live_selected_ok5k:
                 st.warning(f"Live 상태를 계산할 수 없습니다: {(_live_error5k or 'Live history unavailable')[:180]}")
 
             _bt_metrics5k = [
@@ -15033,15 +15130,6 @@ def main(page="signal"):
                 ("연 전환", _macro5_kospi_fmt_num(_selected_row5k["annual_turnover"])),
                 ("n/m", int(_selected_row5k["m_or_n"])),
             ]
-            _bt_html5k = (
-                "<div class='macro2-backtest-card'>"
-                "<div style='font-size:12px;color:rgba(255,255,255,0.58);margin-bottom:8px;'>공식 Frozen 백테스트 · 2008-04-01 ~ 2026-07-28 · T+1 · 10bp · 현금수익 미적용</div>"
-                "<div class='macro2-card-grid'>"
-                + "".join(f"<div class='macro2-card'><div class='macro2-card-label'>{label}</div><div class='macro2-card-value'>{value}</div></div>" for label, value in _bt_metrics5k)
-                + "</div></div>"
-            )
-            st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
-            st.markdown(_bt_html5k, unsafe_allow_html=True)
 
             _combo2_bt5k = _macro5_kospi_build_backtest_panel(_metrics5k, _live_row_map5k, _macro5_kospi_preset, "combo2")
             _combo1_bt5k = _macro5_kospi_build_backtest_panel(_metrics5k, _live_row_map5k, _macro5_kospi_preset, "combo1")
@@ -15125,16 +15213,6 @@ def main(page="signal"):
             else:
                 st.warning("KOSPI Macro5 대표 차트 데이터 로딩 실패 — Frozen asset을 확인해 주세요.")
 
-            with st.expander("고급 설정 · 모델 및 데이터 정보", expanded=False):
-                st.write(f"candidate_id: `{_macro5_kospi_preset}`")
-                st.write(f"slot: `{int(_selected_row5k['slot'])}`")
-                st.write(f"suffix: `{_selected_row5k['suffix']}`")
-                st.write(f"reference source: `{_reference_label5k}`")
-                st.write(f"signal hash: `{_selected_row5k['reference_signal_hash']}`")
-                st.write(f"D1-A manifest: `{_assets5k['manifest_sha256']}`")
-                st.write(f"D1-B UI manifest: `{_assets5k['ui_manifest_sha256']}`")
-                st.write("Final9 다수결 신호는 생성하지 않습니다.")
-
             for _idx5k, (_component_id5k, _component_df5k) in enumerate(_candidate_components5k.groupby("component_id", sort=False), start=1):
                 _component_label5k = _component_df5k["component_label"].dropna().iloc[0] if "component_label" in _component_df5k and len(_component_df5k["component_label"].dropna()) else _macro5_kospi_suffix(_component_id5k)
                 with st.expander(f"{_idx5k}. {_component_label5k}", expanded=False):
@@ -15158,6 +15236,19 @@ def main(page="signal"):
                         )
                     else:
                         st.warning("component state 차트 데이터가 없습니다.")
+
+            with st.expander("고급 설정 · 모델 및 데이터 정보", expanded=False):
+                st.write(f"candidate_id: `{_macro5_kospi_preset}`")
+                st.write(f"slot: `{int(_selected_row5k['slot'])}`")
+                st.write(f"suffix: `{_selected_row5k['suffix']}`")
+                st.write(f"reference source: `{_reference_label5k}`")
+                st.write(f"signal hash: `{_selected_row5k['reference_signal_hash']}`")
+                st.write(f"D1-A manifest: `{_assets5k['manifest_sha256']}`")
+                st.write(f"D1-B UI manifest: `{_assets5k['ui_manifest_sha256']}`")
+                st.write("공식 Frozen 백테스트: `2008-04-01 ~ 2026-07-28 · T+1 · 10bp · 현금수익 미적용`")
+                for _label5k, _value5k in _bt_metrics5k:
+                    st.write(f"{_label5k}: `{_value5k}`")
+                st.write("Final9 다수결 신호는 생성하지 않습니다.")
 
             _macro_debug_log(
                 "render_macro5_kospi_section",
