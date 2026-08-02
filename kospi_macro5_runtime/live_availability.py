@@ -5,6 +5,15 @@ import pandas as pd
 from pandas.tseries.offsets import BDay
 
 
+def normalize_daily_merge_key(series: pd.Series) -> pd.Series:
+    """Normalize daily merge keys without changing the represented calendar date."""
+
+    converted = pd.to_datetime(series, errors="coerce")
+    if hasattr(converted.dt, "tz") and converted.dt.tz is not None:
+        converted = converted.dt.tz_localize(None)
+    return converted.dt.normalize().astype("datetime64[ns]")
+
+
 def rolling_zscore(series: pd.Series, window: int = 252) -> pd.Series:
     min_periods = max(30, int(window) // 4)
     mean = series.rolling(int(window), min_periods=min_periods).mean()
@@ -15,11 +24,11 @@ def rolling_zscore(series: pd.Series, window: int = 252) -> pd.Series:
 def availability_frame(series: pd.Series, source_id: str, lag_bdays: int) -> pd.DataFrame:
     out = pd.DataFrame(
         {
-            "observation_date": pd.to_datetime(series.index).normalize(),
+            "observation_date": normalize_daily_merge_key(pd.Series(series.index)).to_numpy(),
             source_id: pd.to_numeric(series, errors="coerce").to_numpy(dtype=float),
         }
     ).dropna(subset=[source_id])
-    out["available_date"] = (out["observation_date"] + BDay(int(lag_bdays))).dt.normalize()
+    out["available_date"] = normalize_daily_merge_key(out["observation_date"] + BDay(int(lag_bdays)))
     return out.sort_values("available_date")[["available_date", "observation_date", source_id]]
 
 
@@ -30,9 +39,12 @@ def align_to_kospi_calendar(
     lag_bdays: int,
 ) -> pd.DataFrame:
     available = availability_frame(series, source_id, lag_bdays)
-    base = pd.DataFrame({"date": pd.DatetimeIndex(calendar).normalize().sort_values()})
+    available["available_date"] = normalize_daily_merge_key(available["available_date"])
+    available["observation_date"] = normalize_daily_merge_key(available["observation_date"])
+    base = pd.DataFrame({"date": normalize_daily_merge_key(pd.Series(pd.DatetimeIndex(calendar))).to_numpy()})
+    base = base.sort_values("date")
     merged = pd.merge_asof(
-        base.sort_values("date"),
+        base,
         available.sort_values("available_date"),
         left_on="date",
         right_on="available_date",
@@ -47,15 +59,15 @@ def build_transformed_frame(
     lag_policy: dict[str, int],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     frozen = frozen.copy()
-    frozen["date"] = pd.to_datetime(frozen["date"]).dt.normalize()
+    frozen["date"] = normalize_daily_merge_key(frozen["date"])
     kospi_live = provider_frames.get("kospi_ohlcv", pd.DataFrame()).copy()
     kospi_live = kospi_live.loc[kospi_live.get("valid", False).astype(bool)].copy() if not kospi_live.empty else kospi_live
     extra_dates = pd.DatetimeIndex([])
     if not kospi_live.empty:
-        extra_dates = pd.DatetimeIndex(pd.to_datetime(kospi_live["observation_date"]).dt.normalize())
+        extra_dates = pd.DatetimeIndex(normalize_daily_merge_key(kospi_live["observation_date"]))
         extra_dates = extra_dates[extra_dates > frozen["date"].max()]
     calendar = frozen["date"].tolist() + list(extra_dates.unique().sort_values())
-    calendar = pd.DatetimeIndex(calendar).unique().sort_values()
+    calendar = pd.DatetimeIndex(normalize_daily_merge_key(pd.Series(calendar))).unique().sort_values()
 
     out = pd.DataFrame({"date": calendar})
     frozen_indexed = frozen.set_index("date")
@@ -65,7 +77,7 @@ def build_transformed_frame(
         out[col] = frozen_indexed[col].reindex(calendar).to_numpy()
 
     if not kospi_live.empty:
-        k = kospi_live.set_index(pd.to_datetime(kospi_live["observation_date"]).dt.normalize())
+        k = kospi_live.set_index(normalize_daily_merge_key(kospi_live["observation_date"]))
         for src, dst in [("open", "kospi_open"), ("high", "kospi_high"), ("low", "kospi_low"), ("close", "kospi_close")]:
             current = pd.Series(out[dst].to_numpy(dtype=float), index=calendar)
             live = pd.to_numeric(k[src], errors="coerce")
@@ -93,7 +105,7 @@ def build_transformed_frame(
             good = live.loc[live["valid"].astype(bool)].copy()
             series = pd.Series(
                 pd.to_numeric(good["value"], errors="coerce").to_numpy(dtype=float),
-                index=pd.to_datetime(good["observation_date"]).dt.normalize(),
+                index=normalize_daily_merge_key(good["observation_date"]),
             ).sort_index()
             series = series.loc[~series.index.duplicated(keep="last")]
         if series.empty and source_id in frozen.columns:
@@ -146,16 +158,16 @@ def build_transformed_frame(
     out["credit_stress_safe"] = -out["credit_stress_raw"]
     out["official_operating_model"] = False
 
-    old_dates = set(pd.to_datetime(frozen["date"]).dt.strftime("%Y-%m-%d"))
-    old_mask = pd.to_datetime(out["date"]).dt.strftime("%Y-%m-%d").isin(old_dates)
+    old_dates = set(normalize_daily_merge_key(frozen["date"]).dt.strftime("%Y-%m-%d"))
+    old_mask = normalize_daily_merge_key(out["date"]).dt.strftime("%Y-%m-%d").isin(old_dates)
     frozen_by_date = frozen.set_index("date")
     for col in frozen.columns:
         if col == "date" or col not in out.columns:
             continue
-        restored = pd.Series(out[col].to_numpy(), index=pd.to_datetime(out["date"]).dt.normalize())
+        restored = pd.Series(out[col].to_numpy(), index=normalize_daily_merge_key(out["date"]))
         restored.loc[frozen_by_date.index] = frozen_by_date[col]
-        out[col] = restored.reindex(pd.to_datetime(out["date"]).dt.normalize()).to_numpy()
-    out["live_extension_row"] = ~pd.to_datetime(out["date"]).dt.strftime("%Y-%m-%d").isin(old_dates)
+        out[col] = restored.reindex(normalize_daily_merge_key(out["date"])).to_numpy()
+    out["live_extension_row"] = ~normalize_daily_merge_key(out["date"]).dt.strftime("%Y-%m-%d").isin(old_dates)
     latest = pd.DataFrame(latest_rows)
     return out.sort_values("date").reset_index(drop=True), latest
 
