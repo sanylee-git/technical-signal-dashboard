@@ -1,0 +1,10 @@
+candidate_id,model_type,component_count,active_count_mismatch,raw_state_mismatch,t1_mismatch,event_mismatch,validity_mismatch
+combo1_n11_k9_l5_b984a8e53ad69a2d,combo1,11,0,0,0,0,0
+combo1_n11_k8_l5_93919287424179bd,combo1,11,0,0,0,0,0
+combo1_n11_k9_l6_ad654f06d0d609cb,combo1,11,0,0,0,0,0
+combo1_n11_k9_l6_9f0105582a0f0745,combo1,11,0,0,0,0,0
+m6::combo2_m6_k4_l2_2d90a80e824f7336,combo2,6,0,0,0,0,0
+m6::combo2_m6_k4_l3_f976de57b8b4a80e,combo2,6,0,0,0,0,0
+m5::combo2_m5_k2_l1_2bc7e194fdecfd9e,combo2,5,0,0,0,0,0
+m10::combo2_m10_k7_l4_bbd8c760d49b44bb,combo2,10,0,0,0,0,0
+m8::combo2_m8_k5_l4_cee6978af4789711,combo2,8,0,0,0,0,0

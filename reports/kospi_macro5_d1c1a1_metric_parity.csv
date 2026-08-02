@@ -1,0 +1,2 @@
+metric,status,tolerance_fail,reason
+CAGR/MDD/Calmar/risk_off_ratio/turnover,NOT_COMPARABLE_MIXED_SOURCE_METRIC_CONTRACT,0,D1-C1.1 validates raw/state/T+1 parity. Final9 metrics originate from mixed upstream proposal sources and are compared only after identical evaluation-contract binding is promoted.

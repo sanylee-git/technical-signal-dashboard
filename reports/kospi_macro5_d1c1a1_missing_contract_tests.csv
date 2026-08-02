@@ -1,0 +1,6 @@
+case,status,missing_as_risk_on
+component_one_missing,PASS_CONTRACT_REVIEW,0
+first_date_missing,PASS_CONTRACT_REVIEW,0
+risk_off_during_missing,PASS_CONTRACT_REVIEW,0
+t1_previous_missing,PASS_CONTRACT_REVIEW,0
+combo2_child_missing,PASS_CONTRACT_REVIEW,0

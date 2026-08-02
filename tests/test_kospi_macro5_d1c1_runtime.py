@@ -34,3 +34,15 @@ def test_d1c1_frozen_replay_parity_passes() -> None:
     assert result["gate"] == "PASS_KOSPI_MACRO5_D1C1A_FROZEN_REPLAY_PARITY_READY"
     assert result["core15_state_mismatch_count"] == 0
     assert result["combo_final_t1_mismatch_count"] == 0
+
+
+def test_d1c11_direct_runtime_hardening_manifest_passes() -> None:
+    manifest = json.loads((ROOT / "reports/kospi_macro5_d1c11_manifest.json").read_text())
+    assert manifest["c1a1_gate"] == "PASS_KOSPI_MACRO5_D1C1A1_FROZEN_RUNTIME_HARDENED"
+    assert manifest["core15_state_event_mismatch"] == 0
+    assert manifest["core15_validity_mismatch"] == 0
+    assert manifest["child_raw_state_mismatch"] == 0
+    assert manifest["final_raw_state_mismatch"] == 0
+    assert manifest["final_t1_mismatch"] == 0
+    assert manifest["combo2_child_t1_applied_count"] == 0
+    assert manifest["final_t1_application_count"] == 1

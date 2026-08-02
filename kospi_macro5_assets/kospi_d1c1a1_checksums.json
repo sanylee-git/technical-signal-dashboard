@@ -1,0 +1,22 @@
+{
+  "kospi_d1c1a1_frozen_raw_source_base.parquet": {
+    "path": "kospi_macro5_assets/kospi_d1c1a1_frozen_raw_source_base.parquet",
+    "sha256": "a27dea598d63b614d9656b808e1f6e67c33c540ece9f800f0a05839e714e2e61",
+    "bytes": 476686
+  },
+  "kospi_d1c1a1_core15_replay.parquet": {
+    "path": "kospi_macro5_assets/kospi_d1c1a1_core15_replay.parquet",
+    "sha256": "ccd4cd6516b2db1157efedb13e18d7932054292ddfeededb808d78f616fc17ad",
+    "bytes": 568276
+  },
+  "kospi_d1c1a1_child_combo1_replay.parquet": {
+    "path": "kospi_macro5_assets/kospi_d1c1a1_child_combo1_replay.parquet",
+    "sha256": "1d8a67b2eac487f09e7a790433361c3c7590eeb8c8e2a979aabc0396bff7d077",
+    "bytes": 166618
+  },
+  "kospi_d1c1a1_final9_replay.parquet": {
+    "path": "kospi_macro5_assets/kospi_d1c1a1_final9_replay.parquet",
+    "sha256": "0bdfbd70408dbdcd3a0f7c43356991773c76dfd35f151d61f5211be2f6f02017",
+    "bytes": 127569
+  }
+}
