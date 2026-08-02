@@ -112,6 +112,7 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
         "child_combo1_history": _child_combo1_history(live["child_combo1"]),
         "component_signal_history": _component_signal_history(ctx, live),
         "benchmark_close_history": _benchmark_close_history(transformed),
+        "transformed_source_history": _transformed_source_history(transformed),
         "calculation_status": "CALCULABLE",
         "error_message": "",
     }
@@ -250,7 +251,9 @@ def _component_signal_history(ctx: D1C1Context, live: dict[str, pd.DataFrame]) -
                 {
                     "date": source["date"],
                     "component_risk_state": source[value_col],
-                    "component_active_count": pd.NA,
+                    "component_active_count": source.get("active_count", pd.Series(pd.NA, index=source.index)),
+                    "component_risk_start_signal": source.get("risk_start_signal", pd.Series(pd.NA, index=source.index)),
+                    "component_risk_end_signal": source.get("risk_end_signal", pd.Series(pd.NA, index=source.index)),
                     "parent_candidate_id": parent_id,
                     "parent_slot": slot_by_id.get(parent_id),
                     "parent_model_type": parent_model_type,
@@ -272,6 +275,13 @@ def _benchmark_close_history(transformed: pd.DataFrame) -> pd.DataFrame:
     out = transformed[["date", "kospi_close"]].copy()
     out["date"] = pd.to_datetime(out["date"]).dt.normalize()
     return out.drop_duplicates(["date"], keep="first").sort_values("date").reset_index(drop=True)
+
+
+def _transformed_source_history(transformed: pd.DataFrame) -> pd.DataFrame:
+    out = transformed.copy()
+    if "date" in out:
+        out["date"] = pd.to_datetime(out["date"]).dt.normalize()
+    return out.drop_duplicates(["date"], keep="last").sort_values("date").reset_index(drop=True)
 
 
 def _read_asset_frame(ctx: D1C1Context, filename: str) -> pd.DataFrame:
