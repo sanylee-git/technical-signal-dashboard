@@ -8727,6 +8727,101 @@ def _macro6_preset_display_label(cfg: dict) -> str:
     return f"[{group}] {role} ({unit} {count}개/K{k_value}/L{l_value})"
 
 
+_MACRO_BACKTEST_COLGROUP = (
+    "<colgroup>"
+    '<col style="width:22%">'
+    '<col style="width:10.5%">'
+    '<col style="width:10.5%">'
+    '<col style="width:9%">'
+    '<col style="width:10%">'
+    '<col style="width:10%">'
+    '<col style="width:9%">'
+    '<col style="width:7%">'
+    '<col style="width:7%">'
+    '<col style="width:5%">'
+    "</colgroup>"
+)
+_MACRO_BACKTEST_TABLE_STYLE = "width:100%;min-width:1180px;table-layout:fixed;border-collapse:collapse;font-size:12px;"
+_MACRO_BACKTEST_TABLE_WRAP_OPEN = "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto;'>"
+_MACRO_BACKTEST_CELL_LEFT = "padding:7px 8px;color:#EDEDED;font-weight:700;line-height:1.28;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+_MACRO_BACKTEST_CELL_NUM = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
+_MACRO_BACKTEST_CELL_CURRENT = "padding:7px 8px;color:#D6D6D6;text-align:center;white-space:nowrap;"
+
+
+def _macro_backtest_header_html(labels: list[tuple[str, str]]) -> str:
+    cells = []
+    for label, align in labels:
+        cells.append(
+            f"<th style='text-align:{align};padding:6px 8px;color:#8F8F8F;"
+            "border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap;'>"
+            f"{label}</th>"
+        )
+    return "<thead><tr>" + "".join(cells) + "</tr></thead>"
+
+
+def _macro6_state_duration_values(combo_event_df: pd.DataFrame) -> dict:
+    if combo_event_df is None or combo_event_df.empty or "combo_risk_state" not in combo_event_df.columns:
+        return {"state_start_text": "확인 불가", "duration_text": "확인 불가", "current_state": None}
+    ordered = combo_event_df.sort_values("date").reset_index(drop=True)
+    latest = ordered.iloc[-1]
+    current_state = bool(latest.get("combo_risk_state", False))
+    start_idx = len(ordered) - 1
+    while start_idx > 0 and bool(ordered.iloc[start_idx - 1].get("combo_risk_state", False)) == current_state:
+        start_idx -= 1
+    start_text = "계산범위 이전" if start_idx == 0 else _macro_date_text(ordered.iloc[start_idx].get("date"))
+    return {
+        "state_start_text": start_text,
+        "duration_text": str(len(ordered) - start_idx),
+        "current_state": current_state,
+    }
+
+
+def _macro_compact_status_html(
+    basis_date: str,
+    active_count: int,
+    component_count: int,
+    risk_state: int | bool,
+    execution_position: int | bool | None,
+    start_event: bool,
+    end_event: bool,
+    state_start: str,
+    duration_text: str,
+) -> str:
+    risk_on = bool(int(risk_state)) if not isinstance(risk_state, bool) else risk_state
+    risk_color = "#FF8C69" if risk_on else "#4BFFB3"
+    risk_text = "리스크 사이클 ON" if risk_on else "리스크 사이클 OFF"
+    try:
+        execution_text = "투자" if int(execution_position) == 1 else "비투자"
+    except Exception:
+        execution_text = "확인 불가"
+    if start_event:
+        transition_text = "오늘 Risk-off 시작"
+        transition_color = "#FF8C69"
+    elif end_event:
+        transition_text = "오늘 Risk-off 종료"
+        transition_color = "#60A5FA"
+    else:
+        transition_text = "오늘 전환 없음"
+        transition_color = "rgba(255,255,255,0.72)"
+    separator = "<span style='color:rgba(255,255,255,0.42);padding:0 8px;'>·</span>"
+    return (
+        "<div class='macro-compact-status'>"
+        "<div class='macro-compact-status-line-primary' "
+        "style='display:flex;align-items:center;flex-wrap:wrap;color:#CFCFCF;font-size:12px;line-height:1.42;padding:0 0 2px 0;'>"
+        f"<span><b>기준일</b> {basis_date}</span>{separator}"
+        f"<span><b>현재 플래그</b> {int(active_count)}/{int(component_count)} ON</span>{separator}"
+        f"<span><b>상태</b> <span style='color:{risk_color};font-weight:700;'>{risk_text}</span></span>"
+        "</div>"
+        "<div class='macro-compact-status-line-secondary' "
+        "style='display:flex;align-items:center;flex-wrap:wrap;color:#AFAFAF;font-size:12px;line-height:1.42;padding:0 0 14px 0;'>"
+        f"<span><b>현재 상태 시작일</b> <span style='color:{risk_color};font-weight:700;'>{state_start}</span></span>{separator}"
+        f"<span><b>지속 거래일</b> <span style='color:{risk_color};font-weight:700;'>{duration_text}</span></span>{separator}"
+        f"<span><b>실행</b> {execution_text}</span>{separator}"
+        f"<span style='color:{transition_color};font-weight:700;'>{transition_text}</span>"
+        "</div></div>"
+    )
+
+
 def _build_macro6_status_panel(
     benchmark_name: str,
     years: int,
@@ -8741,16 +8836,8 @@ def _build_macro6_status_panel(
     active_count = int(latest.get("active_count", 0))
     combo_n = int(latest.get("combo_n", len(preset_cfg.get("selected_indicators", []))))
     basis_date = _macro_date_text(latest.get("date"))
-    next_exec = _macro3_next_execution_date(latest.get("date"), combo_event_df.get("date", []))
-    next_exec_date = _macro_date_text(next_exec) if next_exec is not None else "확인 필요"
     status_text = "리스크 사이클 ON" if combo_state else "리스크 사이클 OFF"
     status_color = "#FF8C69" if combo_state else "#4BFFB3"
-    if bool(latest.get("combo_start_signal", False)):
-        execution_text = f"리스크 시작 신호 · T+1 {next_exec_date} 축소 검토"
-    elif bool(latest.get("combo_end_signal", False)):
-        execution_text = f"리스크 종료 신호 · T+1 {next_exec_date} 재진입 검토"
-    else:
-        execution_text = "기준일 신규 시작/종료 신호 없음"
     active_labels = []
     entries = []
     if preset_cfg.get("kind") == "combo2_final8":
@@ -8801,14 +8888,17 @@ def _build_macro6_status_panel(
                 "flag": is_on,
                 "latest_date": latest_text,
             })
-    active_flags_text = ", ".join(active_labels) if active_labels else "없음"
-    summary_html = (
-        '<div style="display:flex;gap:12px 16px;align-items:center;flex-wrap:wrap;padding:0 0 14px 0;color:#CFCFCF;font-size:12px;line-height:1.42;">'
-        f"<span><b>기준일</b> {basis_date}</span>"
-        f"<span><b>현재 플래그</b> {active_count} / {combo_n} ON ({active_flags_text})</span>"
-        f"<span><b>상태</b> <span style='color:{status_color};font-weight:700;'>{status_text}</span></span>"
-        f"<span><b>실행 안내</b> {execution_text}</span>"
-        "</div>"
+    state_duration = _macro6_state_duration_values(combo_event_df)
+    summary_html = _macro_compact_status_html(
+        basis_date=basis_date,
+        active_count=active_count,
+        component_count=combo_n,
+        risk_state=combo_state,
+        execution_position=0 if combo_state else 1,
+        start_event=bool(latest.get("combo_start_signal", False)),
+        end_event=bool(latest.get("combo_end_signal", False)),
+        state_start=state_duration.get("state_start_text", "확인 불가"),
+        duration_text=state_duration.get("duration_text", "확인 불가"),
     )
     midpoint = int(np.ceil(len(entries) / 2))
     left_entries = entries[:midpoint]
@@ -8977,24 +9067,14 @@ def _build_macro3_backtest_panel(
 
 
 def _macro6_state_duration_html(combo_event_df: pd.DataFrame) -> str:
-    if combo_event_df is None or combo_event_df.empty or "combo_risk_state" not in combo_event_df.columns:
+    state = _macro6_state_duration_values(combo_event_df)
+    if state.get("current_state") is None:
         return ""
-    ordered = combo_event_df.sort_values("date").reset_index(drop=True)
-    latest = ordered.iloc[-1]
-    current_state = bool(latest.get("combo_risk_state", False))
-    start_idx = len(ordered) - 1
-    while start_idx > 0 and bool(ordered.iloc[start_idx - 1].get("combo_risk_state", False)) == current_state:
-        start_idx -= 1
-    if start_idx == 0:
-        start_text = "계산범위 이전"
-    else:
-        start_text = _macro_date_text(ordered.iloc[start_idx].get("date"))
-    duration_days = len(ordered) - start_idx
-    color = "#FF8C69" if current_state else "#4BFFB3"
+    color = "#FF8C69" if bool(state.get("current_state")) else "#4BFFB3"
     return (
         '<div style="display:flex;align-items:center;flex-wrap:wrap;'
         f'padding:0 0 14px 0;color:{color};font-size:12px;line-height:1.42;font-weight:700;">'
-        f"<span><b>현재 상태 시작일</b> {start_text} · <b>지속 거래일</b> {duration_days}</span>"
+        f"<span><b>현재 상태 시작일</b> {state.get('state_start_text')} · <b>지속 거래일</b> {state.get('duration_text')}</span>"
         "</div>"
     )
 
@@ -9117,33 +9197,36 @@ def _build_macro6_backtest_panel(
         display_metrics = _format_with_ratios(key, metrics)
         rows_html.append(
             f"<tr style='background:{bg};border-top:{border};border-bottom:{border};'>"
-            f"<td style='padding:7px 8px;color:#EDEDED;font-weight:700;line-height:1.28;'>{label}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{display_metrics.get('10Y 자산', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{display_metrics.get('20Y 자산', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{display_metrics.get('20Y CAGR', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{display_metrics.get('10Y MDD', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{display_metrics.get('20Y MDD', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{display_metrics.get('20Y Risk-off', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{display_metrics.get('20Y Cycle', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{display_metrics.get('짧은 Cycle', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:center;'>{current_state_html}</td></tr>"
+            f"<td title='{label}' style='{_MACRO_BACKTEST_CELL_LEFT}'>{label}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{display_metrics.get('10Y 자산', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{display_metrics.get('20Y 자산', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{display_metrics.get('20Y CAGR', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{display_metrics.get('10Y MDD', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{display_metrics.get('20Y MDD', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{display_metrics.get('20Y Risk-off', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{display_metrics.get('20Y Cycle', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{display_metrics.get('짧은 Cycle', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{current_state_html}</td></tr>"
         )
     if not rows_html:
         return ""
     return (
-        "<table style='width:100%;border-collapse:collapse;font-size:12px;'>"
-        "<thead><tr>"
-        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>역할 / 후보</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>10Y 자산</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>20Y 자산</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>20Y CAGR</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>10Y MDD</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>20Y MDD</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>20Y Risk-off</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>20Y Cycle</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>짧은 Cycle</th>"
-        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>현재</th>"
-        f"</tr></thead><tbody>{''.join(rows_html)}</tbody></table>"
+        _MACRO_BACKTEST_TABLE_WRAP_OPEN
+        + f"<table style='{_MACRO_BACKTEST_TABLE_STYLE}'>"
+        + _MACRO_BACKTEST_COLGROUP
+        + _macro_backtest_header_html([
+            ("역할 / 후보", "left"),
+            ("10Y 자산", "right"),
+            ("20Y 자산", "right"),
+            ("20Y CAGR", "right"),
+            ("10Y MDD", "right"),
+            ("20Y MDD", "right"),
+            ("20Y Risk-off", "right"),
+            ("20Y Cycle", "right"),
+            ("짧은 Cycle", "right"),
+            ("현재", "center"),
+        ])
+        + f"<tbody>{''.join(rows_html)}</tbody></table></div>"
     )
 
 
@@ -13043,6 +13126,21 @@ def _macro5_kospi_component_display_label(
     return _macro5_kospi_display_label(raw)
 
 
+def _macro5_kospi_combo2_main_candidate_id(metrics: pd.DataFrame) -> str:
+    if metrics is None or metrics.empty:
+        raise ValueError("REVIEW_KOSPI_MACRO5_D1C3B2V_COMBO2_MAIN_NOT_UNIQUE")
+    data = metrics.copy()
+    data["_model_type_norm"] = data["model_type"].map(_macro5_kospi_model_type)
+    main_rows = []
+    for _, row in data[data["_model_type_norm"].eq("combo2")].iterrows():
+        label = _macro5_kospi_preset_label(row)
+        if label.startswith("[조합2] Main "):
+            main_rows.append(row)
+    if len(main_rows) != 1:
+        raise ValueError("REVIEW_KOSPI_MACRO5_D1C3B2V_COMBO2_MAIN_NOT_UNIQUE")
+    return str(main_rows[0]["candidate_id"])
+
+
 def _macro5_kospi_component_family(component_id: str) -> str:
     value = str(component_id or "")
     if "__" in value:
@@ -13261,7 +13359,6 @@ def _macro5_kospi_current_status_html(
     state_start_override: str | None = None,
     duration_override: str | None = None,
 ) -> str:
-    active_label_text = ", ".join(active_labels or []) if active_labels else "없음"
     if live_ok and live_row:
         basis = _macro5_kospi_escape(live_row.get("basis_date") or "—")
         active_count = int(live_row.get("active_count") or 0)
@@ -13278,37 +13375,26 @@ def _macro5_kospi_current_status_html(
         else:
             duration = live_row.get("current_state_trading_days")
             duration_text = "확인 불가" if pd.isna(duration) else f"{int(duration)}"
-        raw_text = "리스크 사이클 ON" if raw_state == 1 else "리스크 사이클 OFF"
-        raw_color = "#FF8C69" if raw_state == 1 else "#4BFFB3"
-        t1_text = _macro5_kospi_t1_label(t1_position)
-        if start_signal:
-            event_text = "신규 시작 신호"
-        elif end_signal:
-            event_text = "신규 종료 신호"
-        else:
-            event_text = "신규 시작/종료 신호 없음"
     else:
         basis = "계산 불가"
         active_count = 0
-        raw_text = "계산 불가"
-        raw_color = "#FF8C69"
-        t1_text = "계산 불가"
-        event_text = "계산 불가"
+        raw_state = 0
+        t1_position = None
+        start_signal = False
+        end_signal = False
         state_start = "확인 불가"
         duration_text = "확인 불가"
 
-    return (
-        '<div style="display:flex;gap:12px 16px;align-items:center;flex-wrap:wrap;padding:0 0 14px 0;color:#CFCFCF;font-size:12px;line-height:1.42;">'
-        f"<span><b>기준일</b> {basis}</span>"
-        f"<span><b>현재 플래그</b> {active_count} / {int(component_count)} ON ({_macro5_kospi_escape(active_label_text)})</span>"
-        f"<span><b>상태</b> <span style='color:{raw_color};font-weight:700;'>{raw_text}</span></span>"
-        f"<span><b>실행 상태</b> {t1_text}</span>"
-        "</div>"
-        '<div style="display:flex;gap:12px 16px;align-items:center;flex-wrap:wrap;padding:0 0 14px 0;color:#AFAFAF;font-size:12px;line-height:1.42;">'
-        f"<span><b>현재 상태 시작일</b> <span style='color:{raw_color};font-weight:700;'>{state_start}</span></span>"
-        f"<span><b>지속 거래일</b> <span style='color:{raw_color};font-weight:700;'>{duration_text}</span></span>"
-        f"<span><b>실행 안내</b> {event_text}</span>"
-        "</div>"
+    return _macro_compact_status_html(
+        basis_date=basis,
+        active_count=active_count,
+        component_count=component_count,
+        risk_state=raw_state,
+        execution_position=t1_position,
+        start_event=start_signal,
+        end_event=end_signal,
+        state_start=state_start,
+        duration_text=duration_text,
     )
 
 
@@ -13529,16 +13615,16 @@ def _macro5_kospi_build_backtest_panel(
     if len(subset):
         rows_html.append(
             "<tr style='background:rgba(255,255,255,0.035);border-top:1px solid rgba(255,255,255,0.12);'>"
-            "<td style='padding:7px 8px;color:#EDEDED;font-weight:700;line-height:1.28;'>KOSPI 홀드</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{hold_metrics.get('10Y 자산', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{hold_metrics.get('전체 자산', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{hold_metrics.get('전체 CAGR', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{hold_metrics.get('10Y MDD', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{hold_metrics.get('전체 MDD', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{hold_metrics.get('전체 Risk-off', '0.0%')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{hold_metrics.get('전체 Cycle', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{hold_metrics.get('짧은 Cycle', '-')}</td>"
-            "<td style='padding:7px 8px;color:#D6D6D6;text-align:center;'>-</td></tr>"
+            f"<td title='KOSPI 홀드' style='{_MACRO_BACKTEST_CELL_LEFT}'>KOSPI 홀드</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('10Y 자산', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('전체 자산', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('전체 CAGR', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('10Y MDD', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('전체 MDD', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('전체 Risk-off', '0.0%')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('전체 Cycle', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('짧은 Cycle', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>-</td></tr>"
         )
     for _, row in subset.iterrows():
         candidate_id = str(row["candidate_id"])
@@ -13579,33 +13665,36 @@ def _macro5_kospi_build_backtest_panel(
         )
         rows_html.append(
             f"<tr style='background:{bg};border-top:{border};border-bottom:{border};'>"
-            f"<td style='padding:7px 8px;color:#EDEDED;font-weight:700;line-height:1.28;'>{label}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{asset_10y}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{asset_full}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{cagr_full}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{mdd_10y}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{mdd_full}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{stats.get('전체 Risk-off', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{stats.get('전체 Cycle', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{stats.get('짧은 Cycle', '-')}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:center;'>{_macro5_kospi_current_chip(candidate_id, live_row_map)}</td></tr>"
+            f"<td title='{label}' style='{_MACRO_BACKTEST_CELL_LEFT}'>{label}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{asset_10y}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{asset_full}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{cagr_full}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{mdd_10y}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{mdd_full}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{stats.get('전체 Risk-off', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{stats.get('전체 Cycle', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{stats.get('짧은 Cycle', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{_macro5_kospi_current_chip(candidate_id, live_row_map)}</td></tr>"
         )
     if not rows_html:
         return ""
     return (
-        "<table style='width:100%;border-collapse:collapse;font-size:12px;'>"
-        "<thead><tr>"
-        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>역할 / 후보</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>10Y 자산</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>전체 자산</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>전체 CAGR</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>10Y MDD</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>전체 MDD</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>전체 Risk-off</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>전체 Cycle</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>짧은 Cycle</th>"
-        "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>현재</th>"
-        f"</tr></thead><tbody>{''.join(rows_html)}</tbody></table>"
+        _MACRO_BACKTEST_TABLE_WRAP_OPEN
+        + f"<table style='{_MACRO_BACKTEST_TABLE_STYLE}'>"
+        + _MACRO_BACKTEST_COLGROUP
+        + _macro_backtest_header_html([
+            ("역할 / 후보", "left"),
+            ("10Y 자산", "right"),
+            ("전체 자산", "right"),
+            ("전체 CAGR", "right"),
+            ("10Y MDD", "right"),
+            ("전체 MDD", "right"),
+            ("전체 Risk-off", "right"),
+            ("전체 Cycle", "right"),
+            ("짧은 Cycle", "right"),
+            ("현재", "center"),
+        ])
+        + f"<tbody>{''.join(rows_html)}</tbody></table></div>"
     )
 
 
@@ -15297,7 +15386,11 @@ def main(page="signal"):
             _manifest5k = _assets5k["manifest"]
             _ui_manifest5k = _assets5k["ui_manifest"]
             _component_dict5k = _assets5k["component_dictionary"]
-            _default_preset5k = _metrics5k["candidate_id"].tolist()[0]
+            try:
+                _default_preset5k = _macro5_kospi_combo2_main_candidate_id(_metrics5k)
+            except ValueError as _exc:
+                st.error(str(_exc))
+                return
             _metrics5k["_model_type_norm"] = _metrics5k["model_type"].map(_macro5_kospi_model_type)
             _combo2_order5k = _metrics5k[_metrics5k["_model_type_norm"].eq("combo2")]["candidate_id"].tolist()
             _combo1_order5k = _metrics5k[_metrics5k["_model_type_norm"].eq("combo1")]["candidate_id"].tolist()
@@ -16170,9 +16263,6 @@ def main(page="signal"):
                     _macro6_status_html,
                     unsafe_allow_html=True,
                 )
-            _macro6_duration_html = _macro6_state_duration_html(_macro6_full_event_df)
-            if _macro6_duration_html:
-                st.markdown(_macro6_duration_html, unsafe_allow_html=True)
 
             _macro6_bt_compare_combo2_html = _build_macro6_backtest_panel(
                 _macro6_preset,
