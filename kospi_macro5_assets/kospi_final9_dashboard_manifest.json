@@ -1,0 +1,30 @@
+{
+  "gate": "PASS_WITH_RECOMPUTED_COMBO1_REFERENCE_SIGNALS",
+  "created_at_utc": "2026-08-02T04:40:57.405800+00:00",
+  "research_stage": "D1-A_RUNTIME_ASSET_AND_HISTORICAL_PARITY",
+  "official_operating_model": false,
+  "dashboard_applied": false,
+  "shadow_mode": true,
+  "manual_user_selected_final9": true,
+  "candidate_count": 9,
+  "combo1_count": 4,
+  "combo2_count": 5,
+  "reference_signal_rows": 51733,
+  "reference_signal_date_start": "1996-12-11",
+  "reference_signal_date_end": "2026-07-28",
+  "macro4_reference_hash": {
+    "path": "technical_signal_dashboard.py",
+    "start_line": 13545,
+    "end_line": 14199,
+    "sha256": "619ea6d2aa80cb8decb86edaddce22845b3babe8a905c7b772aa8328896d262a",
+    "line_count": 655
+  },
+  "output_files": {
+    "candidate_metrics": "kospi_macro5_assets/kospi_final9_candidate_metrics.csv",
+    "reference_signals": "kospi_macro5_assets/kospi_final9_reference_signals.parquet",
+    "component_dictionary": "kospi_macro5_assets/kospi_final9_component_dictionary.json",
+    "source_contract": "kospi_macro5_assets/kospi_final9_source_contract.json",
+    "parity_checks": "kospi_macro5_assets/kospi_final9_parity_checks.csv",
+    "checksums": "kospi_macro5_assets/checksums.json"
+  }
+}

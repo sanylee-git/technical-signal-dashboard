@@ -1,0 +1,27 @@
+{
+  "kospi_final9_candidate_metrics.csv": {
+    "path": "kospi_macro5_assets/kospi_final9_candidate_metrics.csv",
+    "sha256": "299409056a3572e5c9ba326b3dbb599eb55965385194fe1fbe5c174701b81343",
+    "bytes": 4946
+  },
+  "kospi_final9_reference_signals.parquet": {
+    "path": "kospi_macro5_assets/kospi_final9_reference_signals.parquet",
+    "sha256": "e79200b69ff516194f19ebb75a359ac1bc37dd73aa47416e82089b42523ee578",
+    "bytes": 148603
+  },
+  "kospi_final9_component_dictionary.json": {
+    "path": "kospi_macro5_assets/kospi_final9_component_dictionary.json",
+    "sha256": "5b999ec4a1ef0cc22f93a8f6171c4c8fc8e680068663d19c378995a446a5c904",
+    "bytes": 6098
+  },
+  "kospi_final9_source_contract.json": {
+    "path": "kospi_macro5_assets/kospi_final9_source_contract.json",
+    "sha256": "662bd0a639810b64027336eb0f7f8e498c7bf17bd5a9e1076daebc7c632b7f4f",
+    "bytes": 710
+  },
+  "kospi_final9_parity_checks.csv": {
+    "path": "kospi_macro5_assets/kospi_final9_parity_checks.csv",
+    "sha256": "c64be5aa95b51adcb12f65c3e707e9f1c7705ebfacf1da9b2f4315826887015c",
+    "bytes": 380
+  }
+}

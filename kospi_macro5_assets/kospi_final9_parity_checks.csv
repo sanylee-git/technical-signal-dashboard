@@ -1,0 +1,5 @@
+candidate_id,reference_source,common_rows,mismatch_count,reference_column
+combo1_n11_k9_l5_b984a8e53ad69a2d,stage06a_combo1_main32_raw_risk_state_bank,4513,0.0,c26
+combo1_n11_k8_l5_93919287424179bd,stage06a_combo1_main32_raw_risk_state_bank,4513,0.0,c13
+combo1_n11_k9_l6_ad654f06d0d609cb,no_stored_raw_bank_match,0,,
+combo1_n11_k9_l6_9f0105582a0f0745,no_stored_raw_bank_match,0,,

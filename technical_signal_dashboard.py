@@ -93,7 +93,7 @@ _IS_MARKET_MACRO_APP = any(
 )
 
 def _configure_streamlit_page(page="signal"):
-    is_market_macro_app = page in ("market_macro", "market", "macro", "macro2", "macro3", "macro4", "macro5", "macro6") or _IS_MARKET_MACRO_APP
+    is_market_macro_app = page in ("market_macro", "market", "macro", "macro2", "macro3", "macro4", "macro5", "macro6", "macro5_kospi") or _IS_MARKET_MACRO_APP
     st.set_page_config(
         page_title="시장/매크로 지표" if is_market_macro_app else "기술적 신호 스캐너",
         page_icon="🏔️" if is_market_macro_app else "🎯",
@@ -12857,6 +12857,258 @@ def _render_signal_scanner3_section(container, favorites=None):
 # ============================================================
 # 메인 앱
 # ============================================================
+def _macro5_kospi_asset_path(name: str) -> str:
+    return os.path.join(_APP_DIR, "kospi_macro5_assets", name)
+
+
+def _macro5_kospi_sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+@st.cache_data(show_spinner=False)
+def _load_macro5_kospi_frozen_assets():
+    manifest_path = _macro5_kospi_asset_path("kospi_final9_dashboard_manifest.json")
+    ui_manifest_path = _macro5_kospi_asset_path("kospi_macro5_d1b_ui_manifest.json")
+    metrics_path = _macro5_kospi_asset_path("kospi_final9_candidate_metrics.csv")
+    signals_path = _macro5_kospi_asset_path("kospi_final9_reference_signals.parquet")
+    component_path = _macro5_kospi_asset_path("kospi_final9_component_reference_signals.parquet")
+    benchmark_path = _macro5_kospi_asset_path("kospi_final9_benchmark_close.parquet")
+    snapshot_path = _macro5_kospi_asset_path("kospi_final9_ui_snapshot_reference.parquet")
+    dictionary_path = _macro5_kospi_asset_path("kospi_final9_component_dictionary.json")
+    checksums_path = _macro5_kospi_asset_path("checksums.json")
+
+    required = [
+        manifest_path,
+        ui_manifest_path,
+        metrics_path,
+        signals_path,
+        component_path,
+        benchmark_path,
+        snapshot_path,
+        dictionary_path,
+        checksums_path,
+    ]
+    missing = [os.path.basename(p) for p in required if not os.path.exists(p)]
+    if missing:
+        raise FileNotFoundError(f"KOSPI Macro5 asset missing: {', '.join(missing)}")
+
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        manifest = json.load(f)
+    with open(ui_manifest_path, "r", encoding="utf-8") as f:
+        ui_manifest = json.load(f)
+    with open(dictionary_path, "r", encoding="utf-8") as f:
+        component_dictionary = json.load(f)
+    with open(checksums_path, "r", encoding="utf-8") as f:
+        checksums = json.load(f)
+
+    for filename, meta in checksums.items():
+        path = _macro5_kospi_asset_path(filename)
+        if os.path.exists(path) and _macro5_kospi_sha256(path) != meta.get("sha256"):
+            raise ValueError(f"KOSPI Macro5 checksum mismatch: {filename}")
+
+    metrics = pd.read_csv(metrics_path)
+    signals = pd.read_parquet(signals_path)
+    components = pd.read_parquet(component_path)
+    benchmark = pd.read_parquet(benchmark_path)
+    snapshot = pd.read_parquet(snapshot_path)
+    for df in (signals, components, benchmark, snapshot):
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+
+    if manifest.get("gate") != "PASS_WITH_RECOMPUTED_COMBO1_REFERENCE_SIGNALS":
+        raise ValueError("KOSPI Macro5 D1-A gate is not valid")
+    if ui_manifest.get("gate") != "PASS_KOSPI_MACRO5_D1B_UI_ASSET_COVERAGE":
+        raise ValueError("KOSPI Macro5 D1-B UI asset gate is not valid")
+    if metrics["candidate_id"].nunique() != 9 or signals["candidate_id"].nunique() != 9:
+        raise ValueError("KOSPI Macro5 Final9 coverage mismatch")
+    if int(signals.duplicated(["candidate_id", "date"]).sum()) != 0:
+        raise ValueError("KOSPI Macro5 candidate/date duplicate detected")
+
+    return {
+        "manifest": manifest,
+        "ui_manifest": ui_manifest,
+        "metrics": metrics,
+        "signals": signals,
+        "components": components,
+        "benchmark": benchmark,
+        "snapshot": snapshot,
+        "component_dictionary": component_dictionary,
+        "manifest_sha256": _macro5_kospi_sha256(manifest_path),
+        "ui_manifest_sha256": _macro5_kospi_sha256(ui_manifest_path),
+    }
+
+
+def _macro5_kospi_suffix(candidate_id: str) -> str:
+    return str(candidate_id).split("_")[-1][-8:]
+
+
+def _macro5_kospi_preset_label(row: pd.Series) -> str:
+    prefix = "Combo1" if row["model_type"] == "combo1" else "Combo2"
+    return f"[{prefix}] {row['role']} · {row['suffix']}"
+
+
+def _macro5_kospi_view_cut(df: pd.DataFrame, years: int, end_date=None) -> pd.DataFrame:
+    if df is None or df.empty or "date" not in df.columns:
+        return df
+    out = df.sort_values("date").copy()
+    end = pd.to_datetime(end_date if end_date is not None else out["date"].max())
+    start = end - pd.DateOffset(years=int(years))
+    return out[(out["date"] >= start) & (out["date"] <= end)].copy()
+
+
+def _macro5_kospi_with_events(candidate_signal: pd.DataFrame) -> pd.DataFrame:
+    out = candidate_signal.sort_values("date").copy()
+    prev = out["raw_risk_state"].shift(1).fillna(0).astype(int)
+    raw = out["raw_risk_state"].astype(int)
+    out["start_event"] = ((raw == 1) & (prev == 0)).astype("int8")
+    out["end_event"] = ((raw == 0) & (prev == 1)).astype("int8")
+    out["combo_risk_state"] = raw.astype(bool)
+    return out
+
+
+def _macro5_kospi_fmt_pct(value, digits: int = 1) -> str:
+    try:
+        return f"{float(value) * 100:.{digits}f}%"
+    except Exception:
+        return "—"
+
+
+def _macro5_kospi_fmt_num(value, digits: int = 2) -> str:
+    try:
+        return f"{float(value):.{digits}f}"
+    except Exception:
+        return "—"
+
+
+def _macro5_kospi_state_label(raw_state: int | bool) -> str:
+    return "Risk-off" if int(raw_state) == 1 else "Risk-on"
+
+
+def _macro5_kospi_t1_label(position: int | bool) -> str:
+    return "T+1 투자 가능" if int(position) == 1 else "T+1 비투자"
+
+
+def _macro5_kospi_reference_label(reference_type: str) -> str:
+    mapping = {
+        "PASS_VS_STAGE06A_RAW_BANK": "저장신호 parity 확인",
+        "RECOMPUTED_FROM_CORE15_COMPONENTS": "Core15 구성 재계산 reference",
+        "PASS_STORED_STAGE07C2_DAILY_SIGNAL": "Stage07C.2 저장 daily signal",
+    }
+    return mapping.get(str(reference_type), str(reference_type))
+
+
+def _macro5_kospi_build_main_chart(candidate_signal: pd.DataFrame, benchmark: pd.DataFrame, label: str, years: int, show_raw: bool) -> go.Figure | None:
+    if candidate_signal is None or candidate_signal.empty or benchmark is None or benchmark.empty:
+        return None
+    signal = _macro5_kospi_with_events(candidate_signal)
+    end_date = signal["date"].max()
+    visible_signal = _macro5_kospi_view_cut(signal, years, end_date=end_date)
+    visible_benchmark = _macro5_kospi_view_cut(benchmark, years, end_date=end_date)
+    merged = visible_benchmark.merge(visible_signal[["date", "raw_risk_state", "t1_position", "start_event", "end_event", "combo_risk_state"]], on="date", how="inner")
+    if merged.empty:
+        return None
+    fig = go.Figure()
+    _add_macro_combo_risk_cycle_background(fig, merged[["date", "combo_risk_state"]], merged["date"])
+    fig.add_trace(go.Scatter(
+        x=merged["date"],
+        y=merged["kospi_close"],
+        mode="lines",
+        name="KOSPI",
+        line=dict(color="rgba(226,232,240,0.82)", width=1.8),
+        hovertemplate="%{x|%Y-%m-%d}<br>KOSPI %{y:,.2f}<extra></extra>",
+    ))
+    if show_raw:
+        position_y = merged["kospi_close"].where(merged["t1_position"].astype(int) == 1)
+        fig.add_trace(go.Scatter(
+            x=merged["date"],
+            y=position_y,
+            mode="lines",
+            name="T+1 투자 가능",
+            line=dict(color="rgba(204,213,57,0.68)", width=2.0),
+            hoverinfo="skip",
+        ))
+    starts = merged[merged["start_event"].astype(int) == 1]
+    ends = merged[merged["end_event"].astype(int) == 1]
+    if not starts.empty:
+        fig.add_trace(go.Scatter(
+            x=starts["date"],
+            y=starts["kospi_close"],
+            mode="markers",
+            name="Raw Risk 시작",
+            marker=dict(symbol="triangle-down", color="#EF4444", size=11),
+        ))
+    if not ends.empty:
+        fig.add_trace(go.Scatter(
+            x=ends["date"],
+            y=ends["kospi_close"],
+            mode="markers",
+            name="Raw Risk 종료",
+            marker=dict(symbol="triangle-up", color="#60A5FA", size=11),
+        ))
+    fig.update_layout(
+        template="plotly_dark",
+        height=430,
+        margin=dict(l=8, r=8, t=34, b=8),
+        paper_bgcolor="#0D0D0E",
+        plot_bgcolor="#0D0D0E",
+        title=dict(text=label, font=dict(size=14, color="rgba(255,255,255,0.72)")),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        hovermode="x unified",
+    )
+    fig.update_xaxes(gridcolor="rgba(255,255,255,0.06)")
+    fig.update_yaxes(gridcolor="rgba(255,255,255,0.06)")
+    return fig
+
+
+def _macro5_kospi_build_component_chart(component_df: pd.DataFrame, benchmark: pd.DataFrame, title: str, years: int) -> go.Figure | None:
+    if component_df is None or component_df.empty:
+        return None
+    comp = component_df.sort_values("date").copy()
+    comp["combo_risk_state"] = comp["component_risk_state"].fillna(0).astype(int).astype(bool)
+    end_date = comp["date"].max()
+    visible = _macro5_kospi_view_cut(comp, years, end_date=end_date)
+    bench = _macro5_kospi_view_cut(benchmark, years, end_date=end_date)
+    merged = bench.merge(visible[["date", "component_risk_state", "combo_risk_state"]], on="date", how="inner")
+    if merged.empty:
+        return None
+    fig = go.Figure()
+    _add_macro_combo_risk_cycle_background(fig, merged[["date", "combo_risk_state"]], merged["date"])
+    fig.add_trace(go.Scatter(
+        x=merged["date"],
+        y=merged["kospi_close"],
+        mode="lines",
+        name="KOSPI",
+        line=dict(color="rgba(226,232,240,0.72)", width=1.4),
+    ))
+    y_min, y_max = merged["kospi_close"].min(), merged["kospi_close"].max()
+    state_y = np.where(merged["component_risk_state"].fillna(0).astype(int) == 1, y_max, np.nan)
+    fig.add_trace(go.Scatter(
+        x=merged["date"],
+        y=state_y,
+        mode="markers",
+        name="component ON",
+        marker=dict(symbol="square", color="rgba(239,68,68,0.42)", size=5),
+        hoverinfo="skip",
+    ))
+    fig.update_layout(
+        template="plotly_dark",
+        height=300,
+        margin=dict(l=8, r=8, t=30, b=8),
+        paper_bgcolor="#0D0D0E",
+        plot_bgcolor="#0D0D0E",
+        title=dict(text=title, font=dict(size=13, color="rgba(255,255,255,0.68)")),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        hovermode="x unified",
+    )
+    fig.update_xaxes(gridcolor="rgba(255,255,255,0.06)")
+    fig.update_yaxes(gridcolor="rgba(255,255,255,0.06)", range=[y_min, y_max])
+    return fig
+
+
 def main(page="signal"):
     global rsi_buy_lower_global, rsi_sell_lower_global
 
@@ -13203,6 +13455,7 @@ def main(page="signal"):
         "macro4": ("MACRO INDICATORS 4", "🧪 매크로 지표 4"),
         "macro5": ("MACRO INDICATORS 5", "🧪 매크로 지표 3"),
         "macro6": ("MACRO INDICATORS 6", "🧪 매크로 지표 4"),
+        "macro5_kospi": ("KOSPI MACRO INDICATORS", "🇰🇷 매크로 지표 5"),
         "all": ("TECHNICAL SIGNAL SCANNER", "🎯 기술적 신호 스캐너"),
     }
     _eyebrow, _title = _page_titles.get(page, _page_titles["signal"])
@@ -13221,6 +13474,7 @@ def main(page="signal"):
     tab4 = None
     tab5 = None
     tab6 = None
+    tab7 = None
     _market_macro_section = None
     if page == "all":
         tab1, tab2, tab3 = st.tabs(["📊 신호 스캐너", "🌐 시장 내부지표", "🌍 매크로 지표"])
@@ -13240,6 +13494,7 @@ def main(page="signal"):
             ("macro4", "🧪 매크로 지표 2"),
             ("macro5", "🧪 매크로 지표 3"),
             ("macro6", "🧪 매크로 지표 4"),
+            ("macro5_kospi", "🇰🇷 매크로 지표 5"),
             ("market", "🌐 시장 내부지표"),
         ]
         if st.session_state.get("market_macro_section") not in {k for k, _ in _market_macro_sections}:
@@ -13257,6 +13512,7 @@ def main(page="signal"):
         tab4 = st.container()
         tab5 = st.container()
         tab6 = st.container()
+        tab7 = st.container()
         tab1 = None
     elif page == "macro2":
         tab1, tab2, tab3 = None, None, st.container()
@@ -13267,6 +13523,8 @@ def main(page="signal"):
     elif page == "macro5":
         tab1, tab2, tab3 = None, None, st.container()
     elif page == "macro6":
+        tab1, tab2, tab3 = None, None, st.container()
+    elif page == "macro5_kospi":
         tab1, tab2, tab3 = None, None, st.container()
     else:
         st.error(f"알 수 없는 페이지입니다: {page}")
@@ -14205,6 +14463,268 @@ def main(page="signal"):
                     is_meta=_macro4_is_meta,
                     elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
                 )
+
+    def render_macro5_kospi_section(container):
+        with container:
+            _started = time.perf_counter()
+            st.markdown(
+                '<div class="macro2-helper-text">KOSPI Final9 후보의 Frozen Risk-on/off 신호를 공식 T+1·10bp 계약 기준으로 비교합니다. 현재는 2026-07-28 기준 Shadow 검토 단계이며 Live extension은 아직 연결되지 않았습니다.</div>',
+                unsafe_allow_html=True,
+            )
+            _render_macro_combo_common_css()
+            st.markdown("""
+            <style>
+            .st-key-macro5_kospi_preset div[data-baseweb="select"] > div,
+            .st-key-macro5_kospi_benchmark div[data-baseweb="select"] > div,
+            .st-key-macro5_kospi_selected_codes div[data-baseweb="select"] > div,
+            .st-key-macro5_kospi_years div[data-baseweb="slider"] + div,
+            .st-key-macro5_kospi_show_raw label,
+            .st-key-macro5_kospi_show_raw span,
+            .st-key-macro5_kospi_show_raw p {
+                font-size: 13.5px !important;
+                color: rgba(255,255,255,0.92) !important;
+            }
+            .st-key-macro5_kospi_preset div[data-baseweb="select"] > div,
+            .st-key-macro5_kospi_benchmark div[data-baseweb="select"] > div,
+            .st-key-macro5_kospi_selected_codes div[data-baseweb="select"] > div {
+                min-height: 2.55rem;
+                border-color: rgba(95,86,214,0.72) !important;
+                background: rgba(52,44,112,0.22) !important;
+                box-shadow: none !important;
+            }
+            .st-key-macro5_kospi_selected_codes [data-baseweb="tag"] {
+                background: rgba(92,79,214,0.96) !important;
+                color: #F6F4FF !important;
+            }
+            .st-key-macro5_kospi_show_raw [data-baseweb="checkbox"] > div {
+                border-color: rgba(95,86,214,0.78) !important;
+            }
+            .st-key-macro5_kospi_preset,
+            .st-key-macro5_kospi_benchmark,
+            .st-key-macro5_kospi_years,
+            .st-key-macro5_kospi_show_raw,
+            .st-key-macro5_kospi_selected_codes {
+                margin-top: 0 !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
+            try:
+                _assets5k = _load_macro5_kospi_frozen_assets()
+            except Exception as _exc:
+                st.error(f"KOSPI Macro5 Frozen 자산을 불러오지 못했습니다: {_exc}")
+                return
+
+            _metrics5k = _assets5k["metrics"].sort_values("slot").reset_index(drop=True)
+            _signals5k = _assets5k["signals"]
+            _components5k = _assets5k["components"]
+            _benchmark5k = _assets5k["benchmark"]
+            _snapshot5k = _assets5k["snapshot"]
+            _manifest5k = _assets5k["manifest"]
+            _ui_manifest5k = _assets5k["ui_manifest"]
+            _component_dict5k = _assets5k["component_dictionary"]
+            _preset_order5k = _metrics5k["candidate_id"].tolist()
+            _candidate_map5k = {row["candidate_id"]: row for _, row in _metrics5k.iterrows()}
+            if st.session_state.get("macro5_kospi_preset") not in _preset_order5k:
+                st.session_state["macro5_kospi_preset"] = _preset_order5k[0]
+
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            _l51, _l52, _l53, _l54 = st.columns([1.6, 1.2, 2.4, 1.0], vertical_alignment="bottom")
+            with _l51:
+                st.markdown('<div class="macro2-control-label">조합 프리셋</div>', unsafe_allow_html=True)
+            with _l52:
+                st.markdown('<div class="macro2-control-label">기준지수</div>', unsafe_allow_html=True)
+            with _l53:
+                st.markdown('<div class="macro2-control-label">기간</div>', unsafe_allow_html=True)
+            with _l54:
+                st.markdown('<div class="macro2-control-label">원본선 표시</div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
+
+            _m51, _m52, _m53, _m54 = st.columns([1.6, 1.2, 2.4, 1.0], vertical_alignment="bottom")
+            with _m51:
+                _macro5_kospi_preset = st.selectbox(
+                    "조합 프리셋",
+                    options=_preset_order5k,
+                    index=_preset_order5k.index(st.session_state["macro5_kospi_preset"]),
+                    format_func=lambda x: _macro5_kospi_preset_label(_candidate_map5k[x]),
+                    key="macro5_kospi_preset",
+                    label_visibility="collapsed",
+                )
+            _selected_row5k = _candidate_map5k[_macro5_kospi_preset]
+            _selected_components5k = _component_dict5k[_macro5_kospi_preset]["component_ids"]
+            with _m52:
+                st.selectbox("기준지수", options=["KOSPI"], index=0, key="macro5_kospi_benchmark", label_visibility="collapsed", disabled=True)
+            with _m53:
+                _yr_opts5k = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년', 15: '15년', 20: '20년'}
+                _macro5_kospi_years = st.select_slider(
+                    "기간",
+                    options=list(_yr_opts5k.keys()),
+                    value=5,
+                    format_func=lambda x: _yr_opts5k[x],
+                    key="macro5_kospi_years",
+                    label_visibility="collapsed",
+                )
+            with _m54:
+                st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
+                _show_raw_macro5_kospi = st.checkbox("원본선 표시", value=False, key="macro5_kospi_show_raw", label_visibility="collapsed")
+
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            _l55, _l56 = st.columns([4.4, 1.6], vertical_alignment="bottom")
+            with _l55:
+                st.markdown('<div class="macro2-control-label">조합 지표</div>', unsafe_allow_html=True)
+            with _l56:
+                st.markdown('<div class="macro2-control-label">리스크 기준</div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
+
+            _m55, _m56 = st.columns([4.4, 1.6], vertical_alignment="bottom")
+            with _m55:
+                st.multiselect(
+                    "조합 지표",
+                    options=_selected_components5k,
+                    default=_selected_components5k,
+                    format_func=lambda x: x.split("__")[0] if "__" in x else _macro5_kospi_suffix(x),
+                    key="macro5_kospi_selected_codes",
+                    label_visibility="collapsed",
+                    disabled=True,
+                )
+            with _m56:
+                st.markdown(
+                    (
+                        "<div style='padding-top:8px;font-size:11.5px;line-height:1.42;color:rgba(255,255,255,0.84);'>"
+                        f"진입 K={int(_selected_row5k['K'])}<br>"
+                        f"종료 L={int(_selected_row5k['L'])}"
+                        "</div>"
+                    ),
+                    unsafe_allow_html=True,
+                )
+
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            _candidate_signal5k = _signals5k[_signals5k["candidate_id"] == _macro5_kospi_preset].copy()
+            _candidate_signal5k = _macro5_kospi_with_events(_candidate_signal5k)
+            _latest_signal5k = _candidate_signal5k.sort_values("date").iloc[-1]
+            _latest_date5k = pd.to_datetime(_latest_signal5k["date"])
+            _candidate_components5k = _components5k[_components5k["parent_candidate_id"] == _macro5_kospi_preset].copy()
+            _latest_components5k = _candidate_components5k[_candidate_components5k["date"] == _latest_date5k]
+            _active_count5k = int(_latest_components5k["component_risk_state"].fillna(0).astype(int).sum()) if len(_latest_components5k) else 0
+            _last_transition_rows5k = _candidate_signal5k[_candidate_signal5k["raw_risk_state"].ne(_candidate_signal5k["raw_risk_state"].shift(1))]
+            _last_transition_date5k = pd.to_datetime(_last_transition_rows5k.iloc[-1]["date"]) if len(_last_transition_rows5k) else _latest_date5k
+            _duration5k = int((_candidate_signal5k["date"] >= _last_transition_date5k).sum())
+            _reference_label5k = _macro5_kospi_reference_label(_selected_row5k["source_signal_parity"])
+
+            _state_cards5k = [
+                ("Frozen 기준일", _latest_date5k.strftime("%Y-%m-%d")),
+                ("후보 구분", str(_selected_row5k["model_type"]).upper()),
+                ("Raw 상태", _macro5_kospi_state_label(_latest_signal5k["raw_risk_state"])),
+                ("T+1 적용 상태", _macro5_kospi_t1_label(_latest_signal5k["t1_position"])),
+                ("Active Count", f"{_active_count5k} / {len(_selected_components5k)}"),
+                ("진입 K", int(_selected_row5k["K"])),
+                ("종료 L", int(_selected_row5k["L"])),
+                ("지속 거래일", _duration5k),
+            ]
+            _card_html5k = "<div class='macro2-card-grid'>" + "".join(
+                f"<div class='macro2-card'><div class='macro2-card-label'>{label}</div><div class='macro2-card-value'>{value}</div></div>"
+                for label, value in _state_cards5k
+            ) + "</div>"
+            st.markdown(_card_html5k, unsafe_allow_html=True)
+            st.caption(f"reference source: {_reference_label5k} · Live extension 미연결 · Shadow 검토 단계")
+
+            _bt_metrics5k = [
+                ("CAGR", _macro5_kospi_fmt_pct(_selected_row5k["cagr"])),
+                ("MDD", _macro5_kospi_fmt_pct(_selected_row5k["mdd"])),
+                ("Calmar", _macro5_kospi_fmt_num(_selected_row5k["calmar"])),
+                ("Risk-off", _macro5_kospi_fmt_pct(_selected_row5k["risk_off_ratio"])),
+                ("연 전환", _macro5_kospi_fmt_num(_selected_row5k["annual_turnover"])),
+                ("n/m", int(_selected_row5k["m_or_n"])),
+            ]
+            _bt_html5k = (
+                "<div class='macro2-backtest-card'>"
+                "<div style='font-size:12px;color:rgba(255,255,255,0.58);margin-bottom:8px;'>공식 Frozen 백테스트 · 2008-04-01 ~ 2026-07-28 · T+1 · 10bp · 현금수익 미적용</div>"
+                "<div class='macro2-card-grid'>"
+                + "".join(f"<div class='macro2-card'><div class='macro2-card-label'>{label}</div><div class='macro2-card-value'>{value}</div></div>" for label, value in _bt_metrics5k)
+                + "</div></div>"
+            )
+            st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
+            st.markdown(_bt_html5k, unsafe_allow_html=True)
+
+            with st.expander("백테스트 비교 보기", expanded=False):
+                _compare_cols5k = ["slot", "model_type", "role", "suffix", "m_or_n", "K", "L", "cagr", "mdd", "calmar", "risk_off_ratio", "annual_turnover", "source_signal_parity"]
+                _compare5k = _metrics5k[_compare_cols5k].copy()
+                _compare5k["cagr"] = _compare5k["cagr"].map(lambda x: _macro5_kospi_fmt_pct(x, 2))
+                _compare5k["mdd"] = _compare5k["mdd"].map(lambda x: _macro5_kospi_fmt_pct(x, 2))
+                _compare5k["risk_off_ratio"] = _compare5k["risk_off_ratio"].map(lambda x: _macro5_kospi_fmt_pct(x, 1))
+                _compare5k["source_signal_parity"] = _compare5k["source_signal_parity"].map(_macro5_kospi_reference_label)
+                st.dataframe(_compare5k, width="stretch", hide_index=True)
+
+            _status5k = _snapshot5k.copy()
+            with st.expander("지표별 상태 보기", expanded=False):
+                _status_view5k = _status5k[["model_type", "role", "suffix", "date", "raw_risk_state", "t1_position", "active_count", "K", "L", "last_transition_date", "current_state_trading_days", "reference_type", "valid"]].copy()
+                _status_view5k["Raw 상태"] = _status_view5k["raw_risk_state"].map(_macro5_kospi_state_label)
+                _status_view5k["T+1 상태"] = _status_view5k["t1_position"].map(_macro5_kospi_t1_label)
+                _status_view5k["reference type"] = _status_view5k["reference_type"].map(_macro5_kospi_reference_label)
+                _status_view5k = _status_view5k.drop(columns=["raw_risk_state", "t1_position", "reference_type"])
+                st.dataframe(_status_view5k, width="stretch", hide_index=True)
+
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            _chart_label5k = f"{_macro5_kospi_preset_label(_selected_row5k)} · K{int(_selected_row5k['K'])}/L{int(_selected_row5k['L'])}"
+            _main_fig5k = _macro5_kospi_build_main_chart(
+                _candidate_signal5k,
+                _benchmark5k,
+                _chart_label5k,
+                _macro5_kospi_years,
+                _show_raw_macro5_kospi,
+            )
+            if _main_fig5k is not None:
+                st.plotly_chart(
+                    _main_fig5k,
+                    width="stretch",
+                    config={"displayModeBar": False},
+                    key=f"macro5_kospi_main_chart_{_macro5_kospi_preset}_{_macro5_kospi_years}_{int(_show_raw_macro5_kospi)}",
+                )
+            else:
+                st.warning("KOSPI Macro5 대표 차트 데이터 로딩 실패 — Frozen asset을 확인해 주세요.")
+
+            with st.expander("고급 설정: Final9 Frozen 후보 상세", expanded=False):
+                st.write(f"candidate_id: `{_macro5_kospi_preset}`")
+                st.write(f"signal hash: `{_selected_row5k['reference_signal_hash']}`")
+                st.write(f"D1-A manifest: `{_assets5k['manifest_sha256']}`")
+                st.write(f"D1-B UI manifest: `{_assets5k['ui_manifest_sha256']}`")
+                st.write("Final9 다수결 신호는 생성하지 않습니다.")
+
+            for _idx5k, (_component_id5k, _component_df5k) in enumerate(_candidate_components5k.groupby("component_id", sort=False), start=1):
+                _component_label5k = _component_df5k["component_label"].dropna().iloc[0] if "component_label" in _component_df5k and len(_component_df5k["component_label"].dropna()) else _macro5_kospi_suffix(_component_id5k)
+                with st.expander(f"{_idx5k}. {_component_label5k}", expanded=False):
+                    _component_latest5k = _component_df5k.sort_values("date").iloc[-1]
+                    st.caption(
+                        f"state={_macro5_kospi_state_label(int(_component_latest5k['component_risk_state']))} · "
+                        f"reference={_component_latest5k.get('reference_type', '—')}"
+                    )
+                    _component_fig5k = _macro5_kospi_build_component_chart(
+                        _component_df5k,
+                        _benchmark5k,
+                        str(_component_label5k),
+                        _macro5_kospi_years,
+                    )
+                    if _component_fig5k is not None:
+                        st.plotly_chart(
+                            _component_fig5k,
+                            width="stretch",
+                            config={"displayModeBar": False},
+                            key=f"macro5_kospi_component_chart_{_macro5_kospi_preset}_{_idx5k}_{_macro5_kospi_years}",
+                        )
+                    else:
+                        st.warning("component state 차트 데이터가 없습니다.")
+
+            _macro_debug_log(
+                "render_macro5_kospi_section",
+                candidate_id=_macro5_kospi_preset,
+                years=_macro5_kospi_years,
+                component_count=len(_selected_components5k),
+                frozen_end=_latest_date5k.strftime("%Y-%m-%d"),
+                d1a_gate=_manifest5k.get("gate"),
+                d1b_gate=_ui_manifest5k.get("gate"),
+                elapsed_ms=round((time.perf_counter() - _started) * 1000, 1),
+            )
+
 
     def render_macro5_final8_section(container):
         with container:
@@ -15481,6 +16001,13 @@ def main(page="signal"):
     if page == "macro6" or (page == "market_macro" and _market_macro_section == "macro6"):
         _macro6_container = tab6 if page == "market_macro" else tab3
         render_macro6_proxy_final_section(_macro6_container)
+
+        # ═══════════════════════════════════════════════════════════
+        # TAB 3F — KOSPI 매크로 지표 5 (Frozen Shadow)
+        # ═══════════════════════════════════════════════════════════
+    if page == "macro5_kospi" or (page == "market_macro" and _market_macro_section == "macro5_kospi"):
+        _macro5_kospi_container = tab7 if page == "market_macro" else tab3
+        render_macro5_kospi_section(_macro5_kospi_container)
 
         # ═══════════════════════════════════════════════════════════
         # TAB 3 — 매크로 지표

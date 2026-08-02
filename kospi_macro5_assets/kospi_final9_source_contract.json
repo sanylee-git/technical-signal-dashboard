@@ -1,0 +1,14 @@
+{
+  "market": "KOSPI",
+  "benchmark": "KOSPI composite close",
+  "risk_state_semantics": "risk_state=1 means Risk-off/non-invested; risk_state=0 means Risk-on/investable",
+  "signal_semantics": "RAW_RISK_STATE; t1_position[t] = 1 - raw_risk_state[t-1]",
+  "evaluation_start": "2008-04-01",
+  "evaluation_end": "2026-07-28",
+  "transaction_cost_bps": 10,
+  "cash_return_applied": false,
+  "official_operating_model": false,
+  "shadow_mode": true,
+  "manual_user_selected_final9": true,
+  "source_selection_note": "User manually selected Combo1 Core4 and Combo2 Core5 after reviewing Stage07C.2 Proposed Decision10 and Combo1 review outputs. This is a shadow dashboard asset, not an official operating model."
+}

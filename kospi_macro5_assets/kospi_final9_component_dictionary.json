@@ -1,0 +1,153 @@
+{
+  "combo1_n11_k9_l5_b984a8e53ad69a2d": {
+    "model_type": "combo1",
+    "component_ids": [
+      "global_credit_stress__EMA5_W120_S35_E10__9a1a865e38d8",
+      "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43",
+      "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c",
+      "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6",
+      "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532",
+      "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a",
+      "us_10y_real_yield_level__EMA40_W480_S90_E25__34170b129534",
+      "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222",
+      "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d",
+      "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7",
+      "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3"
+    ],
+    "family_set_key": "global_credit_stress|kospi_bollinger|kospi_natr|kospi_rsi|us_10y_2y_spread|us_10y_3m_spread|us_10y_real_yield_level|us_10y_slope|us_ig_oas_level|usdkrw_level|vix_level",
+    "K": 9,
+    "L": 5
+  },
+  "combo1_n11_k8_l5_93919287424179bd": {
+    "model_type": "combo1",
+    "component_ids": [
+      "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb",
+      "kospi_bollinger__BBW80_STD2p0__b0d4bab58de5",
+      "kospi_natr_n80__NATR80_EMA40_W480_S75_E40__c6632f67909c",
+      "kospi_rsi__RSI28_LB80_Q10_80__dbbc066a9e69",
+      "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a",
+      "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08",
+      "us_10y_slope__SW160_EMA5_W240_S75_E40__3d8da8f736af",
+      "us_hy_oas_level__EMA1_W480_S50_E25__99cc140fae43",
+      "usdkrw_level__EMA80_W240_S75_E65__9bdc0e65eb89",
+      "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3",
+      "vix_spread__EMA10_W120_S35_E10__7696d16a802e"
+    ],
+    "family_set_key": "global_credit_stress|kospi_bollinger|kospi_natr|kospi_rsi|us_10y_3m_spread|us_10y_real_yield_level|us_10y_slope|us_hy_oas_level|usdkrw_level|vix_level|vix_spread",
+    "K": 8,
+    "L": 5
+  },
+  "combo1_n11_k9_l6_ad654f06d0d609cb": {
+    "model_type": "combo1",
+    "component_ids": [
+      "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43",
+      "kospi_hv_n80__HV80_EMA10_W120_S90_E65__09d89fcd32af",
+      "kospi_natr_n80__NATR80_EMA20_W480_S75_E40__53e1711720b6",
+      "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6",
+      "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532",
+      "us_10y_3m_spread__EMA80_W120_S90_E65__80d0fee310a6",
+      "us_10y_slope__SW160_EMA40_W240_S75_E40__6da9a4cb8222",
+      "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d",
+      "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7",
+      "vix_level__EMA1_W480_S35_E10__587d5f9ea7f3",
+      "vix_spread__EMA10_W120_S35_E10__7696d16a802e"
+    ],
+    "family_set_key": "kospi_bollinger|kospi_hv|kospi_natr|kospi_rsi|us_10y_2y_spread|us_10y_3m_spread|us_10y_slope|us_ig_oas_level|usdkrw_level|vix_level|vix_spread",
+    "K": 9,
+    "L": 6
+  },
+  "combo1_n11_k9_l6_9f0105582a0f0745": {
+    "model_type": "combo1",
+    "component_ids": [
+      "global_credit_stress__EMA20_W240_S90_E65__9f30024118cb",
+      "kospi_bollinger__BBW40_STD1p5__11c5b83d0a43",
+      "kospi_natr_n80__NATR80_EMA20_W480_S75_E40__53e1711720b6",
+      "kospi_rsi__RSI56_LB80_Q10_70__88bfbe25d8a6",
+      "us_10y_2y_spread__EMA40_W480_S90_E80__10d13bb2a532",
+      "us_10y_3m_spread__EMA80_W60_S75_E25__c69da156f28a",
+      "us_10y_real_yield_level__EMA1_W240_S50_E25__ba1107712d08",
+      "us_10y_slope__SW160_EMA1_W240_S75_E65__1e08769c51a3",
+      "us_ig_oas_level__EMA10_W480_S50_E25__31952ac8973d",
+      "usdkrw_level__EMA80_W240_S35_E25__6e58b7442eb7",
+      "vix_level__EMA5_W480_S35_E10__f1b7969f9f76"
+    ],
+    "family_set_key": "global_credit_stress|kospi_bollinger|kospi_natr|kospi_rsi|us_10y_2y_spread|us_10y_3m_spread|us_10y_real_yield_level|us_10y_slope|us_ig_oas_level|usdkrw_level|vix_level",
+    "K": 9,
+    "L": 6
+  },
+  "m6::combo2_m6_k4_l2_2d90a80e824f7336": {
+    "model_type": "combo2",
+    "component_ids": [
+      "combo1_n10_k8_l5_3b047b7b9992b0dd",
+      "combo1_n10_k8_l5_818f33babbcdb687",
+      "combo1_n11_k8_l5_8572230026b9857b",
+      "combo1_n11_k8_l5_93919287424179bd",
+      "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "combo1_n9_k7_l4_3674f6539bce5a34"
+    ],
+    "family_set_key": NaN,
+    "K": 4,
+    "L": 2
+  },
+  "m6::combo2_m6_k4_l3_f976de57b8b4a80e": {
+    "model_type": "combo2",
+    "component_ids": [
+      "combo1_n10_k8_l5_290a60cb5f34f575",
+      "combo1_n11_k9_l4_3370f9e912d3725f",
+      "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "combo1_n11_k9_l5_3de08b5458716f22",
+      "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "combo1_n9_k7_l4_3674f6539bce5a34"
+    ],
+    "family_set_key": NaN,
+    "K": 4,
+    "L": 3
+  },
+  "m5::combo2_m5_k2_l1_2bc7e194fdecfd9e": {
+    "model_type": "combo2",
+    "component_ids": [
+      "combo1_n10_k8_l5_290a60cb5f34f575",
+      "combo1_n11_k8_l4_5fae25126881c080",
+      "combo1_n11_k8_l5_11ec0a3108665b40",
+      "combo1_n11_k8_l5_8572230026b9857b",
+      "combo1_n9_k8_l5_4a57a4873ef71826"
+    ],
+    "family_set_key": NaN,
+    "K": 2,
+    "L": 1
+  },
+  "m10::combo2_m10_k7_l4_bbd8c760d49b44bb": {
+    "model_type": "combo2",
+    "component_ids": [
+      "combo1_n10_k8_l5_290a60cb5f34f575",
+      "combo1_n10_k8_l5_818f33babbcdb687",
+      "combo1_n11_k8_l5_8572230026b9857b",
+      "combo1_n11_k8_l5_93919287424179bd",
+      "combo1_n11_k8_l6_bd84926c3959a3fd",
+      "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "combo1_n11_k9_l4_790a1e65e865104e",
+      "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "combo1_n9_k7_l3_2390f26dee4401d1",
+      "combo1_n9_k7_l4_3674f6539bce5a34"
+    ],
+    "family_set_key": NaN,
+    "K": 7,
+    "L": 4
+  },
+  "m8::combo2_m8_k5_l4_cee6978af4789711": {
+    "model_type": "combo2",
+    "component_ids": [
+      "combo1_n10_k8_l5_290a60cb5f34f575",
+      "combo1_n11_k8_l4_5fae25126881c080",
+      "combo1_n11_k8_l5_93919287424179bd",
+      "combo1_n11_k9_l4_52a66ee12ced8c2f",
+      "combo1_n11_k9_l5_3de08b5458716f22",
+      "combo1_n11_k9_l5_40f4a3ccb9b38978",
+      "combo1_n11_k9_l6_b6c22ce5972ed2ee",
+      "combo1_n9_k7_l3_2390f26dee4401d1"
+    ],
+    "family_set_key": NaN,
+    "K": 5,
+    "L": 4
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "gate": "PASS_KOSPI_MACRO5_D1B_UI_ASSET_COVERAGE",
+  "created_at_utc": "2026-08-02T04:52:56.082459+00:00",
+  "research_stage": "D1-B_UI_SUPPORT_ASSETS",
+  "input_d1a_gate": "PASS_WITH_RECOMPUTED_COMBO1_REFERENCE_SIGNALS",
+  "official_operating_model": false,
+  "dashboard_applied": false,
+  "frozen_reference_mode": true,
+  "live_extension_connected": false,
+  "candidate_count": 9,
+  "benchmark_rows": 7292,
+  "component_signal_rows": 478803,
+  "snapshot_rows": 9,
+  "date_start": "1996-12-11",
+  "date_end": "2026-07-28",
+  "source_files": {
+    "extended_frozen": {
+      "path": "macro_dashboard_kospi/data/frozen/kospi/snapshot_stage03c_extended_19961211_20260728_9d7d552362bf/frozen_kospi_macro_extended.parquet",
+      "sha256": "1d182ecf8bc1903ca9eeb085ea3ee2b5312f27e3baddfd810fd83e3bb9f2ca2d"
+    },
+    "stage06a_raw_state_dictionary": {
+      "path": "macro_dashboard_kospi/outputs/kospi/run_20260801T165904Z_stage06a_combo2_m2_m5_exhaustive_v1/06a_combo2_m2_m5_exhaustive_review/combo1_main32_raw_state_dictionary.csv",
+      "sha256": "90c4353319faea928753207e211c5405e763fb5b06e13176d24269b0fbaacc9e"
+    },
+    "stage06a_raw_state_bank": {
+      "path": "macro_dashboard_kospi/outputs/kospi/run_20260801T165904Z_stage06a_combo2_m2_m5_exhaustive_v1/06a_combo2_m2_m5_exhaustive_review/combo1_main32_raw_risk_state_bank.parquet",
+      "sha256": "144d3c84b1ec4eab75e141c504049a82b7a76146eac55144bf471a241e154936"
+    }
+  },
+  "output_files": {
+    "benchmark_close": {
+      "path": "kospi_macro5_assets/kospi_final9_benchmark_close.parquet",
+      "sha256": "10791f63cf905b15ed0a48f9f021688e047bf30505e380fbe06b08a792a2e35c",
+      "bytes": 95168
+    },
+    "component_reference_signals": {
+      "path": "kospi_macro5_assets/kospi_final9_component_reference_signals.parquet",
+      "sha256": "2fee16bab78e63b606923c9583b98576d6636ab6cf8dd26c0b4c244cb671a9c2",
+      "bytes": 807487
+    },
+    "ui_snapshot_reference": {
+      "path": "kospi_macro5_assets/kospi_final9_ui_snapshot_reference.parquet",
+      "sha256": "415c135f26c50e741330a47ab03ecc64b6f91b8f001ef77e3c20a7d707add224",
+      "bytes": 9998
+    }
+  }
+}

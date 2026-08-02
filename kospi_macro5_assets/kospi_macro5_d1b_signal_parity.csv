@@ -1,0 +1,10 @@
+candidate_id,common_rows,raw_mismatch,t1_mismatch,start_mismatch,end_mismatch,active_count_min,active_count_max
+combo1_n11_k9_l5_b984a8e53ad69a2d,7292,0,0,0,0,0,11
+combo1_n11_k8_l5_93919287424179bd,7292,0,0,0,0,0,10
+combo1_n11_k9_l6_ad654f06d0d609cb,7292,0,0,0,0,0,11
+combo1_n11_k9_l6_9f0105582a0f0745,7292,0,0,0,0,0,11
+m6::combo2_m6_k4_l2_2d90a80e824f7336,4513,0,0,0,0,0,6
+m6::combo2_m6_k4_l3_f976de57b8b4a80e,4513,0,0,0,0,0,6
+m5::combo2_m5_k2_l1_2bc7e194fdecfd9e,4513,0,0,0,0,0,5
+m10::combo2_m10_k7_l4_bbd8c760d49b44bb,4513,0,0,0,0,0,10
+m8::combo2_m8_k5_l4_cee6978af4789711,4513,0,0,0,0,0,8
