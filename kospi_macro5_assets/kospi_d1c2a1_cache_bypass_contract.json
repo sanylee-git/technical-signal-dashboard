@@ -1,0 +1,8 @@
+{
+  "provider_family_required": [
+    "yahoo",
+    "fred"
+  ],
+  "route_string_only_allowed": false,
+  "max_attempts": 2
+}

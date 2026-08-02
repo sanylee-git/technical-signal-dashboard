@@ -1,0 +1,4 @@
+{
+  "full_probe_required": true,
+  "environment_only_probe_pass_allowed": false
+}

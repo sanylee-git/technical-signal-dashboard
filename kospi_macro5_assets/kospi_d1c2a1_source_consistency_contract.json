@@ -1,0 +1,8 @@
+{
+  "canonical_groups": [
+    "canonical_kospi_ohlc",
+    "canonical_dgs10",
+    "canonical_vix"
+  ],
+  "vacuous_pass_allowed": false
+}

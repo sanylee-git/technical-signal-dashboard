@@ -86,6 +86,10 @@ def _load_final9_dictionary(ctx: D1C1Context) -> dict[str, Any]:
 
 
 def build_dependency_graph(ctx: D1C1Context) -> dict[str, Any]:
+    bundled_graph = ctx.asset_dir / "kospi_d1c1_dependency_graph.json"
+    if bundled_graph.exists():
+        return read_json(bundled_graph)
+
     final9 = _load_final9_dictionary(ctx)
     raw_dict = _load_stage06_raw_dictionary(ctx)
     raw_by_id = {str(row.combo1_id): row for row in raw_dict.itertuples(index=False)}
@@ -141,6 +145,28 @@ def build_dependency_graph(ctx: D1C1Context) -> dict[str, Any]:
     }
     graph["dependency_graph_hash"] = sha256_text(json.dumps(graph, sort_keys=True, default=str))
     return graph
+
+
+def child_combo1_specs_from_dependency_graph(graph: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    edges = graph.get("edges", [])
+    nodes = graph.get("nodes", {})
+    core_components = set(graph.get("required_core15_components", []))
+    specs: dict[str, dict[str, Any]] = {}
+    for child_id in graph.get("required_child_combo1", []):
+        node = nodes.get(child_id, {})
+        component_ids = [
+            str(edge.get("child"))
+            for edge in edges
+            if edge.get("parent") == child_id and edge.get("child") in core_components
+        ]
+        specs[child_id] = {
+            "combo1_id": child_id,
+            "component_ids": component_ids,
+            "K": int(node.get("K")),
+            "L": int(node.get("L")),
+            "component_count": int(node.get("component_count", len(component_ids))),
+        }
+    return specs
 
 
 def hysteresis_from_counts(counts: pd.Series, k: int, l: int) -> pd.Series:
@@ -199,11 +225,20 @@ def replay_frozen_signals(ctx: D1C1Context) -> dict[str, Any]:
         }
 
     final9 = _load_final9_dictionary(ctx)
-    raw_dict = _load_stage06_raw_dictionary(ctx)
     source = _load_source_base(ctx)
-    child_specs = raw_dict.set_index("combo1_id")
+    child_specs = child_combo1_specs_from_dependency_graph(graph)
 
     expanded = source.copy()
+    for child_id, child_row in child_specs.items():
+        if child_id in expanded.columns:
+            continue
+        child_frame = _compute_combo_from_components(
+            expanded,
+            list(child_row["component_ids"]),
+            int(child_row["K"]),
+            int(child_row["L"]),
+        )
+        expanded[child_id] = child_frame["raw_risk_state"].astype("float")
 
     final_rows: list[pd.DataFrame] = []
     component_rows: list[pd.DataFrame] = []

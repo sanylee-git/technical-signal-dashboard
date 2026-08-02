@@ -1,0 +1,23 @@
+{
+  "calendar_contract_version": "d1c2a2r_xkrx_calendar_v1_20260802",
+  "base_calendar_name": "XKRX",
+  "base_calendar_package": "exchange_calendars",
+  "base_calendar_version": "4.13.2",
+  "builder_python_version": "3.13.5 (v3.13.5:6cb20a219a8, Jun 11 2025, 12:23:45) [Clang 16.0.0 (clang-1600.0.26.6)]",
+  "builder_environment_path": "BUILD_ENVIRONMENT_REDACTED",
+  "generated_coverage_start": "2020-01-02",
+  "generated_coverage_end": "2027-08-02",
+  "historically_audited_start": "2024-01-01",
+  "historically_audited_end": "2026-07-28",
+  "officially_validated_through_date": "2026-07-31",
+  "base_schedule_hash": "1be4a3f59bbe153863473da00caf12a8bbb04f013cc065b3077ee1d1b237c26c",
+  "override_registry_hash": "9193b5e47336107296d862b8fba7075302e9d09a440d38f045a0fac0eeb17e08",
+  "session_asset_hash": "44e485bbb85c1507281df2febadeaa3e9179d278bbc98b9da52e8ab277c810f7",
+  "runtime_requires_exchange_calendars": false,
+  "runtime_fallback_allowed": false,
+  "runtime_hardcoded_holiday_count": 0,
+  "calendar_build_dependency_only": true,
+  "official_override_count": 4,
+  "official_override_unresolved_count": 0,
+  "calendar_contract_hash": "825d237685bc2243604a1faf4e2733090d921eb9dfe71e98cdc4bc85c2d20652"
+}

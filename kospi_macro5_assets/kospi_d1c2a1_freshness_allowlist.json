@@ -1,0 +1,24 @@
+{
+  "allowed_statuses": [
+    "FRESH"
+  ],
+  "conditional_statuses": [
+    "NO_NEW_RELEASE_EXPECTED",
+    "EXPECTED_CADENCE_LAG"
+  ],
+  "blocked_statuses": [
+    "STALE",
+    "FETCH_ERROR",
+    "SCHEMA_ERROR",
+    "INVALID_VALUE",
+    "DATE_REGRESSION",
+    "CONTRACT_UNBOUND",
+    "NOT_EVALUATED",
+    "SOURCE_CONSISTENCY_MISMATCH",
+    "FUTURE_OBSERVATION",
+    "PARTIAL_SESSION",
+    "WEEKEND_LABEL_UNRESOLVED",
+    "PROVIDER_DATE_UNMAPPABLE"
+  ],
+  "unknown_status_default": "BLOCK"
+}

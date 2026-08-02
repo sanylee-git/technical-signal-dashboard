@@ -13109,10 +13109,24 @@ def _macro5_kospi_build_component_chart(component_df: pd.DataFrame, benchmark: p
     return fig
 
 
+def _handle_kospi_macro5_probe_if_requested():
+    try:
+        probe_requested = st.query_params.get("macro5_probe") == "1"
+    except Exception:
+        probe_requested = False
+    if not probe_requested:
+        return False
+    from kospi_macro5_runtime.streamlit_cloud_probe_bridge import handle_kospi_macro5_cloud_probe
+
+    return handle_kospi_macro5_cloud_probe()
+
+
 def main(page="signal"):
     global rsi_buy_lower_global, rsi_sell_lower_global
 
     _configure_streamlit_page(page)
+    if _handle_kospi_macro5_probe_if_requested():
+        return
     st.markdown(DARK_CSS, unsafe_allow_html=True)
     if page == "market_macro":
         st.markdown("""

@@ -1,0 +1,10 @@
+{
+  "observation_week_ending_date": "2026-07-24",
+  "expected_release_date": "2026-07-29",
+  "expected_available_date": "2026-07-29",
+  "expected_krx_aligned_date": "2026-07-29",
+  "next_expected_release_date": "2026-08-05",
+  "release_contract_version": "nfci_weekly_friday_plus_3_bday_v1",
+  "official_schedule_bound": true,
+  "heuristic_14day_used": false
+}
