@@ -13253,25 +13253,245 @@ def _macro5_kospi_current_chip(candidate_id: str, live_row_map: dict[str, dict])
     return f"<span style='color:{color};font-weight:700;'>{label}</span>"
 
 
-def _macro5_kospi_build_backtest_panel(metrics: pd.DataFrame, live_row_map: dict[str, dict], selected_id: str, model_type: str) -> str:
+def _macro5_kospi_ratio_span(ratio: float, good: bool) -> str:
+    color = "#7FE7B1" if good else "#8F8F8F"
+    weight = "700" if good else "400"
+    return f"<span style='color:{color};font-size:11px;font-weight:{weight};'>({ratio:.2f}x)</span>"
+
+
+def _macro5_kospi_window_index(benchmark: pd.DataFrame, start_date, end_date) -> pd.DatetimeIndex:
+    if benchmark is None or benchmark.empty or "date" not in benchmark.columns:
+        return pd.DatetimeIndex([])
+    dates = pd.to_datetime(benchmark["date"])
+    start = pd.to_datetime(start_date)
+    end = pd.to_datetime(end_date)
+    return pd.DatetimeIndex(dates[(dates >= start) & (dates <= end)].sort_values().drop_duplicates())
+
+
+def _macro5_kospi_max_drawdown(equity: pd.Series) -> float:
+    if equity is None or equity.empty:
+        return float("nan")
+    curve = pd.Series(equity).astype(float)
+    return float((curve / curve.cummax() - 1.0).min())
+
+
+def _macro5_kospi_cycle_counts(raw_state: pd.Series, short_cycle_days: int = 10) -> tuple[int, int]:
+    if raw_state is None or raw_state.empty:
+        return 0, 0
+    state = pd.Series(raw_state).fillna(0).astype(int)
+    in_cycle = bool(state.iloc[0] == 1)
+    start_idx = 0 if in_cycle else None
+    completed = 0
+    short = 0
+    for idx in range(1, len(state)):
+        prev = int(state.iloc[idx - 1])
+        cur = int(state.iloc[idx])
+        if not in_cycle and prev == 0 and cur == 1:
+            in_cycle = True
+            start_idx = idx
+        elif in_cycle and prev == 1 and cur == 0:
+            completed += 1
+            duration = idx - (start_idx if start_idx is not None else idx)
+            if duration < short_cycle_days:
+                short += 1
+            in_cycle = False
+            start_idx = None
+    return completed, short
+
+
+def _macro5_kospi_equity_stats(
+    benchmark: pd.DataFrame,
+    signal_df: pd.DataFrame | None,
+    start_date,
+    end_date,
+    cost_bps: float = 10.0,
+    buyhold: bool = False,
+) -> dict:
+    idx = _macro5_kospi_window_index(benchmark, start_date, end_date)
+    if len(idx) == 0:
+        return {"asset": float("nan"), "mdd": float("nan"), "cagr": float("nan"), "cycle": 0, "short_cycle": 0}
+    bench = benchmark.copy()
+    bench["date"] = pd.to_datetime(bench["date"])
+    close = bench.sort_values("date").set_index("date")["kospi_close"].astype(float)
+    returns = close.pct_change().fillna(0.0).reindex(idx).fillna(0.0)
+    if buyhold:
+        position = pd.Series(1.0, index=idx)
+        raw_state = pd.Series(0, index=idx)
+        cost = pd.Series(0.0, index=idx)
+    else:
+        if signal_df is None or signal_df.empty:
+            return {"asset": float("nan"), "mdd": float("nan"), "cagr": float("nan"), "cycle": 0, "short_cycle": 0}
+        sig = signal_df.copy()
+        sig["date"] = pd.to_datetime(sig["date"])
+        sig = sig.sort_values("date").set_index("date")
+        position = sig["t1_position"].astype(float).reindex(idx)
+        if position.isna().any():
+            return {"asset": float("nan"), "mdd": float("nan"), "cagr": float("nan"), "cycle": 0, "short_cycle": 0}
+        raw_state = sig["raw_risk_state"].astype(int).reindex(idx)
+        if raw_state.isna().any():
+            return {"asset": float("nan"), "mdd": float("nan"), "cagr": 0, "cycle": 0, "short_cycle": 0}
+        cost = position.diff().abs().fillna(0.0) * (float(cost_bps) / 10000.0)
+    equity = (1.0 + returns * position - cost).cumprod() * 100.0
+    years = max((idx[-1] - idx[0]).days / 365.25, 1e-9)
+    final_asset = float(equity.iloc[-1])
+    cagr = (final_asset / 100.0) ** (1.0 / years) - 1.0
+    cycle, short_cycle = _macro5_kospi_cycle_counts(raw_state)
+    return {
+        "asset": final_asset,
+        "mdd": _macro5_kospi_max_drawdown(equity),
+        "cagr": float(cagr),
+        "cycle": int(cycle),
+        "short_cycle": int(short_cycle),
+    }
+
+
+def _macro5_kospi_build_backtest_stats(metrics: pd.DataFrame, signals: pd.DataFrame, benchmark: pd.DataFrame) -> dict:
+    bench = benchmark.copy()
+    bench["date"] = pd.to_datetime(bench["date"])
+    frozen_end = bench["date"].max()
+    frozen_start = _macro5_kospi_window_index(bench, pd.Timestamp("2008-04-01"), frozen_end).min()
+    ten_year_start = _macro5_kospi_window_index(bench, frozen_end - pd.DateOffset(years=10), frozen_end).min()
+    if pd.isna(frozen_start) or pd.isna(ten_year_start):
+        return {"candidate": {}, "hold": {}, "window": {}}
+    hold_full = _macro5_kospi_equity_stats(bench, None, frozen_start, frozen_end, buyhold=True)
+    hold_10y = _macro5_kospi_equity_stats(bench, None, ten_year_start, frozen_end, buyhold=True)
+    hold = {
+        "10Y 자산": _macro3_metric_asset(hold_10y["asset"]),
+        "전체 자산": _macro3_metric_asset(hold_full["asset"]),
+        "전체 CAGR": _macro3_metric_percent(hold_full["cagr"]),
+        "10Y MDD": _macro3_metric_percent(hold_10y["mdd"]),
+        "전체 MDD": _macro3_metric_percent(hold_full["mdd"]),
+        "전체 Risk-off": "0.0%",
+        "전체 Cycle": "-",
+        "짧은 Cycle": "-",
+        "_10y_asset_num": hold_10y["asset"],
+        "_full_asset_num": hold_full["asset"],
+        "_10y_mdd_num": hold_10y["mdd"],
+        "_full_mdd_num": hold_full["mdd"],
+    }
+    candidate = {}
+    for _, row in metrics.iterrows():
+        cid = str(row["candidate_id"])
+        sig = signals[signals["candidate_id"].astype(str).eq(cid)].copy()
+        full = _macro5_kospi_equity_stats(bench, sig, frozen_start, frozen_end)
+        ten = _macro5_kospi_equity_stats(bench, sig, ten_year_start, frozen_end)
+        candidate[cid] = {
+            "10Y 자산": _macro3_metric_asset(ten["asset"]),
+            "전체 자산": _macro3_metric_asset(full["asset"]),
+            "전체 CAGR": _macro5_kospi_fmt_pct(row.get("cagr"), 1),
+            "10Y MDD": _macro3_metric_percent(ten["mdd"]),
+            "전체 MDD": _macro5_kospi_fmt_pct(row.get("mdd"), 1),
+            "전체 Risk-off": _macro5_kospi_fmt_pct(row.get("risk_off_ratio"), 1),
+            "전체 Cycle": str(full["cycle"]),
+            "짧은 Cycle": str(full["short_cycle"]),
+            "_10y_asset_num": ten["asset"],
+            "_full_asset_num": full["asset"],
+            "_10y_mdd_num": ten["mdd"],
+            "_full_mdd_num": full["mdd"],
+        }
+    return {
+        "candidate": candidate,
+        "hold": hold,
+        "window": {
+            "frozen_start": _macro5_kospi_date_text(frozen_start),
+            "frozen_end": _macro5_kospi_date_text(frozen_end),
+            "ten_year_start": _macro5_kospi_date_text(ten_year_start),
+        },
+    }
+
+
+def _macro5_kospi_with_hold_ratio(value: str, numerator, denominator, kind: str) -> str:
+    try:
+        num = float(numerator)
+        den = float(denominator)
+        if den == 0:
+            return value
+        if kind == "mdd":
+            ratio = abs(num) / abs(den)
+            return f"{value} {_macro5_kospi_ratio_span(ratio, ratio <= 0.5)}"
+        ratio = num / den
+        return f"{value} {_macro5_kospi_ratio_span(ratio, ratio >= 1.5)}"
+    except Exception:
+        return value
+
+
+def _macro5_kospi_build_backtest_panel(
+    metrics: pd.DataFrame,
+    live_row_map: dict[str, dict],
+    selected_id: str,
+    model_type: str,
+    backtest_stats: dict | None = None,
+) -> str:
     model_type = _macro5_kospi_model_type(model_type)
     rows_html = []
+    backtest_stats = backtest_stats or {}
+    hold_metrics = backtest_stats.get("hold", {})
+    candidate_stats = backtest_stats.get("candidate", {})
     subset = metrics[metrics["model_type"].map(_macro5_kospi_model_type).eq(model_type)].sort_values("slot")
     for _, row in subset.iterrows():
         candidate_id = str(row["candidate_id"])
         is_selected = candidate_id == str(selected_id)
         bg = "rgba(120,126,231,0.16)" if is_selected else "transparent"
         border = "1px solid rgba(120,126,231,0.34)" if is_selected else "1px solid transparent"
-        label = f"{_macro5_kospi_escape(row.get('role'))} <span style='font-size:10.5px;color:rgba(255,255,255,0.55);'>({_macro5_kospi_model_type(row.get('model_type')).upper()} {int(row.get('slot'))})</span>"
+        try:
+            kl_text = f"K{int(row.get('K'))}/L{int(row.get('L'))}"
+        except Exception:
+            kl_text = "K/L"
+        label = (
+            f"{_macro5_kospi_escape(_macro5_kospi_preset_label(row))} "
+            f"<span style='font-size:10.5px;color:rgba(255,255,255,0.55);'>{kl_text}</span>"
+        )
+        stats = candidate_stats.get(candidate_id, {})
+        asset_10y = _macro5_kospi_with_hold_ratio(
+            stats.get("10Y 자산", "-"),
+            stats.get("_10y_asset_num"),
+            hold_metrics.get("_10y_asset_num"),
+            "asset",
+        )
+        asset_full = _macro5_kospi_with_hold_ratio(
+            stats.get("전체 자산", "-"),
+            stats.get("_full_asset_num"),
+            hold_metrics.get("_full_asset_num"),
+            "asset",
+        )
+        mdd_10y = _macro5_kospi_with_hold_ratio(
+            stats.get("10Y MDD", "-"),
+            stats.get("_10y_mdd_num"),
+            hold_metrics.get("_10y_mdd_num"),
+            "mdd",
+        )
+        mdd_full = _macro5_kospi_with_hold_ratio(
+            stats.get("전체 MDD", "-"),
+            stats.get("_full_mdd_num"),
+            hold_metrics.get("_full_mdd_num"),
+            "mdd",
+        )
         rows_html.append(
             f"<tr style='background:{bg};border-top:{border};border-bottom:{border};'>"
             f"<td style='padding:7px 8px;color:#EDEDED;font-weight:700;line-height:1.28;'>{label}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{_macro5_kospi_fmt_pct(row.get('cagr'), 2)}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{_macro5_kospi_fmt_pct(row.get('mdd'), 2)}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{_macro5_kospi_fmt_num(row.get('calmar'), 2)}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{_macro5_kospi_fmt_pct(row.get('risk_off_ratio'), 1)}</td>"
-            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{_macro5_kospi_fmt_num(row.get('annual_turnover'), 2)}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{asset_10y}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{asset_full}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{stats.get('전체 CAGR', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{mdd_10y}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{mdd_full}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{stats.get('전체 Risk-off', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{stats.get('전체 Cycle', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{stats.get('짧은 Cycle', '-')}</td>"
             f"<td style='padding:7px 8px;color:#D6D6D6;text-align:center;'>{_macro5_kospi_current_chip(candidate_id, live_row_map)}</td></tr>"
+        )
+    if rows_html:
+        rows_html.append(
+            "<tr style='background:rgba(255,255,255,0.035);border-top:1px solid rgba(255,255,255,0.12);'>"
+            "<td style='padding:7px 8px;color:#EDEDED;font-weight:700;line-height:1.28;'>KOSPI 홀드</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{hold_metrics.get('10Y 자산', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{hold_metrics.get('전체 자산', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{hold_metrics.get('전체 CAGR', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{hold_metrics.get('10Y MDD', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{hold_metrics.get('전체 MDD', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{hold_metrics.get('전체 Risk-off', '0.0%')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{hold_metrics.get('전체 Cycle', '-')}</td>"
+            f"<td style='padding:7px 8px;color:#D6D6D6;text-align:right;'>{hold_metrics.get('짧은 Cycle', '-')}</td>"
+            "<td style='padding:7px 8px;color:#D6D6D6;text-align:center;'>-</td></tr>"
         )
     if not rows_html:
         return ""
@@ -13279,11 +13499,14 @@ def _macro5_kospi_build_backtest_panel(metrics: pd.DataFrame, live_row_map: dict
         "<table style='width:100%;border-collapse:collapse;font-size:12px;'>"
         "<thead><tr>"
         "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>역할 / 후보</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>10Y 자산</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>전체 자산</th>"
         "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>전체 CAGR</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>10Y MDD</th>"
         "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>전체 MDD</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>Calmar</th>"
         "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>전체 Risk-off</th>"
-        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>연 전환</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>전체 Cycle</th>"
+        "<th style='text-align:right;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>짧은 Cycle</th>"
         "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);'>현재</th>"
         f"</tr></thead><tbody>{''.join(rows_html)}</tbody></table>"
     )
@@ -14978,6 +15201,7 @@ def main(page="signal"):
             _metrics5k["_model_type_norm"] = _metrics5k["model_type"].map(_macro5_kospi_model_type)
             _combo2_order5k = _metrics5k[_metrics5k["_model_type_norm"].eq("combo2")]["candidate_id"].tolist()
             _combo1_order5k = _metrics5k[_metrics5k["_model_type_norm"].eq("combo1")]["candidate_id"].tolist()
+            _backtest_stats5k = _macro5_kospi_build_backtest_stats(_metrics5k, _signals5k, _benchmark5k)
             _separator5k = "__macro5_kospi_combo1_separator__"
             _preset_order5k = _combo2_order5k + _combo1_order5k
             _candidate_map5k = {row["candidate_id"]: row for _, row in _metrics5k.iterrows()}
@@ -15131,8 +15355,8 @@ def main(page="signal"):
                 ("n/m", int(_selected_row5k["m_or_n"])),
             ]
 
-            _combo2_bt5k = _macro5_kospi_build_backtest_panel(_metrics5k, _live_row_map5k, _macro5_kospi_preset, "combo2")
-            _combo1_bt5k = _macro5_kospi_build_backtest_panel(_metrics5k, _live_row_map5k, _macro5_kospi_preset, "combo1")
+            _combo2_bt5k = _macro5_kospi_build_backtest_panel(_metrics5k, _live_row_map5k, _macro5_kospi_preset, "combo2", _backtest_stats5k)
+            _combo1_bt5k = _macro5_kospi_build_backtest_panel(_metrics5k, _live_row_map5k, _macro5_kospi_preset, "combo1", _backtest_stats5k)
             if _combo2_bt5k:
                 with st.expander("백테스트 비교 보기 · 조합2", expanded=False):
                     st.markdown(_combo2_bt5k, unsafe_allow_html=True)

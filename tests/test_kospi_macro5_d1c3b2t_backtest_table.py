@@ -1,0 +1,114 @@
+import ast
+import hashlib
+from pathlib import Path
+
+import pandas as pd
+
+import technical_signal_dashboard as dash
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE = ROOT / "technical_signal_dashboard.py"
+
+
+def _function_hash(name: str) -> str:
+    source = SOURCE.read_text()
+    module = ast.parse(source)
+    for node in module.body:
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return hashlib.sha256(ast.get_source_segment(source, node).encode()).hexdigest()
+        if isinstance(node, ast.FunctionDef) and node.name == "main":
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.FunctionDef) and sub.name == name:
+                    return hashlib.sha256(ast.get_source_segment(source, sub).encode()).hexdigest()
+    raise AssertionError(f"function not found: {name}")
+
+
+def _assets():
+    assets = dash._load_macro5_kospi_frozen_assets()
+    metrics = assets["metrics"].sort_values("slot").reset_index(drop=True)
+    stats = dash._macro5_kospi_build_backtest_stats(metrics, assets["signals"], assets["benchmark"])
+    return assets, metrics, stats
+
+
+def test_b2t_backtest_stats_use_frozen_windows_and_existing_metric_parity() -> None:
+    _, metrics, stats = _assets()
+
+    assert stats["window"]["frozen_start"] == "2008-04-01"
+    assert stats["window"]["frozen_end"] == "2026-07-28"
+    assert stats["window"]["ten_year_start"] == "2016-07-28"
+    assert stats["hold"]["전체 Risk-off"] == "0.0%"
+    assert stats["hold"]["전체 Cycle"] == "-"
+
+    for _, row in metrics.iterrows():
+        candidate_stats = stats["candidate"][row["candidate_id"]]
+        assert candidate_stats["전체 CAGR"] == dash._macro5_kospi_fmt_pct(row["cagr"], 1)
+        assert candidate_stats["전체 MDD"] == dash._macro5_kospi_fmt_pct(row["mdd"], 1)
+        assert candidate_stats["전체 Risk-off"] == dash._macro5_kospi_fmt_pct(row["risk_off_ratio"], 1)
+
+
+def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> None:
+    _, metrics, stats = _assets()
+    live_map = {
+        row["candidate_id"]: {
+            "calculable": True,
+            "raw_risk_state": 1,
+            "active_count": int(row["K"]),
+            "component_count": int(row["m_or_n"]),
+        }
+        for _, row in metrics.iterrows()
+    }
+
+    combo2 = dash._macro5_kospi_build_backtest_panel(metrics, live_map, metrics.iloc[4]["candidate_id"], "combo2", stats)
+    combo1 = dash._macro5_kospi_build_backtest_panel(metrics, live_map, metrics.iloc[0]["candidate_id"], "combo1", stats)
+
+    required = [
+        "역할 / 후보",
+        "10Y 자산",
+        "전체 자산",
+        "전체 CAGR",
+        "10Y MDD",
+        "전체 MDD",
+        "전체 Risk-off",
+        "전체 Cycle",
+        "짧은 Cycle",
+        "현재",
+    ]
+    for html in (combo2, combo1):
+        for column in required:
+            assert column in html
+        assert "20Y" not in html
+        assert "연 전환" not in html
+        assert "KOSPI 홀드" in html
+        assert "(2." in html or "(1." in html or "(0." in html
+
+    assert combo2.count("<tr") == 7
+    assert combo1.count("<tr") == 6
+    assert combo2.rfind("KOSPI 홀드") > combo2.rfind("[조합2]")
+    assert combo1.rfind("KOSPI 홀드") > combo1.rfind("[조합1]")
+
+
+def test_b2t_current_column_still_uses_live_active_denominator() -> None:
+    _, metrics, stats = _assets()
+    selected_id = metrics.iloc[0]["candidate_id"]
+    live_map = {
+        selected_id: {
+            "calculable": True,
+            "raw_risk_state": 1,
+            "active_count": 9,
+            "component_count": 11,
+        }
+    }
+
+    html = dash._macro5_kospi_build_backtest_panel(metrics.iloc[[0]], live_map, selected_id, "combo1", stats)
+
+    assert "9/11" in html
+    assert "Risk-off</span>" not in html
+
+
+def test_b2t_chart_macro4_and_runtime_functions_are_unchanged() -> None:
+    assert _function_hash("_macro5_kospi_build_main_chart") == "70b00cb88c2137e5d934226da074a05f164d2ae284c2bf1ff8736590c301cde6"
+    assert _function_hash("_macro5_kospi_build_component_chart") == "9f47837a0df0cbe1cfda04f178ef95d3c43eb035efd2506a77d5c9b404ab7cb4"
+    assert _function_hash("render_macro6_proxy_final_section") == "17a30b1e4cc40baf30a74cbced470f90a7de66ae9e1c0465f2b8c2ea1385055e"
+    assert _function_hash("_build_macro6_backtest_panel") == "27dbbbcff47e77625d6030d2029ba7377a7ec6dec010c28a1e84ced2d69ba7ef"
+    assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"
