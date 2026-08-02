@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 
 from .canonical_registry import build_canonical_registry, consistency_from_registry
-from .engine import D1C1Context
+from .engine import D1C1Context, read_json
 from .freshness import evaluate_source_freshness
 from .freshness_snapshot import final9_required_sources, qualify_candidates
 from .krx_calendar import kospi_completed_sessions, kospi_latest_completed_session
@@ -107,6 +107,11 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
         "candidate_rows": _candidate_rows(candidate_freshness),
         "source_rows": source_rows,
         "group_summary": group_summary,
+        "core15_component_history": _core15_component_history(live["core15"]),
+        "candidate_signal_history": _candidate_signal_history(ctx, live["final9"]),
+        "child_combo1_history": _child_combo1_history(live["child_combo1"]),
+        "component_signal_history": _component_signal_history(ctx, live),
+        "benchmark_close_history": _benchmark_close_history(transformed),
         "calculation_status": "CALCULABLE",
         "error_message": "",
     }
@@ -144,3 +149,166 @@ def _candidate_rows(candidate_freshness: pd.DataFrame) -> list[dict[str, Any]]:
     ]
     available = [col for col in columns if col in candidate_freshness.columns]
     return candidate_freshness[available].to_dict("records")
+
+
+def _candidate_signal_history(ctx: D1C1Context, final9_live: pd.DataFrame) -> pd.DataFrame:
+    frozen = _read_asset_frame(ctx, "kospi_final9_reference_signals.parquet")
+    metrics = pd.read_csv(ctx.asset_dir / "kospi_final9_candidate_metrics.csv")
+    slot_by_id = dict(zip(metrics["candidate_id"], metrics["slot"]))
+    live = final9_live.copy()
+    live["date"] = pd.to_datetime(live["date"]).dt.normalize()
+    live["slot"] = live["candidate_id"].map(slot_by_id).astype("Int16")
+    if "on_count" not in live:
+        live["on_count"] = live.get("active_count")
+    live = live[
+        [
+            "date",
+            "candidate_id",
+            "model_type",
+            "slot",
+            "raw_risk_state",
+            "on_count",
+            "t1_position",
+            "risk_start_signal",
+            "risk_end_signal",
+            "valid_signal",
+            "active_count",
+        ]
+    ].copy()
+    return _append_live_tail(frozen, live, ["candidate_id", "date"])
+
+
+def _core15_component_history(core_live: pd.DataFrame) -> pd.DataFrame:
+    if core_live is None or core_live.empty:
+        return pd.DataFrame()
+    out = core_live.copy()
+    out["date"] = pd.to_datetime(out["date"]).dt.normalize()
+    columns = [
+        "date",
+        "component_id",
+        "risk_state",
+        "risk_start_signal",
+        "risk_end_signal",
+        "valid_signal",
+        "calculation_status",
+        "calculation_reason",
+    ]
+    return out[[col for col in columns if col in out.columns]].sort_values(["component_id", "date"]).reset_index(drop=True)
+
+
+def _child_combo1_history(child_live: pd.DataFrame) -> pd.DataFrame:
+    if child_live is None or child_live.empty:
+        return pd.DataFrame()
+    out = child_live.copy()
+    out["date"] = pd.to_datetime(out["date"]).dt.normalize()
+    columns = [
+        "date",
+        "combo1_id",
+        "component_count",
+        "active_count",
+        "raw_risk_state",
+        "risk_start_signal",
+        "risk_end_signal",
+        "valid_signal",
+        "calculation_status",
+        "calculation_reason",
+    ]
+    return out[[col for col in columns if col in out.columns]].sort_values(["combo1_id", "date"]).reset_index(drop=True)
+
+
+def _component_signal_history(ctx: D1C1Context, live: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    frozen = _read_asset_frame(ctx, "kospi_final9_component_reference_signals.parquet")
+    final9 = read_json(ctx.asset_dir / "kospi_final9_component_dictionary.json")
+    metrics = pd.read_csv(ctx.asset_dir / "kospi_final9_candidate_metrics.csv")
+    slot_by_id = dict(zip(metrics["candidate_id"], metrics["slot"]))
+    meta = (
+        frozen.sort_values("date")
+        .drop_duplicates(["parent_candidate_id", "component_id"], keep="last")
+        .set_index(["parent_candidate_id", "component_id"])
+    )
+    core = live["core15"].copy()
+    child = live["child_combo1"].copy()
+    if not core.empty:
+        core["date"] = pd.to_datetime(core["date"]).dt.normalize()
+    if not child.empty:
+        child["date"] = pd.to_datetime(child["date"]).dt.normalize()
+
+    frames: list[pd.DataFrame] = []
+    for parent_id, spec in final9.items():
+        parent_model_type = str(spec["model_type"])
+        for order, component_id in enumerate(spec.get("component_ids", []), start=1):
+            if parent_model_type == "combo1":
+                source = core.loc[core["component_id"].eq(component_id)].copy()
+                value_col = "risk_state"
+            else:
+                source = child.loc[child["combo1_id"].eq(component_id)].copy()
+                value_col = "raw_risk_state"
+            if source.empty:
+                continue
+            template = _component_template(meta, parent_id, component_id)
+            part = pd.DataFrame(
+                {
+                    "date": source["date"],
+                    "component_risk_state": source[value_col],
+                    "component_active_count": pd.NA,
+                    "parent_candidate_id": parent_id,
+                    "parent_slot": slot_by_id.get(parent_id),
+                    "parent_model_type": parent_model_type,
+                    "component_id": component_id,
+                    "component_order": order,
+                    "component_label": template.get("component_label", component_id),
+                    "component_K": template.get("component_K", pd.NA),
+                    "component_L": template.get("component_L", pd.NA),
+                    "valid_signal": source.get("valid_signal", pd.Series(True, index=source.index)),
+                    "reference_type": template.get("reference_type", ""),
+                }
+            )
+            frames.append(part)
+    live_components = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    return _append_live_tail(frozen, live_components, ["parent_candidate_id", "component_id", "date"])
+
+
+def _benchmark_close_history(transformed: pd.DataFrame) -> pd.DataFrame:
+    out = transformed[["date", "kospi_close"]].copy()
+    out["date"] = pd.to_datetime(out["date"]).dt.normalize()
+    return out.drop_duplicates(["date"], keep="first").sort_values("date").reset_index(drop=True)
+
+
+def _read_asset_frame(ctx: D1C1Context, filename: str) -> pd.DataFrame:
+    frame = pd.read_parquet(ctx.asset_dir / filename)
+    if "date" in frame:
+        frame["date"] = pd.to_datetime(frame["date"]).dt.normalize()
+    return frame
+
+
+def _append_live_tail(frozen: pd.DataFrame, live: pd.DataFrame, key_cols: list[str]) -> pd.DataFrame:
+    frozen = frozen.copy()
+    live = live.copy()
+    frozen["date"] = pd.to_datetime(frozen["date"]).dt.normalize()
+    live["date"] = pd.to_datetime(live["date"]).dt.normalize()
+    cutoff = frozen["date"].max()
+    tail = live.loc[live["date"] > cutoff].copy()
+    if tail.empty:
+        return frozen.sort_values(key_cols).drop_duplicates(key_cols, keep="first").reset_index(drop=True)
+    columns = list(dict.fromkeys([*frozen.columns.tolist(), *tail.columns.tolist()]))
+    frozen_aligned = frozen.reindex(columns=columns)
+    tail_aligned = tail.reindex(columns=columns)
+    all_na_columns = [
+        column
+        for column in columns
+        if frozen_aligned[column].isna().all() and tail_aligned[column].isna().all()
+    ]
+    concat_columns = [column for column in columns if column not in all_na_columns]
+    combined = pd.concat([frozen_aligned[concat_columns], tail_aligned[concat_columns]], ignore_index=True)
+    for column in all_na_columns:
+        combined[column] = pd.NA
+    combined = combined.reindex(columns=columns)
+    return combined.sort_values(key_cols).drop_duplicates(key_cols, keep="first").reset_index(drop=True)
+
+
+def _component_template(meta: pd.DataFrame, parent_id: str, component_id: str) -> dict[str, Any]:
+    try:
+        row = meta.loc[(parent_id, component_id)]
+        return row.to_dict()
+    except KeyError:
+        return {}

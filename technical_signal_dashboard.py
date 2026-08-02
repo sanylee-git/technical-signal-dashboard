@@ -14647,8 +14647,17 @@ def main(page="signal"):
             _live_row_map5k = {}
             if isinstance(_live5k, dict):
                 _live_row_map5k = {str(row.get("candidate_id")): row for row in _live5k.get("candidate_rows", [])}
+            _live_history_ready5k = bool(
+                isinstance(_live5k, dict)
+                and isinstance(_live5k.get("candidate_signal_history"), pd.DataFrame)
+                and isinstance(_live5k.get("component_signal_history"), pd.DataFrame)
+                and isinstance(_live5k.get("benchmark_close_history"), pd.DataFrame)
+                and not _live5k["candidate_signal_history"].empty
+                and not _live5k["component_signal_history"].empty
+                and not _live5k["benchmark_close_history"].empty
+            )
             _live_selected5k = _live_row_map5k.get(_macro5_kospi_preset)
-            _live_selected_ok5k = bool(_live_selected5k and _live_selected5k.get("calculable"))
+            _live_selected_ok5k = bool(_live_selected5k and _live_selected5k.get("calculable") and _live_history_ready5k)
             if _live_selected_ok5k:
                 _display_basis5k = str(_live_selected5k.get("basis_date") or "—")
                 _display_raw5k = _macro5_kospi_state_label(_live_selected5k.get("raw_risk_state"))
@@ -14684,8 +14693,7 @@ def main(page="signal"):
                 st.caption(f"reference source: {_reference_label5k} · Live Shadow 상태 · freshness={_display_freshness5k} · 성과/차트는 Frozen 기준")
             else:
                 st.caption(f"reference source: {_reference_label5k} · Live 상태 계산 불가 · Frozen 성과/차트 유지")
-                if _live_error5k:
-                    st.warning(f"Live 상태를 계산할 수 없습니다: {_live_error5k[:180]}")
+                st.warning(f"Live 상태를 계산할 수 없습니다: {(_live_error5k or 'Live history unavailable')[:180]}")
 
             _bt_metrics5k = [
                 ("CAGR", _macro5_kospi_fmt_pct(_selected_row5k["cagr"])),
@@ -14751,6 +14759,20 @@ def main(page="signal"):
                 st.dataframe(_status_view5k, width="stretch", hide_index=True)
 
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            if _live_history_ready5k:
+                _signals5k = _live5k["candidate_signal_history"].copy()
+                _components5k = _live5k["component_signal_history"].copy()
+                _benchmark5k = _live5k["benchmark_close_history"].copy()
+                for _history5k in (_signals5k, _components5k, _benchmark5k):
+                    if "date" in _history5k.columns:
+                        _history5k["date"] = pd.to_datetime(_history5k["date"])
+                _candidate_signal5k = _signals5k[_signals5k["candidate_id"] == _macro5_kospi_preset].copy()
+                _candidate_signal5k = _macro5_kospi_with_events(_candidate_signal5k)
+                _candidate_components5k = _components5k[_components5k["parent_candidate_id"] == _macro5_kospi_preset].copy()
+            else:
+                _candidate_signal5k = pd.DataFrame()
+                _candidate_components5k = pd.DataFrame()
+                _benchmark5k = pd.DataFrame()
             _chart_label5k = f"{_macro5_kospi_preset_label(_selected_row5k)} · K{int(_selected_row5k['K'])}/L{int(_selected_row5k['L'])}"
             _main_fig5k = _macro5_kospi_build_main_chart(
                 _candidate_signal5k,
