@@ -58,6 +58,9 @@ def test_macro5_b1_backtest_panel_splits_models_and_hides_internal_fields() -> N
                 "model_type": "combo2",
                 "slot": 1,
                 "role": "균형",
+                "m_or_n": 6,
+                "K": 4,
+                "L": 2,
                 "suffix": "hidden_suffix",
                 "cagr": 0.21,
                 "mdd": -0.12,
@@ -70,6 +73,9 @@ def test_macro5_b1_backtest_panel_splits_models_and_hides_internal_fields() -> N
                 "model_type": "combo1",
                 "slot": 6,
                 "role": "방어",
+                "m_or_n": 11,
+                "K": 9,
+                "L": 5,
                 "suffix": "hidden_suffix",
                 "cagr": 0.19,
                 "mdd": -0.13,
@@ -163,7 +169,7 @@ def test_macro5_b1_chart_and_macro4_functions_are_unchanged() -> None:
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"
     assert _function_hash("_build_macro6_component_chart") == "68f5010937c9ffa09b9ad498c4982e500b492e055d6b27a3c00d62d1b4d15e21"
     assert _function_hash("_build_macro6_indicator_chart") == "8ef3b8c4e9de8cfe9951d7a9520ad4670dd0fea97e3890b8b9b329f1f90ae987"
-    assert _function_hash("render_macro6_proxy_final_section") == "17a30b1e4cc40baf30a74cbced470f90a7de66ae9e1c0465f2b8c2ea1385055e"
-    assert _function_hash("_build_macro6_status_panel") == "2ca3456d6dbeec545c6dfec040f17d47d53c5cb483f62f3a7e74a316dc8bf5f9"
-    assert _function_hash("_build_macro6_backtest_panel") == "27dbbbcff47e77625d6030d2029ba7377a7ec6dec010c28a1e84ced2d69ba7ef"
+    assert _function_hash("render_macro6_proxy_final_section") == "41d544e634aff84aabb00618f628b48ee08d16a552ebe7f26b0d99dd13b06e31"
+    assert _function_hash("_build_macro6_status_panel") == "e868f074d99338f1a14af8bb183ffc278bf390ec6acbe7eb4eb0df4d7dec88f8"
+    assert _function_hash("_build_macro6_backtest_panel") == "62f0415568d8dea1ed8f6ba00edbd69f83397f40cfef7addc0b78b8101decb40"
     assert _function_hash("_macro6_state_duration_html") == "e407e25198a7c1d8d21106ae1037c9e504c2231a547dd4aacee49d48bac899fb"

@@ -84,8 +84,8 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
 
     assert combo2.count("<tr") == 7
     assert combo1.count("<tr") == 6
-    assert combo2.rfind("KOSPI 홀드") > combo2.rfind("[조합2]")
-    assert combo1.rfind("KOSPI 홀드") > combo1.rfind("[조합1]")
+    assert combo2.find("KOSPI 홀드") < combo2.find("[조합2]")
+    assert combo1.find("KOSPI 홀드") < combo1.find("[조합1]")
 
 
 def test_b2t_current_column_still_uses_live_active_denominator() -> None:
@@ -109,6 +109,6 @@ def test_b2t_current_column_still_uses_live_active_denominator() -> None:
 def test_b2t_chart_macro4_and_runtime_functions_are_unchanged() -> None:
     assert _function_hash("_macro5_kospi_build_main_chart") == "70b00cb88c2137e5d934226da074a05f164d2ae284c2bf1ff8736590c301cde6"
     assert _function_hash("_macro5_kospi_build_component_chart") == "9f47837a0df0cbe1cfda04f178ef95d3c43eb035efd2506a77d5c9b404ab7cb4"
-    assert _function_hash("render_macro6_proxy_final_section") == "17a30b1e4cc40baf30a74cbced470f90a7de66ae9e1c0465f2b8c2ea1385055e"
-    assert _function_hash("_build_macro6_backtest_panel") == "27dbbbcff47e77625d6030d2029ba7377a7ec6dec010c28a1e84ced2d69ba7ef"
+    assert _function_hash("render_macro6_proxy_final_section") == "41d544e634aff84aabb00618f628b48ee08d16a552ebe7f26b0d99dd13b06e31"
+    assert _function_hash("_build_macro6_backtest_panel") == "62f0415568d8dea1ed8f6ba00edbd69f83397f40cfef7addc0b78b8101decb40"
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"

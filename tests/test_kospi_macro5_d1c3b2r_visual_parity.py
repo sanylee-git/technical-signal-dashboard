@@ -63,8 +63,8 @@ def test_b2r_status_wording_removes_duplicate_technical_phrases() -> None:
     html = dash._macro5_kospi_current_status_html(selected, live, 11, True, ["신용 스트레스", "KOSPI 지수"])
 
     assert "현재 플래그</b> 9 / 11 ON (신용 스트레스, KOSPI 지수)" in html
-    assert "현재 상태 시작일</b> 2026-05-26" in html
-    assert "지속 거래일</b> 47" in html
+    assert "현재 상태 시작일</b> <span style='color:#FF8C69;font-weight:700;'>2026-05-26</span>" in html
+    assert "지속 거래일</b> <span style='color:#FF8C69;font-weight:700;'>47</span>" in html
     assert "실행 상태</b> 비투자" in html
     assert "T+1" not in html
     assert "47거래일 지속" not in html
@@ -126,13 +126,13 @@ def test_b2r_render_section_removes_general_technical_captions_and_metric_card()
 
 
 def test_b2r_preset_main_alias_uses_fixed_slots() -> None:
-    combo2 = pd.Series({"model_type": "combo2", "slot": 5, "role": "균형·강건"})
-    combo1 = pd.Series({"model_type": "combo1", "slot": 1, "role": "균형 코어"})
-    other = pd.Series({"model_type": "combo2", "slot": 6, "role": "성과 코어"})
+    combo2 = pd.Series({"model_type": "combo2", "slot": 5, "role": "균형·강건", "m_or_n": 6, "K": 4, "L": 2})
+    combo1 = pd.Series({"model_type": "combo1", "slot": 1, "role": "균형 코어", "m_or_n": 11, "K": 9, "L": 5})
+    other = pd.Series({"model_type": "combo2", "slot": 6, "role": "성과 코어", "m_or_n": 6, "K": 4, "L": 3})
 
-    assert dash._macro5_kospi_preset_label(combo2) == "[조합2] Main"
-    assert dash._macro5_kospi_preset_label(combo1) == "[조합1] Main"
-    assert dash._macro5_kospi_preset_label(other) == "[조합2] 성과 코어"
+    assert dash._macro5_kospi_preset_label(combo2) == "[조합2] Main (조합1 6개/K4/L2)"
+    assert dash._macro5_kospi_preset_label(combo1) == "[조합1] Main (지표 11개/K9/L5)"
+    assert dash._macro5_kospi_preset_label(other) == "[조합2] 성과 코어 (조합1 6개/K4/L3)"
 
 
 def test_b2r_chart_and_macro4_functions_are_unchanged() -> None:
@@ -141,4 +141,4 @@ def test_b2r_chart_and_macro4_functions_are_unchanged() -> None:
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"
     assert _function_hash("_build_macro6_component_chart") == "68f5010937c9ffa09b9ad498c4982e500b492e055d6b27a3c00d62d1b4d15e21"
     assert _function_hash("_build_macro6_indicator_chart") == "8ef3b8c4e9de8cfe9951d7a9520ad4670dd0fea97e3890b8b9b329f1f90ae987"
-    assert _function_hash("render_macro6_proxy_final_section") == "17a30b1e4cc40baf30a74cbced470f90a7de66ae9e1c0465f2b8c2ea1385055e"
+    assert _function_hash("render_macro6_proxy_final_section") == "41d544e634aff84aabb00618f628b48ee08d16a552ebe7f26b0d99dd13b06e31"
