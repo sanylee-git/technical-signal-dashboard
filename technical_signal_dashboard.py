@@ -6441,19 +6441,25 @@ _MACRO3_BACKTEST_GROUP_BCD = (
 )
 _MACRO6_COMBO2_CANDIDATES = (
     ("macro6_combo2_1", "m8_8112998890601066", "Main"),
+    ("macro6_combo2_6", "m5_5010704845", "고수익 방어형"),
     ("macro6_combo2_2", "m6_6624758514725359", "시장참여형"),
     ("macro6_combo2_3", "m7_7836479199389981", "안정 방어형"),
     ("macro6_combo2_4", "m7_7304308638289210", "고수익형"),
     ("macro6_combo2_5", "m4_4001137875", "T+2 균형형"),
-    ("macro6_combo2_6", "m5_5010704845", "고수익 방어형"),
 )
 _MACRO6_COMBO1_CANDIDATES = (
     ("macro6_combo1_1", "combo1_proxy_540347d549244000", "Main"),
+    ("macro6_combo1_4", "combo1_proxy_f37033c32516e147", "강방어형"),
     ("macro6_combo1_2", "combo1_proxy_ece4aa198a4060ff", "수익형"),
     ("macro6_combo1_3", "combo1_proxy_08160f7db8770aa9", "균형 방어형"),
-    ("macro6_combo1_4", "combo1_proxy_f37033c32516e147", "강방어형"),
     ("macro6_combo1_5", "combo1_proxy_c3a64264c2e842f5", "저이탈형"),
 )
+_MACRO6_DISPLAY_LABEL_OVERRIDES = {
+    "m8_8112998890601066": "[조합2] Main1 수익·방어 균형형 (조합1 8개/K6/L5)",
+    "m5_5010704845": "[조합2] Main2 고수익 방어형 (조합1 5개/K3/L2)",
+    "combo1_proxy_540347d549244000": "[조합1] Main1 핵심 리스크 균형형 (지표 4개/K3/L2)",
+    "combo1_proxy_f37033c32516e147": "[조합1] Main2 강방어형 (지표 7개/K4/L3)",
+}
 _MACRO6_COMBO2_ORDER = tuple(key for key, _, _ in _MACRO6_COMBO2_CANDIDATES)
 _MACRO6_COMBO1_ORDER = tuple(key for key, _, _ in _MACRO6_COMBO1_CANDIDATES)
 _MACRO3_INDICATOR_ORDER = [
@@ -7275,7 +7281,7 @@ def _macro6_metrics_from_rows(primary: dict, secondary: dict | None = None) -> d
 def _macro6_unavailable_preset(preset_key: str, candidate_key: str, role: str, group_label: str, reason: str) -> dict:
     return {
         "kind": "unavailable",
-        "label": f"{group_label} · {role} ({candidate_key})",
+        "label": _MACRO6_DISPLAY_LABEL_OVERRIDES.get(str(candidate_key), f"{group_label} · {role} ({candidate_key})"),
         "benchmark": "S&P500",
         "candidate_key": candidate_key,
         "combo_id": candidate_key,
@@ -8717,6 +8723,9 @@ def _macro6_component_data_status(
 
 
 def _macro6_preset_display_label(cfg: dict) -> str:
+    candidate_key = str(cfg.get("candidate_key") or cfg.get("combo_id") or "")
+    if candidate_key in _MACRO6_DISPLAY_LABEL_OVERRIDES:
+        return _MACRO6_DISPLAY_LABEL_OVERRIDES[candidate_key]
     group = "조합2" if cfg.get("kind") == "combo2_final8" or cfg.get("components") else "조합1"
     unit = "조합1" if group == "조합2" else "지표"
     role = str(cfg.get("role_tags") or "").strip() or str(cfg.get("label") or "").strip() or "후보"
@@ -13156,6 +13165,20 @@ def _macro5_kospi_suffix(candidate_id: str) -> str:
     return str(candidate_id).split("_")[-1][-8:]
 
 
+_MACRO5_KOSPI_DISPLAY_LABEL_OVERRIDES = {
+    "m6::combo2_m6_k4_l2_2d90a80e824f7336": "[조합2] Main1 강건·안정 균형형 (조합1 6개/K4/L2)",
+    "m5::combo2_m5_k2_l1_2bc7e194fdecfd9e": "[조합2] Main2 MDD·Calmar 앵커 (조합1 5개/K2/L1)",
+    "combo1_n11_k9_l5_b984a8e53ad69a2d": "[조합1] Main1 강건·균형 코어형 (지표 11개/K9/L5)",
+    "combo1_n11_k8_l5_93919287424179bd": "[조합1] Main2 방어·효율 코어형 (지표 11개/K8/L5)",
+}
+_MACRO5_KOSPI_ORDER_OVERRIDES = {
+    "combo1_n11_k9_l5_b984a8e53ad69a2d": 0,
+    "combo1_n11_k8_l5_93919287424179bd": 1,
+    "m6::combo2_m6_k4_l2_2d90a80e824f7336": 0,
+    "m5::combo2_m5_k2_l1_2bc7e194fdecfd9e": 1,
+}
+
+
 def _macro5_kospi_escape(value) -> str:
     text = "" if value is None or pd.isna(value) else str(value)
     return (
@@ -13173,6 +13196,9 @@ def _macro5_kospi_model_type(value) -> str:
 
 
 def _macro5_kospi_preset_label(row: pd.Series | dict, component_count: int | None = None) -> str:
+    candidate_id = str(row.get("candidate_id") or "")
+    if candidate_id in _MACRO5_KOSPI_DISPLAY_LABEL_OVERRIDES:
+        return _MACRO5_KOSPI_DISPLAY_LABEL_OVERRIDES[candidate_id]
     model_type = _macro5_kospi_model_type(row["model_type"])
     prefix = "조합1" if model_type == "combo1" else "조합2"
     unit = "지표" if model_type == "combo1" else "조합1"
@@ -13195,6 +13221,21 @@ def _macro5_kospi_preset_label(row: pd.Series | dict, component_count: int | Non
         k_value = 0
         l_value = 0
     return f"[{prefix}] {role} ({unit} {count}개/K{k_value}/L{l_value})"
+
+
+def _macro5_kospi_sort_metrics(metrics: pd.DataFrame) -> pd.DataFrame:
+    if metrics is None or metrics.empty:
+        return metrics
+    out = metrics.copy()
+    group_order = (
+        out.groupby("model_type")["slot"].min().sort_values().reset_index()
+        .assign(_group_order=lambda df: range(len(df)))
+        .set_index("model_type")["_group_order"].to_dict()
+    )
+    out["_group_order"] = out["model_type"].map(group_order).fillna(99).astype(int)
+    out["_main_order"] = out["candidate_id"].map(_MACRO5_KOSPI_ORDER_OVERRIDES).fillna(99).astype(int)
+    out = out.sort_values(["_group_order", "_main_order", "slot"]).drop(columns=["_group_order", "_main_order"])
+    return out.reset_index(drop=True)
 
 
 def _macro5_kospi_component_display_label(
@@ -13227,7 +13268,9 @@ def _macro5_kospi_combo2_main_candidate_id(metrics: pd.DataFrame) -> str:
     main_rows = []
     for _, row in data[data["_model_type_norm"].eq("combo2")].iterrows():
         label = _macro5_kospi_preset_label(row)
-        if label.startswith("[조합2] Main "):
+        if str(row.get("candidate_id")) in _MACRO5_KOSPI_ORDER_OVERRIDES and _MACRO5_KOSPI_ORDER_OVERRIDES[str(row.get("candidate_id"))] == 0:
+            main_rows.append(row)
+        elif label.startswith("[조합2] Main "):
             main_rows.append(row)
     if len(main_rows) != 1:
         raise ValueError("REVIEW_KOSPI_MACRO5_D1C3B2V_COMBO2_MAIN_NOT_UNIQUE")
@@ -13710,7 +13753,7 @@ def _macro5_kospi_build_backtest_panel(
     backtest_stats = backtest_stats or {}
     hold_metrics = backtest_stats.get("hold", {})
     candidate_stats = backtest_stats.get("candidate", {})
-    subset = metrics[metrics["model_type"].map(_macro5_kospi_model_type).eq(model_type)].sort_values("slot")
+    subset = _macro5_kospi_sort_metrics(metrics[metrics["model_type"].map(_macro5_kospi_model_type).eq(model_type)])
     if len(subset):
         rows_html.append(
             "<tr style='background:rgba(255,255,255,0.035);border-top:1px solid rgba(255,255,255,0.12);'>"
@@ -15848,7 +15891,7 @@ def main(page="signal"):
                 st.error(f"KOSPI Macro5 Frozen 자산을 불러오지 못했습니다: {_exc}")
                 return
 
-            _metrics5k = _assets5k["metrics"].sort_values("slot").reset_index(drop=True)
+            _metrics5k = _macro5_kospi_sort_metrics(_assets5k["metrics"])
             _signals5k = _assets5k["signals"]
             _components5k = _assets5k["components"]
             _benchmark5k = _assets5k["benchmark"]
