@@ -5882,6 +5882,7 @@ def _compute_macro_preset_current_state_cached(preset_cfg: dict, years: int, syn
             "is_on": bool(latest.get("combo_risk_state", False)),
             "on_count": int(a_on) + int(b_on),
             "total_count": 2,
+            "start_count": 2,
         }
 
     combo, active_codes = _compute_macro_combo_signal_frame(
@@ -5907,6 +5908,7 @@ def _compute_macro_preset_current_state_cached(preset_cfg: dict, years: int, syn
         "is_on": bool(latest.get("combo_risk_state", False)),
         "on_count": int(latest.get("active_count", 0)),
         "total_count": int(latest.get("combo_n", max(1, len(active_codes)))),
+        "start_count": int(latest.get("combo_k", preset_cfg.get("combo_k", 1))),
     }
 
 
@@ -5963,16 +5965,20 @@ def _macro_date_text(value) -> str:
         return str(value)
 
 
-def _macro_flag_ratio_html(on_count: int, total_count: int, is_on: bool | None = None) -> str:
-    total = max(1, int(total_count))
+def _macro_on_k_text(on_count: int, start_k: int) -> str:
+    return f"{max(0, int(on_count))} ON / K{max(1, int(start_k))}"
+
+
+def _macro_flag_ratio_html(on_count: int, start_k: int, is_on: bool | None = None) -> str:
+    k_value = max(1, int(start_k))
     on = max(0, int(on_count))
     if is_on is not None:
         color = "#FF8C69" if bool(is_on) else "#66D9B8"
     else:
-        color = "#FF8C69" if on > (total / 2) else "#66D9B8"
+        color = "#FF8C69" if on >= k_value else "#66D9B8"
     return (
         f"<span style='color:{color};font-weight:700;font-variant-numeric:tabular-nums;'>"
-        f"{on}/{total}</span>"
+        f"{_macro_on_k_text(on, k_value)}</span>"
     )
 
 
@@ -5993,6 +5999,7 @@ def _build_macro_combo_status_panel(
     combo_state = bool(latest_row.get("combo_risk_state", False))
     active_count = int(latest_row.get("active_count", 0))
     combo_n = int(latest_row.get("combo_n", len(selected_codes)))
+    combo_k = int(latest_row.get("combo_k", max(1, combo_n)))
     basis_date = _macro_date_text(latest_row.get("date"))
     status_text = "리스크 사이클 ON" if combo_state else "리스크 사이클 OFF"
     status_color = "#FF8C69" if combo_state else "#4BFFB3"
@@ -6024,7 +6031,7 @@ def _build_macro_combo_status_panel(
         '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;'
         'padding:0 0 18px 0;color:#CFCFCF;font-size:13px;">'
         f'<span><b>기준일</b> {basis_date}</span>'
-        f'<span><b>현재 플래그</b> {active_count} / {combo_n} ON ({active_flags_text})</span>'
+        f'<span><b>현재 플래그</b> {_macro_on_k_text(active_count, combo_k)} ({active_flags_text})</span>'
         f'<span><b>상태</b> <span style="color:{status_color};font-weight:700;">{status_text}</span></span>'
         '</div>'
     )
@@ -6164,7 +6171,7 @@ def _build_macro_meta_combo_status_panel(
         '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;'
         'padding:0 0 18px 0;color:#CFCFCF;font-size:13px;">'
         f'<span><b>기준일</b> {basis_date}</span>'
-        f'<span><b>현재 플래그</b> {active_count} / 2 ON ({active_flags_text})</span>'
+        f'<span><b>현재 플래그</b> {_macro_on_k_text(active_count, 2)} ({active_flags_text})</span>'
         f'<span><b>상태</b> <span style="color:{status_color};font-weight:700;">{status_text}</span></span>'
         '</div>'
     )
@@ -6286,7 +6293,7 @@ def _build_macro_meta_backtest_panel(
         else:
             current_state_html = _macro_flag_ratio_html(
                 current_state.get("on_count", 0),
-                current_state.get("total_count", 1),
+                current_state.get("start_count", current_state.get("total_count", 1)),
                 current_state.get("is_on"),
             )
         rows.append(
@@ -8468,6 +8475,7 @@ def _build_macro3_status_panel(
     combo_state = bool(latest.get("combo_risk_state", False))
     active_count = int(latest.get("active_count", 0))
     combo_n = int(latest.get("combo_n", len(preset_cfg.get("selected_indicators", []))))
+    combo_k = int(latest.get("combo_k", preset_cfg.get("combo_k", max(1, combo_n))))
     basis_date = _macro_date_text(latest.get("date"))
     expected_latest, expected_index = _macro6_expected_latest_trading_date(
         benchmark_name=benchmark_name,
@@ -8547,7 +8555,7 @@ def _build_macro3_status_panel(
     summary_html = (
         '<div style="display:flex;gap:12px 16px;align-items:center;flex-wrap:wrap;padding:0 0 14px 0;color:#CFCFCF;font-size:12px;line-height:1.42;">'
         f"<span><b>기준일</b> {basis_date}</span>"
-        f"<span><b>현재 플래그</b> {active_count} / {combo_n} ON ({active_flags_text})</span>"
+        f"<span><b>현재 플래그</b> {_macro_on_k_text(active_count, combo_k)} ({active_flags_text})</span>"
         f"<span><b>상태</b> <span style='color:{status_color};font-weight:700;'>{status_text}</span></span>"
         f"<span><b>실행 안내</b> {execution_text}</span>"
         "</div>"
@@ -8786,6 +8794,7 @@ def _macro_compact_status_html(
     end_event: bool,
     state_start: str,
     duration_text: str,
+    start_k: int | None = None,
 ) -> str:
     risk_on = bool(int(risk_state)) if not isinstance(risk_state, bool) else risk_state
     risk_color = "#FF8C69" if risk_on else "#4BFFB3"
@@ -8809,7 +8818,7 @@ def _macro_compact_status_html(
         "<div class='macro-compact-status-line-primary' "
         "style='display:flex;align-items:center;flex-wrap:wrap;color:#CFCFCF;font-size:12px;line-height:1.42;padding:0 0 2px 0;'>"
         f"<span><b>기준일</b> {basis_date}</span>{separator}"
-        f"<span><b>현재 플래그</b> {int(active_count)}/{int(component_count)} ON</span>{separator}"
+        f"<span><b>현재 플래그</b> {_macro_on_k_text(int(active_count), int(start_k or component_count or 1))}</span>{separator}"
         f"<span><b>상태</b> <span style='color:{risk_color};font-weight:700;'>{risk_text}</span></span>"
         "</div>"
         "<div class='macro-compact-status-line-secondary' "
@@ -8835,6 +8844,7 @@ def _build_macro6_status_panel(
     combo_state = bool(latest.get("combo_risk_state", False))
     active_count = int(latest.get("active_count", 0))
     combo_n = int(latest.get("combo_n", len(preset_cfg.get("selected_indicators", []))))
+    combo_k = int(latest.get("combo_k", preset_cfg.get("combo_k", max(1, combo_n))))
     basis_date = _macro_date_text(latest.get("date"))
     status_text = "리스크 사이클 ON" if combo_state else "리스크 사이클 OFF"
     status_color = "#FF8C69" if combo_state else "#4BFFB3"
@@ -8893,6 +8903,7 @@ def _build_macro6_status_panel(
         basis_date=basis_date,
         active_count=active_count,
         component_count=combo_n,
+        start_k=combo_k,
         risk_state=combo_state,
         execution_position=0 if combo_state else 1,
         start_event=bool(latest.get("combo_start_signal", False)),
@@ -13394,6 +13405,7 @@ def _macro5_kospi_current_status_html(
         basis_date=basis,
         active_count=active_count,
         component_count=component_count,
+        start_k=int(selected_row.get("K", component_count or 1)),
         risk_state=raw_state,
         execution_position=t1_position,
         start_event=start_signal,
@@ -13403,7 +13415,7 @@ def _macro5_kospi_current_status_html(
     )
 
 
-def _macro5_kospi_current_chip(candidate_id: str, live_row_map: dict[str, dict]) -> str:
+def _macro5_kospi_current_chip(candidate_id: str, live_row_map: dict[str, dict], start_k: int | None = None) -> str:
     row = live_row_map.get(str(candidate_id), {})
     if not row or not row.get("calculable"):
         return "<span style='color:#FF8C69;font-weight:700;'>계산 불가</span>"
@@ -13411,8 +13423,8 @@ def _macro5_kospi_current_chip(candidate_id: str, live_row_map: dict[str, dict])
     color = "#FF8C69" if raw_state == 1 else "#4BFFB3"
     try:
         active_count = int(row.get("active_count"))
-        component_count = int(row.get("component_count"))
-        label = f"{active_count}/{component_count}"
+        k_value = int(start_k if start_k is not None else row.get("K"))
+        label = _macro5_kospi_current_on_k(active_count, k_value)
     except Exception:
         label = "Risk-off" if raw_state == 1 else "Risk-on"
     return f"<span style='color:{color};font-weight:700;'>{label}</span>"
@@ -13679,7 +13691,7 @@ def _macro5_kospi_build_backtest_panel(
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{stats.get('전체 Risk-off', '-')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{stats.get('전체 Cycle', '-')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{stats.get('짧은 Cycle', '-')}</td>"
-            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{_macro5_kospi_current_chip(candidate_id, live_row_map)}</td></tr>"
+            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{_macro5_kospi_current_chip(candidate_id, live_row_map, int(row.get('K', 1)))}</td></tr>"
         )
     if not rows_html:
         return ""
@@ -14053,6 +14065,10 @@ def _macro5_kospi_reference_label(reference_type: str) -> str:
         "PASS_STORED_STAGE07C2_DAILY_SIGNAL": "Stage07C.2 저장 daily signal",
     }
     return mapping.get(str(reference_type), str(reference_type))
+
+
+def _macro5_kospi_current_on_k(active_count, start_k) -> str:
+    return _macro_on_k_text(int(active_count), int(start_k))
 
 
 def _macro5_kospi_apply_macro4_chart_layout(fig: go.Figure, title: str, height: int, x_start, x_end) -> None:

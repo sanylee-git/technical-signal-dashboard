@@ -88,7 +88,7 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
     assert combo1.find("KOSPI 홀드") < combo1.find("[조합1]")
 
 
-def test_b2t_current_column_still_uses_live_active_denominator() -> None:
+def test_b2t_current_column_uses_live_active_count_over_entry_k() -> None:
     _, metrics, stats = _assets()
     selected_id = metrics.iloc[0]["candidate_id"]
     live_map = {
@@ -102,7 +102,7 @@ def test_b2t_current_column_still_uses_live_active_denominator() -> None:
 
     html = dash._macro5_kospi_build_backtest_panel(metrics.iloc[[0]], live_map, selected_id, "combo1", stats)
 
-    assert "9/11" in html
+    assert "9 ON / K9" in html
     assert "Risk-off</span>" not in html
 
 
