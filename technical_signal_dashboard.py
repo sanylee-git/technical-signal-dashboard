@@ -9267,13 +9267,17 @@ def _build_macro3_indicator_chart(
         return None
     benchmark = _get_macro_benchmark(benchmark_name)
     title = _MACRO3_INDICATOR_LABELS.get(indicator, indicator)
+    chart_index, x_start, x_end = _macro_detail_chart_window(spx_s)
+    if len(chart_index) == 0:
+        return None
     fig = go.Figure()
     if indicator == "Bollinger Band":
         ohlc = _macro3_fetch_benchmark_ohlcv(benchmark_name, max(years + 2, 5))
         if ohlc.empty:
             return None
-        price = ohlc["Close"].reindex(signal_df.index).dropna()
-        signal_df = signal_df.reindex(price.index)
+        signal_df = signal_df.reindex(chart_index)
+        price = ohlc["Close"].reindex(chart_index).dropna()
+        _add_macro_indicator_risk_background(fig, signal_df, x_start, x_end)
         fig.add_trace(go.Scatter(x=price.index, y=price, name=benchmark["label"], line=dict(color="rgba(182,182,182,0.88)", width=1.55)))
         for col, name, color, dash in [
             ("bb_middle", "BB Middle", "rgba(216,195,106,0.74)", "solid"),
@@ -9294,6 +9298,7 @@ def _build_macro3_indicator_chart(
         if not end_y.empty:
             fig.add_trace(go.Scatter(x=end_y.index, y=end_y, mode="markers", name="리스크 종료", marker=dict(symbol="triangle-up", size=9, color="rgba(80,160,255,0.92)")))
         fig.update_layout(**_ml(title, height=300))
+        fig.update_xaxes(range=[x_start, x_end], autorange=False)
         return fig
 
     raw_series = _macro3_get_indicator_raw_series(indicator, max(years + 2, 5), benchmark_name=benchmark_name, spx_s=spx_s, sync_bucket=sync_bucket)
@@ -9304,7 +9309,10 @@ def _build_macro3_indicator_chart(
     ema_candidates = [col for col in signal_df.columns if col.startswith("ema")]
     ema_col = ema_candidates[0] if ema_candidates else None
     main_s = signal_df[ema_col].dropna() if ema_col else display_s
-    signal_df = signal_df.reindex(main_s.index)
+    main_s = main_s.loc[(main_s.index >= x_start) & (main_s.index <= x_end)]
+    signal_visible = signal_df.reindex(chart_index)
+    signal_df = signal_visible.reindex(main_s.index)
+    _add_macro_indicator_risk_background(fig, signal_visible, x_start, x_end)
     if show_raw and ema_col:
         raw_display = display_s.reindex(main_s.index).dropna()
         if not raw_display.empty:
@@ -9336,22 +9344,71 @@ def _build_macro3_indicator_chart(
             line=dict(color="rgba(120,220,255,0.60)", width=1.2, dash="dot"),
         ))
     if indicator != "Index":
-        _add_spx_overlay(fig, main_s, spx_s, yaxis="y2", label=benchmark["label"])
+        spx_visible = spx_s.reindex(chart_index).dropna() if spx_s is not None else pd.Series(dtype=float)
+        if not spx_visible.empty:
+            fig.add_trace(go.Scatter(
+                x=spx_visible.index,
+                y=spx_visible,
+                name=benchmark["label"],
+                line=dict(color="rgba(182,182,182,0.88)", width=1.55),
+                showlegend=True,
+                hoverinfo="skip",
+                yaxis="y2",
+            ))
         fig.update_layout(yaxis2=_visible_price_yaxis("y", "right"))
-        marker_price = spx_s.reindex(signal_df.index).dropna() if spx_s is not None else pd.Series(dtype=float)
+        marker_price = spx_visible
         marker_axis = "y2"
     else:
         marker_price = main_s
         marker_axis = "y"
     _add_price_signal_markers(
         fig,
-        signal_df.rename(columns={"risk_start_signal": "down_start_signal", "risk_end_signal": "down_end_signal"}),
+        signal_visible.rename(columns={"risk_start_signal": "down_start_signal", "risk_end_signal": "down_end_signal"}),
         marker_price,
         yaxis=marker_axis,
         prefix=indicator,
     )
     fig.update_layout(**_ml(title, height=300))
+    fig.update_xaxes(range=[x_start, x_end], autorange=False)
     return fig
+
+
+def _macro_detail_chart_window(spx_s: pd.Series | None) -> tuple[pd.DatetimeIndex, pd.Timestamp | None, pd.Timestamp | None]:
+    if spx_s is None or spx_s.empty:
+        return pd.DatetimeIndex([]), None, None
+    visible = spx_s.dropna().copy()
+    if visible.empty:
+        return pd.DatetimeIndex([]), None, None
+    idx = pd.DatetimeIndex(pd.to_datetime(visible.index)).sort_values().drop_duplicates()
+    return idx, pd.Timestamp(idx.min()), pd.Timestamp(idx.max())
+
+
+def _add_macro_indicator_risk_background(fig: go.Figure, signal_df: pd.DataFrame, x_start, x_end) -> None:
+    if signal_df is None or signal_df.empty or x_start is None or x_end is None:
+        return
+    state_col = "risk_state" if "risk_state" in signal_df.columns else "combo_risk_state" if "combo_risk_state" in signal_df.columns else None
+    if state_col is None:
+        return
+    state = signal_df.copy()
+    if "date" in state.columns:
+        state["date"] = pd.to_datetime(state["date"])
+        state = state.set_index("date")
+    state.index = pd.to_datetime(state.index)
+    state = state.loc[(state.index >= pd.Timestamp(x_start)) & (state.index <= pd.Timestamp(x_end)), state_col].dropna()
+    if state.empty:
+        return
+    state = state.astype(bool).sort_index()
+    start = None
+    prev = False
+    for dt, is_on in state.items():
+        if bool(is_on) and not prev:
+            start = dt
+        if prev and not bool(is_on) and start is not None:
+            fig.add_vrect(x0=start, x1=dt, fillcolor="rgba(255,75,110,0.11)", line_width=0, layer="below")
+            start = None
+        prev = bool(is_on)
+    if prev and start is not None:
+        fig.add_vrect(x0=start, x1=pd.Timestamp(x_end), fillcolor="rgba(255,75,110,0.11)", line_width=0, layer="below")
 
 
 def _build_macro3_component_chart(
@@ -9365,6 +9422,7 @@ def _build_macro3_component_chart(
     component_cfg = preset_cfg.get("component_cfgs", {}).get(component_key)
     if not component_cfg or spx_s is None or spx_s.empty:
         return None
+    _chart_index, x_start, x_end = _macro_detail_chart_window(spx_s)
     warmup_years = max(years + 2, 5)
     benchmark = _get_macro_benchmark(benchmark_name)
     combo_spx = _yf_close(benchmark["code"], warmup_years, sync_bucket=sync_bucket)
@@ -9410,6 +9468,8 @@ def _build_macro3_component_chart(
         ))
     selected_labels = " + ".join([_MACRO3_INDICATOR_LABELS.get(name, name) for name in active_indicators])
     fig.update_layout(**_ml(_macro3_component_label(component_key, component_cfg), height=260))
+    if x_start is not None and x_end is not None:
+        fig.update_xaxes(range=[x_start, x_end], autorange=False)
     fig.add_annotation(
         xref="paper", yref="paper", x=0.01, y=0.97, showarrow=False,
         text=f"{int(component_cfg.get('combo_k', 1))}/{len(active_indicators)} · 종료≤{int(component_cfg.get('combo_l', 0))}<br>{selected_labels}",
@@ -9449,13 +9509,17 @@ def _build_macro6_indicator_chart(
         return None
     benchmark = _get_macro_benchmark(benchmark_name)
     title = _MACRO3_INDICATOR_LABELS.get(indicator, indicator)
+    chart_index, x_start, x_end = _macro_detail_chart_window(spx_s)
+    if len(chart_index) == 0:
+        return None
     fig = go.Figure()
     if indicator == "Bollinger Band":
         ohlc = _macro3_fetch_benchmark_ohlcv(benchmark_name, max(years + 2, 5))
         if ohlc.empty:
             return None
-        price = ohlc["Close"].reindex(signal_df.index).dropna()
-        signal_df = signal_df.reindex(price.index)
+        signal_df = signal_df.reindex(chart_index)
+        price = ohlc["Close"].reindex(chart_index).dropna()
+        _add_macro_indicator_risk_background(fig, signal_df, x_start, x_end)
         fig.add_trace(go.Scatter(x=price.index, y=price, name=benchmark["label"], line=dict(color="rgba(182,182,182,0.88)", width=1.55)))
         for col, name, color, dash in [
             ("bb_middle", "BB Middle", "rgba(216,195,106,0.74)", "solid"),
@@ -9476,6 +9540,7 @@ def _build_macro6_indicator_chart(
         if not end_y.empty:
             fig.add_trace(go.Scatter(x=end_y.index, y=end_y, mode="markers", name="리스크 종료", marker=dict(symbol="triangle-up", size=9, color="rgba(80,160,255,0.92)")))
         fig.update_layout(**_ml(title, height=300))
+        fig.update_xaxes(range=[x_start, x_end], autorange=False)
         return fig
 
     raw_series = _macro6_get_indicator_raw_series(indicator, max(years + 2, 5), benchmark_name=benchmark_name, spx_s=spx_s, sync_bucket=sync_bucket)
@@ -9486,7 +9551,10 @@ def _build_macro6_indicator_chart(
     ema_candidates = [col for col in signal_df.columns if col.startswith("ema")]
     ema_col = ema_candidates[0] if ema_candidates else None
     main_s = signal_df[ema_col].dropna() if ema_col else display_s
-    signal_df = signal_df.reindex(main_s.index)
+    main_s = main_s.loc[(main_s.index >= x_start) & (main_s.index <= x_end)]
+    signal_visible = signal_df.reindex(chart_index)
+    signal_df = signal_visible.reindex(main_s.index)
+    _add_macro_indicator_risk_background(fig, signal_visible, x_start, x_end)
     if show_raw and ema_col:
         raw_display = display_s.reindex(main_s.index).dropna()
         if not raw_display.empty:
@@ -9518,21 +9586,32 @@ def _build_macro6_indicator_chart(
             line=dict(color="rgba(120,220,255,0.60)", width=1.2, dash="dot"),
         ))
     if indicator != "Index":
-        _add_spx_overlay(fig, main_s, spx_s, yaxis="y2", label=benchmark["label"])
+        spx_visible = spx_s.reindex(chart_index).dropna() if spx_s is not None else pd.Series(dtype=float)
+        if not spx_visible.empty:
+            fig.add_trace(go.Scatter(
+                x=spx_visible.index,
+                y=spx_visible,
+                name=benchmark["label"],
+                line=dict(color="rgba(182,182,182,0.88)", width=1.55),
+                showlegend=True,
+                hoverinfo="skip",
+                yaxis="y2",
+            ))
         fig.update_layout(yaxis2=_visible_price_yaxis("y", "right"))
-        marker_price = spx_s.reindex(signal_df.index).dropna() if spx_s is not None else pd.Series(dtype=float)
+        marker_price = spx_visible
         marker_axis = "y2"
     else:
         marker_price = main_s
         marker_axis = "y"
     _add_price_signal_markers(
         fig,
-        signal_df.rename(columns={"risk_start_signal": "down_start_signal", "risk_end_signal": "down_end_signal"}),
+        signal_visible.rename(columns={"risk_start_signal": "down_start_signal", "risk_end_signal": "down_end_signal"}),
         marker_price,
         yaxis=marker_axis,
         prefix=indicator,
     )
     fig.update_layout(**_ml(title, height=300))
+    fig.update_xaxes(range=[x_start, x_end], autorange=False)
     return fig
 
 
@@ -9547,6 +9626,7 @@ def _build_macro6_component_chart(
     component_cfg = preset_cfg.get("component_cfgs", {}).get(component_key)
     if not component_cfg or spx_s is None or spx_s.empty:
         return None
+    _chart_index, x_start, x_end = _macro_detail_chart_window(spx_s)
     warmup_years = max(years + 2, 5)
     benchmark = _get_macro_benchmark(benchmark_name)
     combo_spx = _macro3_filter_confirmed_us_daily(_yf_close(benchmark["code"], warmup_years, sync_bucket=sync_bucket))
@@ -9592,6 +9672,8 @@ def _build_macro6_component_chart(
         ))
     selected_labels = " + ".join([_MACRO3_INDICATOR_LABELS.get(name, name) for name in active_indicators])
     fig.update_layout(**_ml(_macro3_component_label(component_key, component_cfg), height=260))
+    if x_start is not None and x_end is not None:
+        fig.update_xaxes(range=[x_start, x_end], autorange=False)
     fig.add_annotation(
         xref="paper", yref="paper", x=0.01, y=0.97, showarrow=False,
         text=f"{int(component_cfg.get('combo_k', 1))}/{len(active_indicators)} · 종료≤{int(component_cfg.get('combo_l', 0))}<br>{selected_labels}",
