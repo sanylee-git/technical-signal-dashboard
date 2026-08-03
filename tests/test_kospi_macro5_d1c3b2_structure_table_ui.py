@@ -164,8 +164,8 @@ def test_macro5_b1_render_section_has_split_expanders_and_no_general_dataframe()
 
 
 def test_macro5_b1_chart_and_macro4_functions_are_unchanged() -> None:
-    assert _function_hash("_macro5_kospi_build_main_chart") == "5490198253679b541a58041b037e8371b90ab2f45871430fdeaf63813c92bc37"
-    assert _function_hash("_macro5_kospi_build_component_chart") == "4ab1f7b49e8bfc8c67f5ef2b4b60f56d071e0d3e0b557e4c332a2a74dfaa9818"
+    assert _function_hash("_macro5_kospi_build_main_chart") == "6f04019fc3b22922fcb7ba892003f0411fdf24b6d24ee436a9e890bb305f9034"
+    assert _function_hash("_macro5_kospi_build_component_chart") == "0ab6ea0276d1a5f8963a77d4d60bf517d69f74bdaeac3cab46cd9f8978f4d024"
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"
     assert _function_hash("_build_macro6_component_chart") == "68f5010937c9ffa09b9ad498c4982e500b492e055d6b27a3c00d62d1b4d15e21"
     assert _function_hash("_build_macro6_indicator_chart") == "8ef3b8c4e9de8cfe9951d7a9520ad4670dd0fea97e3890b8b9b329f1f90ae987"

@@ -55,7 +55,7 @@ def test_macro5_main_chart_uses_basis_date_and_macro4_height():
     assert {"KOSPI", "Risk 시작", "Risk 종료"}.issubset(names)
 
 
-def test_macro5_combo2_component_chart_uses_kospi_events_annotation_and_no_binary_step():
+def test_macro5_combo2_component_chart_uses_kospi_events_and_no_binary_or_kl_display():
     fig = dashboard._macro5_kospi_build_component_chart(
         _component_signal(),
         _benchmark(),
@@ -65,10 +65,10 @@ def test_macro5_combo2_component_chart_uses_kospi_events_annotation_and_no_binar
         basis_date="2026-07-31",
     )
     assert fig is not None
-    assert fig.layout.height == 260
+    assert fig.layout.height == 300
     assert pd.to_datetime(fig.layout.xaxis.range[1]).normalize() == pd.Timestamp("2026-07-31")
-    assert fig.layout.yaxis.title.text == "KOSPI"
-    assert len(fig.layout.annotations or []) >= 1
+    assert fig.layout.yaxis.title.text in (None, "")
+    assert len(fig.layout.annotations or []) == 0
     names = {trace.name for trace in fig.data}
     assert {"KOSPI", "Risk 시작", "Risk 종료"}.issubset(names)
     assert "ON 수" not in names
@@ -76,6 +76,34 @@ def test_macro5_combo2_component_chart_uses_kospi_events_annotation_and_no_binar
     assert "L" not in names
     assert "Raw state" not in names
     assert "component ON" not in names
+
+
+def test_macro5_period_options_exclude_20_and_all_uses_common_start():
+    benchmark = pd.DataFrame(
+        {
+            "date": pd.date_range("2008-04-01", "2026-07-31", freq="B"),
+            "kospi_close": range(len(pd.date_range("2008-04-01", "2026-07-31", freq="B"))),
+        }
+    )
+    candidate = _candidate_signal()
+    component = _component_signal()
+    options, common_start = dashboard._macro5_kospi_available_period_options(
+        benchmark,
+        candidate,
+        component,
+        basis_date="2026-07-31",
+    )
+    assert 20 not in options
+    assert "all" in options
+    visible, x_start, x_end = dashboard._macro5_kospi_chart_window(
+        benchmark,
+        "all",
+        basis_date="2026-07-31",
+        common_start=common_start,
+    )
+    assert not visible.empty
+    assert x_start == pd.Timestamp("2026-07-24")
+    assert x_end == pd.Timestamp("2026-07-31")
 
 
 def test_macro5_component_chart_rejects_truncated_component_history():

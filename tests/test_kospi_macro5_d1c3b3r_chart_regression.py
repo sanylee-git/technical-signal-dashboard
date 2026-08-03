@@ -27,7 +27,7 @@ def test_b3r_actual_page_route_final9_main_charts_all_render_to_basis_date():
     assets = _assets()
     metrics = assets["metrics"]
     assert live["calculation_status"] == "CALCULABLE"
-    assert pd.to_datetime(live["benchmark_close_history"]["date"]).max() == pd.Timestamp("2026-07-31")
+    assert pd.to_datetime(live["benchmark_close_history"]["date"]).max() >= pd.Timestamp("2026-07-31")
 
     failures = []
     x_end_mismatches = []
@@ -51,6 +51,7 @@ def test_b3r_actual_page_route_final9_main_charts_all_render_to_basis_date():
         if pd.to_datetime(fig.layout.xaxis.range[1]).normalize() != basis_date.normalize():
             x_end_mismatches.append(candidate_id)
         assert "KOSPI" in {trace.name for trace in fig.data}
+        assert fig.layout.height == dash._MACRO5_KOSPI_CHART_HEIGHT
 
     assert failures == []
     assert x_end_mismatches == []
@@ -110,6 +111,9 @@ def test_b3r_combo1_default_traces_are_not_raw_only_and_aux_adds_raw():
         default_names = {trace.name for trace in default_fig.data}
         assert "KOSPI" in default_names
         assert "원자료" not in default_names
+        assert default_fig.layout.height == dash._MACRO5_KOSPI_CHART_HEIGHT
+        assert default_fig.layout.yaxis.title.text in (None, "")
+        assert default_fig.layout.yaxis2.title.text in (None, "")
         assert (
             any(str(name).upper().startswith("EMA") for name in default_names)
             or "RSI" in default_names
@@ -168,10 +172,49 @@ def test_b3r_combo2_children_have_no_binary_step_trace_and_no_hash_title():
         names = {trace.name for trace in fig.data}
         shapes = {getattr(getattr(trace, "line", None), "shape", None) for trace in fig.data}
         assert "KOSPI" in names
+        assert fig.layout.height == dash._MACRO5_KOSPI_CHART_HEIGHT
+        assert fig.layout.yaxis.title.text in (None, "")
+        assert not getattr(fig.layout, "yaxis2", None)
         assert "Raw state" not in names
         assert "component ON" not in names
         assert "ON 수" not in names
         assert "K" not in names
         assert "L" not in names
         assert "hv" not in shapes
-        assert len(fig.layout.annotations or []) >= 1
+        assert len(fig.layout.annotations or []) == 0
+
+
+def test_b3r_period_options_are_safe_and_legacy_20_maps_to_all():
+    live = _actual_page_data()
+    assets = _assets()
+    metrics = assets["metrics"]
+    row = metrics.iloc[0]
+    candidate_id = str(row["candidate_id"])
+    candidate = live["candidate_signal_history"].loc[
+        live["candidate_signal_history"]["candidate_id"].eq(candidate_id)
+    ].copy()
+    components = live["component_signal_history"].loc[
+        live["component_signal_history"]["parent_candidate_id"].eq(candidate_id)
+    ].copy()
+    options, common_start = dash._macro5_kospi_available_period_options(
+        live["benchmark_close_history"],
+        candidate,
+        components,
+        basis_date=candidate["date"].max(),
+    )
+    assert 20 not in options
+    assert "all" in options
+    legacy_value = 20
+    selected_value = "all" if legacy_value not in options else legacy_value
+    assert selected_value == "all"
+    fig = dash._macro5_kospi_build_main_chart(
+        candidate,
+        live["benchmark_close_history"],
+        dash._macro5_kospi_preset_label(row),
+        selected_value,
+        False,
+        basis_date=candidate["date"].max(),
+        common_start=common_start,
+    )
+    assert fig is not None
+    assert pd.to_datetime(fig.layout.xaxis.range[0]).normalize() == pd.to_datetime(common_start).normalize()

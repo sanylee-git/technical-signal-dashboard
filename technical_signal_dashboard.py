@@ -13829,7 +13829,57 @@ def _macro5_kospi_with_component_events(component_signal: pd.DataFrame) -> pd.Da
     return out
 
 
-def _macro5_kospi_chart_window(benchmark: pd.DataFrame, years: int, basis_date=None):
+_MACRO5_KOSPI_CHART_HEIGHT = 300
+_MACRO5_KOSPI_PERIOD_OPTIONS = [2, 3, 5, 7, 10, 15, "all"]
+_MACRO5_KOSPI_PERIOD_LABELS = {
+    2: "2년",
+    3: "3년",
+    5: "5년",
+    7: "7년",
+    10: "10년",
+    15: "15년",
+    "all": "전체",
+}
+
+
+def _macro5_kospi_period_label(value) -> str:
+    return _MACRO5_KOSPI_PERIOD_LABELS.get(value, str(value))
+
+
+def _macro5_kospi_available_period_options(
+    benchmark: pd.DataFrame,
+    candidate_signal: pd.DataFrame,
+    component_signal: pd.DataFrame,
+    basis_date=None,
+) -> tuple[list, pd.Timestamp | None]:
+    starts = []
+    for frame in (benchmark, candidate_signal, component_signal):
+        if frame is None or frame.empty or "date" not in frame.columns:
+            continue
+        dates = pd.to_datetime(frame["date"], errors="coerce").dropna()
+        if not dates.empty:
+            starts.append(dates.min().normalize())
+    if not starts:
+        return [2, 3, 5, "all"], None
+    common_start = max(starts)
+    basis = pd.to_datetime(basis_date).normalize() if basis_date is not None else None
+    if basis is None:
+        end_candidates = []
+        for frame in (benchmark, candidate_signal):
+            if frame is not None and not frame.empty and "date" in frame.columns:
+                dates = pd.to_datetime(frame["date"], errors="coerce").dropna()
+                if not dates.empty:
+                    end_candidates.append(dates.max().normalize())
+        basis = min(end_candidates) if end_candidates else common_start
+    available_years = max((basis - common_start).days / 365.25, 0.0)
+    options = [year for year in [2, 3, 5, 7, 10, 15] if available_years >= float(year)]
+    if not options:
+        options = [2]
+    options.append("all")
+    return options, common_start
+
+
+def _macro5_kospi_chart_window(benchmark: pd.DataFrame, years: int | str, basis_date=None, common_start=None):
     if benchmark is None or benchmark.empty or "date" not in benchmark.columns:
         return pd.DataFrame(), None, None
     bench = benchmark.copy()
@@ -13840,7 +13890,10 @@ def _macro5_kospi_chart_window(benchmark: pd.DataFrame, years: int, basis_date=N
     if eligible.empty:
         return pd.DataFrame(), None, None
     x_end = eligible["date"].max()
-    lower = x_end - pd.DateOffset(years=int(years))
+    if str(years).lower() == "all":
+        lower = pd.to_datetime(common_start).normalize() if common_start is not None else eligible["date"].min()
+    else:
+        lower = x_end - pd.DateOffset(years=int(years))
     visible = eligible[eligible["date"] >= lower].copy()
     if visible.empty:
         visible = eligible.tail(1).copy()
@@ -14015,14 +14068,16 @@ def _macro5_kospi_apply_macro4_chart_layout(fig: go.Figure, title: str, height: 
         hovermode="x unified",
     )
     fig.update_xaxes(range=[x_start, x_end], autorange=False, gridcolor="rgba(255,255,255,0.04)")
-    fig.update_yaxes(gridcolor="rgba(255,255,255,0.04)")
+    fig.update_yaxes(gridcolor="rgba(255,255,255,0.04)", title_text=None)
 
 
-def _macro5_kospi_build_main_chart(candidate_signal: pd.DataFrame, benchmark: pd.DataFrame, label: str, years: int, show_raw: bool, basis_date=None) -> go.Figure | None:
+def _macro5_kospi_build_main_chart(candidate_signal: pd.DataFrame, benchmark: pd.DataFrame, label: str, years: int | str, show_raw: bool, basis_date=None, common_start=None) -> go.Figure | None:
     if candidate_signal is None or candidate_signal.empty or benchmark is None or benchmark.empty:
         return None
     signal = _macro5_kospi_with_events(candidate_signal)
-    visible_benchmark, x_start, x_end = _macro5_kospi_chart_window(benchmark, years, basis_date=basis_date)
+    if common_start is None:
+        _, common_start = _macro5_kospi_available_period_options(benchmark, signal, pd.DataFrame(), basis_date=basis_date)
+    visible_benchmark, x_start, x_end = _macro5_kospi_chart_window(benchmark, years, basis_date=basis_date, common_start=common_start)
     merged = _macro5_kospi_join_on_benchmark(
         visible_benchmark,
         signal,
@@ -14042,7 +14097,7 @@ def _macro5_kospi_build_main_chart(candidate_signal: pd.DataFrame, benchmark: pd
         y=merged["kospi_close"],
         mode="lines",
         name="KOSPI",
-        line=dict(color="rgba(226,232,240,0.82)", width=1.8),
+        line=dict(color="rgba(182,182,182,0.88)", width=1.55),
         hovertemplate="%{x|%Y-%m-%d}<br>KOSPI %{y:,.2f}<extra></extra>",
     ))
     if show_raw:
@@ -14063,7 +14118,7 @@ def _macro5_kospi_build_main_chart(candidate_signal: pd.DataFrame, benchmark: pd
             y=starts["kospi_close"],
             mode="markers",
             name="Risk 시작",
-            marker=dict(symbol="triangle-down", color="#EF4444", size=10),
+            marker=dict(symbol="triangle-down", color="rgba(210,55,55,0.95)", size=9),
         ))
     if not ends.empty:
         fig.add_trace(go.Scatter(
@@ -14071,9 +14126,9 @@ def _macro5_kospi_build_main_chart(candidate_signal: pd.DataFrame, benchmark: pd
             y=ends["kospi_close"],
             mode="markers",
             name="Risk 종료",
-            marker=dict(symbol="triangle-up", color="#60A5FA", size=10),
+            marker=dict(symbol="triangle-up", color="rgba(80,160,255,0.92)", size=9),
         ))
-    _macro5_kospi_apply_macro4_chart_layout(fig, label, 300, x_start, x_end)
+    _macro5_kospi_apply_macro4_chart_layout(fig, label, _MACRO5_KOSPI_CHART_HEIGHT, x_start, x_end)
     return fig
 
 
@@ -14087,7 +14142,7 @@ def _macro5_kospi_add_price_markers(fig: go.Figure, merged: pd.DataFrame, yaxis:
             yaxis=yaxis,
             mode="markers",
             name="Risk 시작",
-            marker=dict(symbol="triangle-down", color="#EF4444", size=9),
+            marker=dict(symbol="triangle-down", color="rgba(210,55,55,0.95)", size=9),
         ))
     if not ends.empty:
         fig.add_trace(go.Scatter(
@@ -14096,7 +14151,7 @@ def _macro5_kospi_add_price_markers(fig: go.Figure, merged: pd.DataFrame, yaxis:
             yaxis=yaxis,
             mode="markers",
             name="Risk 종료",
-            marker=dict(symbol="triangle-up", color="#60A5FA", size=9),
+            marker=dict(symbol="triangle-up", color="rgba(80,160,255,0.92)", size=9),
         ))
 
 
@@ -14104,17 +14159,20 @@ def _macro5_kospi_build_component_chart(
     component_df: pd.DataFrame,
     benchmark: pd.DataFrame,
     title: str,
-    years: int,
+    years: int | str,
     *,
     model_type: str = "combo1",
     source_base: pd.DataFrame | None = None,
     show_aux: bool = False,
     basis_date=None,
+    common_start=None,
 ) -> go.Figure | None:
     if component_df is None or component_df.empty:
         return None
     comp = _macro5_kospi_with_component_events(component_df)
-    visible_benchmark, x_start, x_end = _macro5_kospi_chart_window(benchmark, years, basis_date=basis_date)
+    if common_start is None:
+        _, common_start = _macro5_kospi_available_period_options(benchmark, pd.DataFrame(), comp, basis_date=basis_date)
+    visible_benchmark, x_start, x_end = _macro5_kospi_chart_window(benchmark, years, basis_date=basis_date, common_start=common_start)
     merged = _macro5_kospi_join_on_benchmark(
         visible_benchmark,
         comp,
@@ -14140,7 +14198,6 @@ def _macro5_kospi_build_component_chart(
     component_id = str(component_df["component_id"].dropna().iloc[0]) if "component_id" in component_df and len(component_df["component_id"].dropna()) else ""
     is_combo2_component = str(model_type).lower() == "combo2"
     chart_title = _macro5_kospi_component_display_label(component_id) if is_combo2_component else title
-    left_axis_title = "지표"
 
     if is_combo2_component:
         pass
@@ -14159,14 +14216,13 @@ def _macro5_kospi_build_component_chart(
                         y=pd.to_numeric(indicator_visible["close"], errors="coerce"),
                         mode="lines",
                         name="가격",
-                        line=dict(color="#A8A29E", width=1.25),
+                        line=dict(color="rgba(182,182,182,0.88)", width=1.55),
                     ))
                     mandatory_trace_count += 1
-                    left_axis_title = "가격"
                 for col, name, color, dash in [
-                    ("bb_middle", "BB 중심", "#D4D454", "solid"),
-                    ("bb_upper", "BB 상단", "#F97316", "dash"),
-                    ("bb_lower", "BB 하단", "#38BDF8", "dash"),
+                    ("bb_middle", "BB 중심", "rgba(216,195,106,0.74)", "solid"),
+                    ("bb_upper", "BB 상단", "rgba(255,140,105,0.68)", "dot"),
+                    ("bb_lower", "BB 하단", "rgba(120,220,255,0.72)", "dot"),
                 ]:
                     if col in indicator_visible.columns:
                         fig.add_trace(go.Scatter(
@@ -14184,13 +14240,12 @@ def _macro5_kospi_build_component_chart(
                         y=pd.to_numeric(indicator_visible["rsi"], errors="coerce"),
                         mode="lines",
                         name="RSI",
-                        line=dict(color="#7C7CF7", width=1.35),
+                        line=dict(color="rgba(124,124,247,0.82)", width=1.35),
                     ))
                     mandatory_trace_count += 1
-                    left_axis_title = "RSI"
                 for col, name, color in [
-                    ("dyn_upper", "상단 기준", "#EF4444"),
-                    ("dyn_lower", "하단 기준", "#34D399"),
+                    ("dyn_upper", "상단 기준", "rgba(255,140,105,0.55)"),
+                    ("dyn_lower", "하단 기준", "rgba(120,220,255,0.60)"),
                 ]:
                     if col in indicator_visible.columns:
                         fig.add_trace(go.Scatter(
@@ -14198,7 +14253,7 @@ def _macro5_kospi_build_component_chart(
                             y=pd.to_numeric(indicator_visible[col], errors="coerce"),
                             mode="lines",
                             name=name,
-                            line=dict(color=color, width=1, dash="dash"),
+                            line=dict(color=color, width=1.2, dash="dot"),
                         ))
                         mandatory_trace_count += 1
             else:
@@ -14208,13 +14263,12 @@ def _macro5_kospi_build_component_chart(
                         y=pd.to_numeric(indicator_visible[col], errors="coerce"),
                         mode="lines",
                         name=col.upper(),
-                        line=dict(color="#CCD539", width=1.35),
+                        line=dict(color="rgba(216,195,106,0.32)", width=1.1),
                     ))
                     mandatory_trace_count += 1
-                    left_axis_title = "지표"
                 for col, name, color in [
-                    ("risk_start_line", "시작선", "#F97316"),
-                    ("risk_end_line", "종료선", "#38BDF8"),
+                    ("risk_start_line", "시작선", "rgba(255,140,105,0.55)"),
+                    ("risk_end_line", "종료선", "rgba(120,220,255,0.60)"),
                 ]:
                     if col in indicator_visible.columns:
                         fig.add_trace(go.Scatter(
@@ -14222,7 +14276,7 @@ def _macro5_kospi_build_component_chart(
                             y=pd.to_numeric(indicator_visible[col], errors="coerce"),
                             mode="lines",
                             name=name,
-                            line=dict(color=color, width=1, dash="dash"),
+                            line=dict(color=color, width=1.2, dash="dot"),
                         ))
                         mandatory_trace_count += 1
 
@@ -14236,7 +14290,7 @@ def _macro5_kospi_build_component_chart(
                         y=pd.to_numeric(indicator_visible[raw_col], errors="coerce"),
                         mode="lines",
                         name="원자료",
-                        line=dict(color="#A8A29E", width=1.05),
+                        line=dict(color="rgba(182,182,182,0.22)", width=0.85),
                     ))
         else:
             return None
@@ -14247,39 +14301,16 @@ def _macro5_kospi_build_component_chart(
         yaxis="y" if is_combo2_component else "y2",
         mode="lines",
         name="KOSPI",
-        line=dict(color="rgba(226,232,240,0.72)", width=1.4),
+        line=dict(color="rgba(182,182,182,0.88)", width=1.55),
     ))
     _macro5_kospi_add_price_markers(fig, merged, yaxis="y" if is_combo2_component else "y2")
-    _macro5_kospi_apply_macro4_chart_layout(fig, chart_title, 260 if is_combo2_component else 300, x_start, x_end)
+    _macro5_kospi_apply_macro4_chart_layout(fig, chart_title, _MACRO5_KOSPI_CHART_HEIGHT, x_start, x_end)
     if is_combo2_component:
-        try:
-            parsed_child = re.match(r"^combo1_n(?P<n>\d+)_k(?P<k>\d+)_l(?P<l>\d+)_", component_id)
-            k_series = pd.to_numeric(merged.get("component_K"), errors="coerce").dropna()
-            l_series = pd.to_numeric(merged.get("component_L"), errors="coerce").dropna()
-            k_val = int(k_series.iloc[-1]) if len(k_series) else int(parsed_child.group("k"))
-            l_val = int(l_series.iloc[-1]) if len(l_series) else int(parsed_child.group("l"))
-            count_val = int(parsed_child.group("n")) if parsed_child else int(pd.to_numeric(merged.get("component_active_count"), errors="coerce").max())
-            annotation_text = f"K{k_val}/L{l_val} · 조합1 {count_val}개"
-        except Exception:
-            annotation_text = "Child Combo1"
-        fig.add_annotation(
-            xref="paper",
-            yref="paper",
-            x=0.015,
-            y=0.92,
-            showarrow=False,
-            align="left",
-            text=annotation_text,
-            font=dict(size=11, color="rgba(255,255,255,0.72)"),
-            bgcolor="rgba(0,0,0,0.18)",
-            bordercolor="rgba(255,255,255,0.08)",
-            borderwidth=1,
-        )
-        fig.update_layout(yaxis=dict(title="KOSPI", side="right", showgrid=True))
+        fig.update_layout(yaxis=dict(title=None, side="right", showgrid=True))
     else:
         fig.update_layout(
-            yaxis=dict(title=left_axis_title, side="left", showgrid=True),
-            yaxis2=dict(title="KOSPI", overlaying="y", side="right", showgrid=False, zeroline=False),
+            yaxis=dict(title=None, side="left", showgrid=True),
+            yaxis2=dict(title=None, overlaying="y", side="right", showgrid=False, zeroline=False),
         )
     return fig
 
@@ -15802,15 +15833,36 @@ def main(page="signal"):
             _selected_components5k = _component_dict5k[_macro5_kospi_preset]["component_ids"]
             if list(st.session_state.get("macro5_kospi_selected_codes", [])) != list(_selected_components5k):
                 st.session_state["macro5_kospi_selected_codes"] = list(_selected_components5k)
+            _period_candidate_signal5k = _signals5k[_signals5k["candidate_id"] == _macro5_kospi_preset].copy()
+            _period_component_signal5k = _components5k[_components5k["parent_candidate_id"] == _macro5_kospi_preset].copy()
+            _period_live_row5k = _live_row_map5k.get(_macro5_kospi_preset, {})
+            _period_basis_date5k = (
+                _period_live_row5k.get("basis_date")
+                if isinstance(_period_live_row5k, dict) and _period_live_row5k.get("basis_date")
+                else (
+                    pd.to_datetime(_period_candidate_signal5k["date"]).max()
+                    if not _period_candidate_signal5k.empty
+                    else pd.to_datetime(_benchmark5k["date"]).max()
+                )
+            )
+            _period_options5k, _period_common_start5k = _macro5_kospi_available_period_options(
+                _benchmark5k,
+                _period_candidate_signal5k,
+                _period_component_signal5k,
+                basis_date=_period_basis_date5k,
+            )
+            _current_period5k = st.session_state.get("macro5_kospi_years", 5)
+            if _current_period5k == 20 or str(_current_period5k) == "20" or _current_period5k not in _period_options5k:
+                _current_period5k = "all" if "all" in _period_options5k else _period_options5k[-1]
+                st.session_state["macro5_kospi_years"] = _current_period5k
             with _m52:
                 st.selectbox("기준지수", options=["KOSPI"], index=0, key="macro5_kospi_benchmark", label_visibility="collapsed", disabled=True)
             with _m53:
-                _yr_opts5k = {2: '2년', 3: '3년', 5: '5년', 7: '7년', 10: '10년', 15: '15년', 20: '20년'}
                 _macro5_kospi_years = st.select_slider(
                     "기간",
-                    options=list(_yr_opts5k.keys()),
-                    value=5,
-                    format_func=lambda x: _yr_opts5k[x],
+                    options=_period_options5k,
+                    value=_current_period5k,
+                    format_func=_macro5_kospi_period_label,
                     key="macro5_kospi_years",
                     label_visibility="collapsed",
                 )
@@ -15997,6 +16049,7 @@ def main(page="signal"):
                 _macro5_kospi_years,
                 _show_raw_macro5_kospi,
                 basis_date=_chart_basis_date5k,
+                common_start=_period_common_start5k,
             )
             if _main_fig5k is not None:
                 st.plotly_chart(
@@ -16023,6 +16076,7 @@ def main(page="signal"):
                         source_base=_chart_source_base5k,
                         show_aux=bool(_show_raw_macro5_kospi),
                         basis_date=_chart_basis_date5k,
+                        common_start=_period_common_start5k,
                     )
                     if _component_fig5k is not None:
                         st.plotly_chart(
