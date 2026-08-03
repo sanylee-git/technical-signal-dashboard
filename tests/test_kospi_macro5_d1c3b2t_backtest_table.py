@@ -102,7 +102,7 @@ def test_b2t_current_column_uses_live_active_count_over_entry_k() -> None:
 
     html = dash._macro5_kospi_build_backtest_panel(metrics.iloc[[0]], live_map, selected_id, "combo1", stats)
 
-    assert "9 ON / K9" in html
+    assert "9/K9" in html
     assert "Risk-off</span>" not in html
 
 

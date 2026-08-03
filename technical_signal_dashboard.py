@@ -5966,7 +5966,7 @@ def _macro_date_text(value) -> str:
 
 
 def _macro_on_k_text(on_count: int, start_k: int) -> str:
-    return f"{max(0, int(on_count))} ON / K{max(1, int(start_k))}"
+    return f"{max(0, int(on_count))}/K{max(1, int(start_k))}"
 
 
 def _macro_flag_ratio_html(on_count: int, start_k: int, is_on: bool | None = None) -> str:
