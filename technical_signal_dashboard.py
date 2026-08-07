@@ -13480,7 +13480,7 @@ def _macro5_kospi_freshness_display(status: str | None, provider: str | None = N
         lag_int = None
     if raw == "FRESH":
         return "최신" if lag_int in (None, 0) else f"{lag_int}거래일 지연"
-    if raw == "NO_NEW_RELEASE_EXPECTED":
+    if raw in {"NO_NEW_RELEASE_EXPECTED", "EXPECTED_CADENCE_LAG"}:
         return "주간 업데이트"
     if raw == "FALLBACK":
         return f"{provider_text} 보완" if provider_text else "보완값"
