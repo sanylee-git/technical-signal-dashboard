@@ -128,6 +128,7 @@ def test_b2t_market_stage_html_colors_only_known_labels() -> None:
         "매도준비": "#FF8C69",
         "매도": "#F05A47",
         "매도심화": "#DC2626",
+        "혼조": "#6B7280",
     }
     for label, color in expected.items():
         html = dash._macro_market_stage_html(label)
@@ -136,9 +137,60 @@ def test_b2t_market_stage_html_colors_only_known_labels() -> None:
     assert dash._macro_market_stage_html("계산 불가") == "계산 불가"
 
 
+def test_b2t_group_market_stage_examples_follow_contract() -> None:
+    assert dash._macro_group_market_stage_label(["매도심화", "매도심화", "매수심화", "매수심화"]) == "혼조"
+    assert dash._macro_group_market_stage_label(["매도심화", "매도심화", "매도심화", "매수심화", "매수심화"]) == "혼조"
+    assert dash._macro_group_market_stage_label(["매도심화", "매도심화", "매도심화", "매수준비", "홀드"]) == "매도"
+    assert dash._macro_group_market_stage_label(["매도준비", "매도준비", "홀드", "관망"]) == "매도준비"
+    assert dash._macro_group_market_stage_label(["홀드", "홀드", "홀드", "관망"]) == "홀드"
+    assert dash._macro_group_market_stage_label(["홀드", "관망", "홀드", "관망"]) == "혼조"
+    assert dash._macro_group_market_stage_label(["홀드", "홀드", "관망", "매도준비", "매수준비"]) == "홀드"
+    assert dash._macro_group_market_stage_label(["홀드", "계산 불가"]) == "계산 불가"
+
+
+def test_b2t_combined_group_market_stage_examples_follow_contract() -> None:
+    assert dash._macro_combined_group_market_stage_label("매수", "매도") == "혼조"
+    assert dash._macro_combined_group_market_stage_label("매수심화", "매도준비") == "혼조"
+    assert dash._macro_combined_group_market_stage_label("홀드", "관망") == "혼조"
+    assert dash._macro_combined_group_market_stage_label("홀드", "매도") == "매도준비"
+    assert dash._macro_combined_group_market_stage_label("매도심화", "매도심화") == "매도심화"
+    assert dash._macro_combined_group_market_stage_label("매수", "매수") == "매수"
+    assert dash._macro_combined_group_market_stage_label("계산 불가", "매도") == "계산 불가"
+
+
+def test_b2t_group_market_stage_summary_line_uses_existing_spacing_and_order() -> None:
+    html = dash._macro_group_market_stage_summary_html("매도", "관망")
+    assert "<b>시장단계</b> · 조합1+2:" in html
+    assert html.find("조합1+2") < html.find("조합2:") < html.find("조합1:")
+    assert html.count("padding:0 10px;") == 2
+    assert "#F05A47" in html
+    assert "#A18707" in html
+
+
+def test_b2t_macro5_group_summary_adds_third_market_stage_line() -> None:
+    metrics = pd.DataFrame(
+        [
+            {"candidate_id": "c2a", "model_type": "combo2", "K": 4, "L": 2},
+            {"candidate_id": "c2b", "model_type": "combo2", "K": 4, "L": 2},
+            {"candidate_id": "c1a", "model_type": "combo1", "K": 3, "L": 1},
+            {"candidate_id": "c1b", "model_type": "combo1", "K": 3, "L": 1},
+        ]
+    )
+    rows = [
+        {"candidate_id": "c2a", "calculable": True, "active_count": 4, "raw_risk_state": 1, "basis_date": "2026-08-10"},
+        {"candidate_id": "c2b", "calculable": True, "active_count": 4, "raw_risk_state": 1, "basis_date": "2026-08-10"},
+        {"candidate_id": "c1a", "calculable": True, "active_count": 1, "raw_risk_state": 1, "basis_date": "2026-08-10"},
+        {"candidate_id": "c1b", "calculable": True, "active_count": 1, "raw_risk_state": 1, "basis_date": "2026-08-10"},
+    ]
+    html = dash._macro5_kospi_group_summary_html(rows, metrics)
+    assert "<b>시장단계</b> · 조합1+2:" in html
+    assert html.find("계산 가능") < html.find("Risk-off") < html.find("시장단계")
+    assert html.count("margin-top:2px;") == 2
+
+
 def test_b2t_chart_and_runtime_functions_are_unchanged_except_macro4_backtest_table() -> None:
     assert _function_hash("_macro5_kospi_build_main_chart") == "6f04019fc3b22922fcb7ba892003f0411fdf24b6d24ee436a9e890bb305f9034"
     assert _function_hash("_macro5_kospi_build_component_chart") == "0ab6ea0276d1a5f8963a77d4d60bf517d69f74bdaeac3cab46cd9f8978f4d024"
-    assert _function_hash("render_macro6_proxy_final_section") == "6eb77cead55b025adf2b10cad2ddd49807852732bd1ba6b87188fe8ca543fc27"
+    assert _function_hash("render_macro6_proxy_final_section") == "3483c05bbbfa50334f3a61373a5d928b737a7828a027187da1f9425c720ce23a"
     assert _function_hash("_build_macro6_backtest_panel") == "12d0d0a88effbc87fcae9fc5526602f11ee129c5de078ccc1f66ce2ad2373934"
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"

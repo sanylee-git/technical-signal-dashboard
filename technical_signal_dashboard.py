@@ -6018,6 +6018,7 @@ _MACRO_MARKET_STAGE_COLORS = {
     "매도준비": _MACRO_STATUS_RISK_OFF_COLOR,
     "매도": "#F05A47",
     "매도심화": "#DC2626",
+    "혼조": "#6B7280",
 }
 
 
@@ -6026,6 +6027,104 @@ def _macro_market_stage_html(label: str) -> str:
     if not color:
         return str(label)
     return f"<span style='color:{color};font-weight:700;'>{label}</span>"
+
+
+_MACRO_MARKET_STAGE_SCORES = {
+    "매수심화": -3,
+    "매수": -2,
+    "매수준비": -1,
+    "홀드": 0,
+    "관망": 0,
+    "매도준비": 1,
+    "매도": 2,
+    "매도심화": 3,
+}
+
+
+def _macro_group_market_stage_label(stage_labels: list[str]) -> str:
+    labels = [str(label) for label in stage_labels]
+    if not labels or any(label not in _MACRO_MARKET_STAGE_SCORES for label in labels):
+        return "계산 불가"
+    scores = [_MACRO_MARKET_STAGE_SCORES[label] for label in labels]
+    buy_count = sum(1 for score in scores if score < 0)
+    sell_count = sum(1 for score in scores if score > 0)
+    neutral_count = sum(1 for score in scores if score == 0)
+    hold_count = sum(1 for label in labels if label == "홀드")
+    watch_count = sum(1 for label in labels if label == "관망")
+
+    def _neutral_label() -> str:
+        if hold_count > watch_count:
+            return "홀드"
+        if watch_count > hold_count:
+            return "관망"
+        return "혼조"
+
+    if neutral_count > max(buy_count, sell_count):
+        return _neutral_label()
+    if buy_count > 0 and sell_count > 0:
+        directional_count = buy_count + sell_count
+        directional_agreement = max(buy_count, sell_count) / directional_count
+        if directional_agreement < (2 / 3):
+            return "혼조"
+    if sell_count > buy_count:
+        direction = "SELL"
+        dominant_scores = [score for score in scores if score > 0]
+    elif buy_count > sell_count:
+        direction = "BUY"
+        dominant_scores = [score for score in scores if score < 0]
+    else:
+        return "혼조"
+
+    effective_strength = (sum(abs(score) for score in dominant_scores) / len(dominant_scores)) * (len(dominant_scores) / len(scores))
+    if effective_strength < 0.5:
+        return _neutral_label()
+    if effective_strength < 1.5:
+        return "매도준비" if direction == "SELL" else "매수준비"
+    if effective_strength < 2.5:
+        return "매도" if direction == "SELL" else "매수"
+    return "매도심화" if direction == "SELL" else "매수심화"
+
+
+def _macro_combined_group_market_stage_label(combo1_stage: str, combo2_stage: str) -> str:
+    stages = [str(combo1_stage), str(combo2_stage)]
+    if any(stage == "계산 불가" for stage in stages):
+        return "계산 불가"
+    if any(stage == "혼조" for stage in stages):
+        return "혼조"
+    scores = [_MACRO_MARKET_STAGE_SCORES.get(stage) for stage in stages]
+    if any(score is None for score in scores):
+        return "계산 불가"
+    if scores[0] * scores[1] < 0:
+        return "혼조"
+    if scores[0] == 0 and scores[1] == 0:
+        if stages[0] == stages[1]:
+            return stages[0]
+        return "혼조"
+    combined_score = sum(scores) / 2
+    abs_score = abs(combined_score)
+    if abs_score < 0.5:
+        return "혼조"
+    if abs_score < 1.5:
+        return "매도준비" if combined_score > 0 else "매수준비"
+    if abs_score < 2.5:
+        return "매도" if combined_score > 0 else "매수"
+    return "매도심화" if combined_score > 0 else "매수심화"
+
+
+def _macro_market_stage_value_html(label: str) -> str:
+    if str(label) == "계산 불가":
+        return "<span style='color:rgba(255,255,255,0.72);font-weight:700;'>계산 불가</span>"
+    return _macro_market_stage_html(str(label))
+
+
+def _macro_group_market_stage_summary_html(combo2_stage: str, combo1_stage: str) -> str:
+    combined_stage = _macro_combined_group_market_stage_label(combo1_stage, combo2_stage)
+    sep = "<span style='color:rgba(255,255,255,0.36);padding:0 10px;'>|</span>"
+    return (
+        f"<span><b>시장단계</b> · 조합1+2: {_macro_market_stage_value_html(combined_stage)}</span>"
+        f"{sep}<span>조합2: {_macro_market_stage_value_html(combo2_stage)}</span>"
+        f"{sep}<span>조합1: {_macro_market_stage_value_html(combo1_stage)}</span>"
+    )
 
 
 def _build_macro_combo_status_panel(
@@ -9191,6 +9290,30 @@ def _macro6_group_consensus_html(
         f"<span style='font-weight:700;color:{color};'>{label} Risk-off {risk_off}/{total}</span>"
         f"<span style='color:rgba(255,255,255,0.55);'> · 기준일 {_macro_date_text(basis_date)}</span>"
     )
+
+
+def _macro6_group_market_stage_label(
+    preset_keys,
+    preset_defs: dict,
+    blocking_map: dict,
+    snapshot_map: dict | None = None,
+) -> str:
+    stage_labels = []
+    for key in list(preset_keys):
+        cfg = preset_defs.get(key)
+        snapshot = (snapshot_map or {}).get(key)
+        if cfg is None or blocking_map.get(key) or not snapshot:
+            stage_labels.append("계산 불가")
+            continue
+        stage_labels.append(
+            _macro_market_stage_label(
+                snapshot.get("on_count"),
+                snapshot.get("start_count", snapshot.get("total_count", 1)),
+                cfg.get("combo_l"),
+                snapshot.get("is_on"),
+            )
+        )
+    return _macro_group_market_stage_label(stage_labels)
 
 
 def _build_macro6_backtest_panel(
@@ -13473,6 +13596,21 @@ def _macro5_kospi_group_summary_html(candidate_rows: list[dict] | None, metrics:
         calculable = sum(1 for row in rows if bool(row.get("calculable")))
         unavailable = max(0, total - calculable)
         risk_off = sum(1 for row in rows if bool(row.get("calculable")) and int(row.get("raw_risk_state") or 0) == 1)
+        stage_labels = []
+        for _, metric_row in group.iterrows():
+            candidate_id = str(metric_row.get("candidate_id"))
+            live_row = by_id.get(candidate_id, {})
+            if not live_row or not live_row.get("calculable"):
+                stage_labels.append("계산 불가")
+                continue
+            stage_labels.append(
+                _macro_market_stage_label(
+                    live_row.get("active_count"),
+                    metric_row.get("K"),
+                    metric_row.get("L"),
+                    int(live_row.get("raw_risk_state") or 0) == 1,
+                )
+            )
         basis_dates = [row.get("basis_date") for row in rows if row.get("basis_date")]
         basis = max(basis_dates) if basis_dates else "계산 불가"
         availability_color = "#54F2A3" if unavailable == 0 else "rgba(255,255,255,0.92)"
@@ -13488,6 +13626,7 @@ def _macro5_kospi_group_summary_html(candidate_rows: list[dict] | None, metrics:
                 f"<span style='color:{risk_color};font-weight:700;'>{label} Risk-off {risk_off}/{total}</span>"
                 f"<span style='color:rgba(255,255,255,0.55);'> · 기준일 {_macro5_kospi_escape(basis)}</span>"
             ),
+            "stage": _macro_group_market_stage_label(stage_labels),
         }
     sep = "<span style='color:rgba(255,255,255,0.36);padding:0 10px;'>|</span>"
     return (
@@ -13500,6 +13639,11 @@ def _macro5_kospi_group_summary_html(candidate_rows: list[dict] | None, metrics:
         + summary.get("조합2", {}).get("risk", "")
         + sep
         + summary.get("조합1", {}).get("risk", "")
+        + "</div><div style='margin-top:2px;'>"
+        + _macro_group_market_stage_summary_html(
+            summary.get("조합2", {}).get("stage", "계산 불가"),
+            summary.get("조합1", {}).get("stage", "계산 불가"),
+        )
         + "</div></div>"
     )
 
@@ -16697,6 +16841,18 @@ def main(page="signal"):
                 sync_bucket=_macro6_sync_bucket,
                 snapshot_map=_macro6_snapshot_map,
             )
+            _macro6_stage_combo2 = _macro6_group_market_stage_label(
+                _MACRO6_COMBO2_ORDER,
+                _macro6_presets,
+                _macro6_blocking,
+                snapshot_map=_macro6_snapshot_map,
+            )
+            _macro6_stage_combo1 = _macro6_group_market_stage_label(
+                _MACRO6_COMBO1_ORDER,
+                _macro6_presets,
+                _macro6_blocking,
+                snapshot_map=_macro6_snapshot_map,
+            )
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
             st.markdown(
                 f"""
@@ -16710,6 +16866,9 @@ def main(page="signal"):
                         {_macro6_consensus_combo2}
                         <span style="color:rgba(255,255,255,0.36);padding:0 10px;">|</span>
                         {_macro6_consensus_combo1}
+                    </div>
+                    <div style="margin-top:2px;">
+                        {_macro_group_market_stage_summary_html(_macro6_stage_combo2, _macro6_stage_combo1)}
                     </div>
                 </div>
                 """,
