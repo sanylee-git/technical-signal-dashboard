@@ -16797,8 +16797,10 @@ def main(page="signal"):
                     _live_benchmark_history_all5k = _live5k.get("benchmark_close_history")
             _live_history_ready5k = bool(
                 _live_candidate_history_all5k is not None
+                and _live_component_history_all5k is not None
                 and _live_benchmark_history_all5k is not None
                 and not _live_candidate_history_all5k.empty
+                and not _live_component_history_all5k.empty
                 and not _live_benchmark_history_all5k.empty
             )
             if st.session_state.get("macro5_kospi_preset") == _separator5k:
@@ -16939,33 +16941,16 @@ def main(page="signal"):
                 _live_candidate_history_selected5k = _live_candidate_history_all5k[
                     _live_candidate_history_all5k["candidate_id"] == _macro5_kospi_preset
                 ].copy()
-                if isinstance(_live_component_history_all5k, pd.DataFrame) and not _live_component_history_all5k.empty:
-                    _live_component_history_selected5k = _live_component_history_all5k[
-                        _live_component_history_all5k["parent_candidate_id"] == _macro5_kospi_preset
-                    ].copy()
-                elif isinstance(_live5k, dict):
-                    try:
-                        from kospi_macro5_runtime.page_adapter import build_selected_component_signal_history
-
-                        _live_component_history_selected5k = build_selected_component_signal_history(
-                            _live5k,
-                            _macro5_kospi_preset,
-                        )
-                    except Exception as _exc:
-                        _live_error5k = str(_exc)
+                _live_component_history_selected5k = _live_component_history_all5k[
+                    _live_component_history_all5k["parent_candidate_id"] == _macro5_kospi_preset
+                ].copy()
             _active_count5k = int(_latest_components5k["component_risk_state"].fillna(0).astype(int).sum()) if len(_latest_components5k) else 0
             _last_transition_rows5k = _candidate_signal5k[_candidate_signal5k["raw_risk_state"].ne(_candidate_signal5k["raw_risk_state"].shift(1))]
             _last_transition_date5k = pd.to_datetime(_last_transition_rows5k.iloc[-1]["date"]) if len(_last_transition_rows5k) else _latest_date5k
             _duration5k = int((_candidate_signal5k["date"] >= _last_transition_date5k).sum())
             _reference_label5k = _macro5_kospi_reference_label(_selected_row5k["source_signal_parity"])
             _live_selected5k = _live_row_map5k.get(_macro5_kospi_preset)
-            _live_selected_ok5k = bool(
-                _live_selected5k
-                and _live_selected5k.get("calculable")
-                and _live_history_ready5k
-                and not _live_candidate_history_selected5k.empty
-                and not _live_component_history_selected5k.empty
-            )
+            _live_selected_ok5k = bool(_live_selected5k and _live_selected5k.get("calculable") and _live_history_ready5k)
             if _live_selected_ok5k:
                 if not _live_candidate_history_selected5k.empty:
                     _state_span5k = _macro5_kospi_current_state_span(
@@ -16973,7 +16958,7 @@ def main(page="signal"):
                         _backtest_stats5k.get("window", {}).get("frozen_start", "2008-04-01"),
                     )
             _current_component_status5k = _latest_components5k
-            if _live_selected_ok5k:
+            if _live_history_ready5k:
                 _current_component_status5k = _live_component_history_selected5k
             st.markdown(
                 _macro5_kospi_current_status_html(
@@ -17047,7 +17032,7 @@ def main(page="signal"):
                 _status5k.loc[_row_idx5k, "freshness_status"] = _live_row5k.get("freshness_status")
             with st.expander("지표별 상태 보기", expanded=False):
                 _selected_component_status5k = _components5k[_components5k["parent_candidate_id"] == _macro5_kospi_preset].copy()
-                if _live_selected_ok5k:
+                if _live_history_ready5k:
                     _selected_component_status5k = _live_component_history_selected5k
                 _component_status_html5k = _macro5_kospi_build_component_status_panel(
                     _selected_component_status5k,
@@ -17063,9 +17048,9 @@ def main(page="signal"):
                     st.caption("선택 후보 구성요소 상태를 표시할 수 없습니다.")
 
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
-            if _live_selected_ok5k:
+            if _live_history_ready5k:
                 _signals5k = _live_candidate_history_all5k.copy()
-                _components5k = _live_component_history_selected5k.copy()
+                _components5k = _live_component_history_all5k.copy()
                 _benchmark5k = _live_benchmark_history_all5k.copy()
                 for _history5k in (_signals5k, _components5k, _benchmark5k):
                     if "date" in _history5k.columns:
@@ -17074,9 +17059,9 @@ def main(page="signal"):
                 _candidate_signal5k = _macro5_kospi_with_events(_candidate_signal5k)
                 _candidate_components5k = _components5k[_components5k["parent_candidate_id"] == _macro5_kospi_preset].copy()
             else:
-                _candidate_signal5k = _signals5k[_signals5k["candidate_id"] == _macro5_kospi_preset].copy()
-                _candidate_signal5k = _macro5_kospi_with_events(_candidate_signal5k)
-                _candidate_components5k = _components5k[_components5k["parent_candidate_id"] == _macro5_kospi_preset].copy()
+                _candidate_signal5k = pd.DataFrame()
+                _candidate_components5k = pd.DataFrame()
+                _benchmark5k = pd.DataFrame()
             _chart_basis_date5k = (
                 _live_selected5k.get("basis_date")
                 if isinstance(_live_selected5k, dict) and _live_selected5k.get("basis_date")
