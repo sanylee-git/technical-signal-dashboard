@@ -50,6 +50,14 @@ def test_macro5_b1_group_summary_uses_existing_candidate_rows() -> None:
     assert "Combo1" not in html
 
 
+def test_macro_runtime_pages_do_not_require_favorites_file_io() -> None:
+    for page in ("market_macro", "macro", "macro2", "macro3", "macro5_kospi", "macro6", "market"):
+        assert dash._page_needs_favorites(page) is False
+
+    for page in ("signal", "signal2", "signal3", "all"):
+        assert dash._page_needs_favorites(page) is True
+
+
 def test_macro5_b1_backtest_panel_splits_models_and_hides_internal_fields() -> None:
     metrics = pd.DataFrame(
         [
