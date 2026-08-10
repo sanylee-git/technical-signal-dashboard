@@ -120,11 +120,11 @@ def test_b2t_market_stage_label_uses_existing_on_k_l_and_state() -> None:
 
 def test_b2t_market_stage_html_colors_only_known_labels() -> None:
     expected = {
-        "홀드": "#65A30D",
-        "매수준비": "#16A34A",
-        "매수": "#15803D",
+        "홀드": "#A16207",
+        "매수준비": "#65A30D",
+        "매수": "#16A34A",
         "매수심화": "#166534",
-        "관망": "#D97706",
+        "관망": "#A16207",
         "매도준비": "#EA580C",
         "매도": "#DC2626",
         "매도심화": "#991B1B",
