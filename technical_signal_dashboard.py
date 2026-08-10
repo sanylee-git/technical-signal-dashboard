@@ -6117,13 +6117,91 @@ def _macro_market_stage_value_html(label: str) -> str:
     return _macro_market_stage_html(str(label))
 
 
-def _macro_group_market_stage_summary_html(combo2_stage: str, combo1_stage: str) -> str:
+def _macro_market_stage_change_html(previous_label: str, current_label: str) -> str:
+    arrow = "<span style='color:rgba(255,255,255,0.36);padding:0 4px;'>→</span>"
+    return f"{_macro_market_stage_value_html(previous_label)}{arrow}{_macro_market_stage_value_html(current_label)}"
+
+
+def _macro_group_market_stage_summary_html(
+    combo2_stage: str,
+    combo1_stage: str,
+    previous_combo2_stage: str | None = None,
+    previous_combo1_stage: str | None = None,
+) -> str:
     combined_stage = _macro_combined_group_market_stage_label(combo1_stage, combo2_stage)
+    previous_combined_stage = (
+        None
+        if previous_combo1_stage is None or previous_combo2_stage is None
+        else _macro_combined_group_market_stage_label(previous_combo1_stage, previous_combo2_stage)
+    )
+    combined_html = (
+        _macro_market_stage_value_html(combined_stage)
+        if previous_combined_stage is None
+        else _macro_market_stage_change_html(previous_combined_stage, combined_stage)
+    )
+    combo2_html = (
+        _macro_market_stage_value_html(combo2_stage)
+        if previous_combo2_stage is None
+        else _macro_market_stage_change_html(previous_combo2_stage, combo2_stage)
+    )
+    combo1_html = (
+        _macro_market_stage_value_html(combo1_stage)
+        if previous_combo1_stage is None
+        else _macro_market_stage_change_html(previous_combo1_stage, combo1_stage)
+    )
     sep = "<span style='color:rgba(255,255,255,0.36);padding:0 10px;'>|</span>"
     return (
-        f"<span><b>시장단계</b> · 조합1+2: {_macro_market_stage_value_html(combined_stage)}</span>"
-        f"{sep}<span>조합2: {_macro_market_stage_value_html(combo2_stage)}</span>"
-        f"{sep}<span>조합1: {_macro_market_stage_value_html(combo1_stage)}</span>"
+        f"<span><b>시장단계</b> · 조합1+2: {combined_html}</span>"
+        f"{sep}<span>조합2: {combo2_html}</span>"
+        f"{sep}<span>조합1: {combo1_html}</span>"
+    )
+
+
+def _macro_week_ago_state_row(history: pd.DataFrame | None, candidate_id: str | None = None) -> dict | None:
+    if history is None or not isinstance(history, pd.DataFrame) or history.empty:
+        return None
+    df = history.copy()
+    if candidate_id is not None and "candidate_id" in df.columns:
+        df = df[df["candidate_id"].astype(str).eq(str(candidate_id))]
+    if df.empty:
+        return None
+    if "date" in df.columns:
+        df["_macro_date"] = pd.to_datetime(df["date"], errors="coerce").dt.normalize()
+    else:
+        df["_macro_date"] = pd.to_datetime(df.index, errors="coerce").normalize()
+    df = df.dropna(subset=["_macro_date"]).sort_values("_macro_date")
+    if df.empty:
+        return None
+    df = df.drop_duplicates("_macro_date", keep="last").reset_index(drop=True)
+    if len(df) < 6:
+        return None
+    return df.iloc[-6].drop(labels=["_macro_date"], errors="ignore").to_dict()
+
+
+def _macro_historical_current_chip(row: dict | None, start_k: int, risk_col: str) -> str:
+    if not row:
+        return _macro_market_stage_value_html("계산 불가")
+    active_count = row.get("active_count", row.get("on_count"))
+    risk_state = row.get(risk_col)
+    if active_count is None or risk_state is None or pd.isna(active_count) or pd.isna(risk_state):
+        return _macro_market_stage_value_html("계산 불가")
+    return _macro_flag_ratio_html(active_count, start_k, bool(int(risk_state)))
+
+
+def _macro_historical_market_stage_html(row: dict | None, start_k: int, end_l: int, risk_col: str) -> str:
+    if not row:
+        return _macro_market_stage_value_html("계산 불가")
+    active_count = row.get("active_count", row.get("on_count"))
+    risk_state = row.get(risk_col)
+    if active_count is None or risk_state is None or pd.isna(active_count) or pd.isna(risk_state):
+        return _macro_market_stage_value_html("계산 불가")
+    return _macro_market_stage_html(
+        _macro_market_stage_label(
+            active_count,
+            start_k,
+            end_l,
+            bool(int(risk_state)),
+        )
     )
 
 
@@ -8902,9 +8980,11 @@ _MACRO_BACKTEST_COLGROUP = (
     '<col style="width:7%">'
     '<col style="width:5%">'
     '<col style="width:7%">'
+    '<col style="width:5%">'
+    '<col style="width:7%">'
     "</colgroup>"
 )
-_MACRO_BACKTEST_TABLE_STYLE = "width:100%;min-width:1260px;table-layout:fixed;border-collapse:collapse;font-size:12px;"
+_MACRO_BACKTEST_TABLE_STYLE = "width:100%;min-width:1480px;table-layout:fixed;border-collapse:collapse;font-size:12px;"
 _MACRO_BACKTEST_TABLE_WRAP_OPEN = "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto;'>"
 _MACRO_BACKTEST_CELL_LEFT = "padding:7px 8px;color:#EDEDED;font-weight:700;line-height:1.28;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
 _MACRO_BACKTEST_CELL_NUM = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
@@ -9297,6 +9377,7 @@ def _macro6_group_market_stage_label(
     preset_defs: dict,
     blocking_map: dict,
     snapshot_map: dict | None = None,
+    use_week_ago: bool = False,
 ) -> str:
     stage_labels = []
     for key in list(preset_keys):
@@ -9304,6 +9385,20 @@ def _macro6_group_market_stage_label(
         snapshot = (snapshot_map or {}).get(key)
         if cfg is None or blocking_map.get(key) or not snapshot:
             stage_labels.append("계산 불가")
+            continue
+        if use_week_ago:
+            history_row = _macro_week_ago_state_row(snapshot.get("event_frame"))
+            if not history_row:
+                stage_labels.append("계산 불가")
+                continue
+            stage_labels.append(
+                _macro_market_stage_label(
+                    history_row.get("active_count"),
+                    snapshot.get("start_count", snapshot.get("total_count", 1)),
+                    cfg.get("combo_l"),
+                    history_row.get("combo_risk_state"),
+                )
+            )
             continue
         stage_labels.append(
             _macro_market_stage_label(
@@ -9383,11 +9478,25 @@ def _build_macro6_backtest_panel(
             current_state.get("start_count", current_state.get("total_count", 1)),
             current_state.get("is_on"),
         )
+        week_ago_row = None if current_state is None else _macro_week_ago_state_row(current_state.get("event_frame"))
+        start_count = int(current_state.get("start_count", current_state.get("total_count", 1))) if current_state is not None else 1
+        end_count = int(cfg.get("combo_l", 0)) if key != "sp500_buyhold" else 0
+        week_ago_state_html = "-" if current_state is None else _macro_historical_current_chip(
+            week_ago_row,
+            start_count,
+            "combo_risk_state",
+        )
+        week_ago_market_stage_html = "-" if current_state is None else _macro_historical_market_stage_html(
+            week_ago_row,
+            start_count,
+            end_count,
+            "combo_risk_state",
+        )
         market_stage_html = "-" if current_state is None else _macro_market_stage_html(
             _macro_market_stage_label(
                 current_state.get("on_count"),
-                current_state.get("start_count", current_state.get("total_count", 1)),
-                cfg.get("combo_l"),
+                start_count,
+                end_count,
                 current_state.get("is_on"),
             )
         )
@@ -9404,6 +9513,8 @@ def _build_macro6_backtest_panel(
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{display_metrics.get('20Y Risk-off', '-')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{display_metrics.get('20Y Cycle', '-')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{display_metrics.get('짧은 Cycle', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{week_ago_state_html}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{week_ago_market_stage_html}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{current_state_html}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{market_stage_html}</td></tr>"
         )
@@ -9423,6 +9534,8 @@ def _build_macro6_backtest_panel(
             ("20Y Risk-off", "right"),
             ("20Y Cycle", "right"),
             ("짧은 Cycle", "right"),
+            ("1주 전", "center"),
+            ("시장단계(1주 전)", "center"),
             ("현재", "center"),
             ("시장단계", "center"),
         ])
@@ -13585,7 +13698,11 @@ def _macro5_kospi_source_latest_text(source_rows: list[dict] | None, component_i
     return " · ".join(parts)
 
 
-def _macro5_kospi_group_summary_html(candidate_rows: list[dict] | None, metrics: pd.DataFrame) -> str:
+def _macro5_kospi_group_summary_html(
+    candidate_rows: list[dict] | None,
+    metrics: pd.DataFrame,
+    candidate_history: pd.DataFrame | None = None,
+) -> str:
     candidate_rows = candidate_rows or []
     by_id = {str(row.get("candidate_id")): row for row in candidate_rows}
     summary = {}
@@ -13597,11 +13714,13 @@ def _macro5_kospi_group_summary_html(candidate_rows: list[dict] | None, metrics:
         unavailable = max(0, total - calculable)
         risk_off = sum(1 for row in rows if bool(row.get("calculable")) and int(row.get("raw_risk_state") or 0) == 1)
         stage_labels = []
+        week_ago_stage_labels = []
         for _, metric_row in group.iterrows():
             candidate_id = str(metric_row.get("candidate_id"))
             live_row = by_id.get(candidate_id, {})
             if not live_row or not live_row.get("calculable"):
                 stage_labels.append("계산 불가")
+                week_ago_stage_labels.append("계산 불가")
                 continue
             stage_labels.append(
                 _macro_market_stage_label(
@@ -13611,6 +13730,18 @@ def _macro5_kospi_group_summary_html(candidate_rows: list[dict] | None, metrics:
                     int(live_row.get("raw_risk_state") or 0) == 1,
                 )
             )
+            week_ago_row = _macro_week_ago_state_row(candidate_history, candidate_id)
+            if not week_ago_row:
+                week_ago_stage_labels.append("계산 불가")
+            else:
+                week_ago_stage_labels.append(
+                    _macro_market_stage_label(
+                        week_ago_row.get("active_count", week_ago_row.get("on_count", 0)),
+                        metric_row.get("K"),
+                        metric_row.get("L"),
+                        int(week_ago_row.get("raw_risk_state") or 0) == 1,
+                    )
+                )
         basis_dates = [row.get("basis_date") for row in rows if row.get("basis_date")]
         basis = max(basis_dates) if basis_dates else "계산 불가"
         availability_color = "#54F2A3" if unavailable == 0 else "rgba(255,255,255,0.92)"
@@ -13627,6 +13758,7 @@ def _macro5_kospi_group_summary_html(candidate_rows: list[dict] | None, metrics:
                 f"<span style='color:rgba(255,255,255,0.55);'> · 기준일 {_macro5_kospi_escape(basis)}</span>"
             ),
             "stage": _macro_group_market_stage_label(stage_labels),
+            "week_ago_stage": _macro_group_market_stage_label(week_ago_stage_labels),
         }
     sep = "<span style='color:rgba(255,255,255,0.36);padding:0 10px;'>|</span>"
     return (
@@ -13643,6 +13775,8 @@ def _macro5_kospi_group_summary_html(candidate_rows: list[dict] | None, metrics:
         + _macro_group_market_stage_summary_html(
             summary.get("조합2", {}).get("stage", "계산 불가"),
             summary.get("조합1", {}).get("stage", "계산 불가"),
+            summary.get("조합2", {}).get("week_ago_stage", "계산 불가"),
+            summary.get("조합1", {}).get("week_ago_stage", "계산 불가"),
         )
         + "</div></div>"
     )
@@ -13962,6 +14096,7 @@ def _macro5_kospi_build_backtest_panel(
     selected_id: str,
     model_type: str,
     backtest_stats: dict | None = None,
+    candidate_history: pd.DataFrame | None = None,
 ) -> str:
     model_type = _macro5_kospi_model_type(model_type)
     rows_html = []
@@ -13981,6 +14116,8 @@ def _macro5_kospi_build_backtest_panel(
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('전체 Risk-off', '0.0%')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('전체 Cycle', '-')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('짧은 Cycle', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>-</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>-</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>-</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>-</td></tr>"
         )
@@ -14023,6 +14160,14 @@ def _macro5_kospi_build_backtest_panel(
         )
         current_chip = _macro5_kospi_current_chip(candidate_id, live_row_map, int(row.get("K", 1)))
         market_stage = _macro5_kospi_market_stage_chip(candidate_id, live_row_map, row.get("K"), row.get("L"))
+        week_ago_row = _macro_week_ago_state_row(candidate_history, candidate_id)
+        week_ago_chip = _macro_historical_current_chip(week_ago_row, int(row.get("K", 1)), "raw_risk_state")
+        week_ago_market_stage = _macro_historical_market_stage_html(
+            week_ago_row,
+            int(row.get("K", 1)),
+            int(row.get("L", 0)),
+            "raw_risk_state",
+        )
         rows_html.append(
             f"<tr style='background:{bg};border-top:{border};border-bottom:{border};'>"
             f"<td title='{label}' style='{_MACRO_BACKTEST_CELL_LEFT}'>{label}</td>"
@@ -14034,6 +14179,8 @@ def _macro5_kospi_build_backtest_panel(
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{stats.get('전체 Risk-off', '-')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{stats.get('전체 Cycle', '-')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{stats.get('짧은 Cycle', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{week_ago_chip}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{week_ago_market_stage}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{current_chip}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{market_stage}</td></tr>"
         )
@@ -14053,6 +14200,8 @@ def _macro5_kospi_build_backtest_panel(
             ("전체 Risk-off", "right"),
             ("전체 Cycle", "right"),
             ("짧은 Cycle", "right"),
+            ("1주 전", "center"),
+            ("시장단계(1주 전)", "center"),
             ("현재", "center"),
             ("시장단계", "center"),
         ])
@@ -16151,6 +16300,7 @@ def main(page="signal"):
                 _macro5_kospi_group_summary_html(
                     _live5k.get("candidate_rows", []) if isinstance(_live5k, dict) else [],
                     _metrics5k,
+                    _live5k.get("candidate_signal_history") if isinstance(_live5k, dict) else None,
                 ),
                 unsafe_allow_html=True,
             )
@@ -16326,8 +16476,27 @@ def main(page="signal"):
                 ("n/m", int(_selected_row5k["m_or_n"])),
             ]
 
-            _combo2_bt5k = _macro5_kospi_build_backtest_panel(_metrics5k, _live_row_map5k, _macro5_kospi_preset, "combo2", _backtest_stats5k)
-            _combo1_bt5k = _macro5_kospi_build_backtest_panel(_metrics5k, _live_row_map5k, _macro5_kospi_preset, "combo1", _backtest_stats5k)
+            _live_candidate_history_all5k = (
+                _live5k.get("candidate_signal_history")
+                if isinstance(_live5k, dict) and isinstance(_live5k.get("candidate_signal_history"), pd.DataFrame)
+                else None
+            )
+            _combo2_bt5k = _macro5_kospi_build_backtest_panel(
+                _metrics5k,
+                _live_row_map5k,
+                _macro5_kospi_preset,
+                "combo2",
+                _backtest_stats5k,
+                _live_candidate_history_all5k,
+            )
+            _combo1_bt5k = _macro5_kospi_build_backtest_panel(
+                _metrics5k,
+                _live_row_map5k,
+                _macro5_kospi_preset,
+                "combo1",
+                _backtest_stats5k,
+                _live_candidate_history_all5k,
+            )
             if _combo2_bt5k:
                 with st.expander("백테스트 비교 보기 · 조합2", expanded=False):
                     st.markdown(_combo2_bt5k, unsafe_allow_html=True)
@@ -16853,6 +17022,20 @@ def main(page="signal"):
                 _macro6_blocking,
                 snapshot_map=_macro6_snapshot_map,
             )
+            _macro6_week_ago_stage_combo2 = _macro6_group_market_stage_label(
+                _MACRO6_COMBO2_ORDER,
+                _macro6_presets,
+                _macro6_blocking,
+                snapshot_map=_macro6_snapshot_map,
+                use_week_ago=True,
+            )
+            _macro6_week_ago_stage_combo1 = _macro6_group_market_stage_label(
+                _MACRO6_COMBO1_ORDER,
+                _macro6_presets,
+                _macro6_blocking,
+                snapshot_map=_macro6_snapshot_map,
+                use_week_ago=True,
+            )
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
             st.markdown(
                 f"""
@@ -16868,7 +17051,12 @@ def main(page="signal"):
                         {_macro6_consensus_combo1}
                     </div>
                     <div style="margin-top:2px;">
-                        {_macro_group_market_stage_summary_html(_macro6_stage_combo2, _macro6_stage_combo1)}
+                        {_macro_group_market_stage_summary_html(
+                            _macro6_stage_combo2,
+                            _macro6_stage_combo1,
+                            _macro6_week_ago_stage_combo2,
+                            _macro6_week_ago_stage_combo1,
+                        )}
                     </div>
                 </div>
                 """,
