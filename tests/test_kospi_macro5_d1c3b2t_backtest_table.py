@@ -73,6 +73,7 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
         "전체 Cycle",
         "짧은 Cycle",
         "현재",
+        "시장단계",
     ]
     for html in (combo2, combo1):
         for column in required:
@@ -106,9 +107,20 @@ def test_b2t_current_column_uses_live_active_count_over_entry_k() -> None:
     assert "Risk-off</span>" not in html
 
 
-def test_b2t_chart_macro4_and_runtime_functions_are_unchanged() -> None:
+def test_b2t_market_stage_label_uses_existing_on_k_l_and_state() -> None:
+    assert dash._macro_market_stage_label(5, 4, 2, False) == "매도심화"
+    assert dash._macro_market_stage_label(4, 4, 2, False) == "매도"
+    assert dash._macro_market_stage_label(3, 4, 2, False) == "매도준비"
+    assert dash._macro_market_stage_label(3, 4, 2, True) == "매수준비"
+    assert dash._macro_market_stage_label(2, 4, 2, True) == "매수"
+    assert dash._macro_market_stage_label(1, 4, 2, True) == "매수심화"
+    assert dash._macro_market_stage_label(4, 6, 2, False) == "홀드"
+    assert dash._macro_market_stage_label(4, 6, 2, True) == "관망"
+
+
+def test_b2t_chart_and_runtime_functions_are_unchanged_except_macro4_backtest_table() -> None:
     assert _function_hash("_macro5_kospi_build_main_chart") == "6f04019fc3b22922fcb7ba892003f0411fdf24b6d24ee436a9e890bb305f9034"
     assert _function_hash("_macro5_kospi_build_component_chart") == "0ab6ea0276d1a5f8963a77d4d60bf517d69f74bdaeac3cab46cd9f8978f4d024"
     assert _function_hash("render_macro6_proxy_final_section") == "6eb77cead55b025adf2b10cad2ddd49807852732bd1ba6b87188fe8ca543fc27"
-    assert _function_hash("_build_macro6_backtest_panel") == "f0abfee7e2d7df9db87a2c5dd0d30645f135565f42ac8cbfd0632ecc29476f08"
+    assert _function_hash("_build_macro6_backtest_panel") == "3c0929a82b337c58c40c7370082f4145b561ea9073d0b84949c96290f339b0fe"
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"

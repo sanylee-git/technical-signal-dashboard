@@ -5982,6 +5982,29 @@ def _macro_flag_ratio_html(on_count: int, start_k: int, is_on: bool | None = Non
     )
 
 
+def _macro_market_stage_label(on_count, start_k, end_l, is_on) -> str:
+    try:
+        on = int(on_count)
+        k_value = int(start_k)
+        l_value = int(end_l)
+        risk_off = bool(is_on)
+    except Exception:
+        return "계산 불가"
+    if on > k_value:
+        return "매도심화"
+    if on == k_value:
+        return "매도"
+    if on < l_value:
+        return "매수심화"
+    if on == l_value:
+        return "매수"
+    if not risk_off and on == k_value - 1:
+        return "매도준비"
+    if risk_off and on == l_value + 1:
+        return "매수준비"
+    return "관망" if risk_off else "홀드"
+
+
 def _build_macro_combo_status_panel(
     benchmark_name: str,
     years: int,
@@ -8756,9 +8779,10 @@ _MACRO_BACKTEST_COLGROUP = (
     '<col style="width:7%">'
     '<col style="width:7%">'
     '<col style="width:5%">'
+    '<col style="width:7%">'
     "</colgroup>"
 )
-_MACRO_BACKTEST_TABLE_STYLE = "width:100%;min-width:1180px;table-layout:fixed;border-collapse:collapse;font-size:12px;"
+_MACRO_BACKTEST_TABLE_STYLE = "width:100%;min-width:1260px;table-layout:fixed;border-collapse:collapse;font-size:12px;"
 _MACRO_BACKTEST_TABLE_WRAP_OPEN = "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto;'>"
 _MACRO_BACKTEST_CELL_LEFT = "padding:7px 8px;color:#EDEDED;font-weight:700;line-height:1.28;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
 _MACRO_BACKTEST_CELL_NUM = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
@@ -9213,6 +9237,12 @@ def _build_macro6_backtest_panel(
             current_state.get("start_count", current_state.get("total_count", 1)),
             current_state.get("is_on"),
         )
+        market_stage_html = "-" if current_state is None else _macro_market_stage_label(
+            current_state.get("on_count"),
+            current_state.get("start_count", current_state.get("total_count", 1)),
+            cfg.get("combo_l"),
+            current_state.get("is_on"),
+        )
         label = _macro6_preset_display_label(cfg) if key != "sp500_buyhold" else cfg.get("label", key)
         display_metrics = _format_with_ratios(key, metrics)
         rows_html.append(
@@ -9226,7 +9256,8 @@ def _build_macro6_backtest_panel(
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{display_metrics.get('20Y Risk-off', '-')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{display_metrics.get('20Y Cycle', '-')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{display_metrics.get('짧은 Cycle', '-')}</td>"
-            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{current_state_html}</td></tr>"
+            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{current_state_html}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{market_stage_html}</td></tr>"
         )
     if not rows_html:
         return ""
@@ -9245,6 +9276,7 @@ def _build_macro6_backtest_panel(
             ("20Y Cycle", "right"),
             ("짧은 Cycle", "right"),
             ("현재", "center"),
+            ("시장단계", "center"),
         ])
         + f"<tbody>{''.join(rows_html)}</tbody></table></div>"
     )
@@ -13555,6 +13587,18 @@ def _macro5_kospi_current_chip(candidate_id: str, live_row_map: dict[str, dict],
     return f"<span style='color:{color};font-weight:700;'>{label}</span>"
 
 
+def _macro5_kospi_market_stage_chip(candidate_id: str, live_row_map: dict[str, dict], start_k, end_l) -> str:
+    row = live_row_map.get(str(candidate_id), {})
+    if not row or not row.get("calculable"):
+        return "계산 불가"
+    return _macro_market_stage_label(
+        row.get("active_count"),
+        start_k,
+        end_l,
+        int(row.get("raw_risk_state") or 0) == 1,
+    )
+
+
 def _macro5_kospi_ratio_span(ratio: float, good: bool) -> str:
     color = "#7FE7B1" if good else "#8F8F8F"
     weight = "700" if good else "400"
@@ -13766,6 +13810,7 @@ def _macro5_kospi_build_backtest_panel(
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('전체 Risk-off', '0.0%')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('전체 Cycle', '-')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('짧은 Cycle', '-')}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>-</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>-</td></tr>"
         )
     for _, row in subset.iterrows():
@@ -13805,6 +13850,8 @@ def _macro5_kospi_build_backtest_panel(
             hold_metrics.get("_full_cagr_num"),
             "cagr",
         )
+        current_chip = _macro5_kospi_current_chip(candidate_id, live_row_map, int(row.get("K", 1)))
+        market_stage = _macro5_kospi_market_stage_chip(candidate_id, live_row_map, row.get("K"), row.get("L"))
         rows_html.append(
             f"<tr style='background:{bg};border-top:{border};border-bottom:{border};'>"
             f"<td title='{label}' style='{_MACRO_BACKTEST_CELL_LEFT}'>{label}</td>"
@@ -13816,7 +13863,8 @@ def _macro5_kospi_build_backtest_panel(
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{stats.get('전체 Risk-off', '-')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{stats.get('전체 Cycle', '-')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{stats.get('짧은 Cycle', '-')}</td>"
-            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{_macro5_kospi_current_chip(candidate_id, live_row_map, int(row.get('K', 1)))}</td></tr>"
+            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{current_chip}</td>"
+            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{market_stage}</td></tr>"
         )
     if not rows_html:
         return ""
@@ -13835,6 +13883,7 @@ def _macro5_kospi_build_backtest_panel(
             ("전체 Cycle", "right"),
             ("짧은 Cycle", "right"),
             ("현재", "center"),
+            ("시장단계", "center"),
         ])
         + f"<tbody>{''.join(rows_html)}</tbody></table></div>"
     )
