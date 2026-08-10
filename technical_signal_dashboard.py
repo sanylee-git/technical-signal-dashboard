@@ -10065,6 +10065,108 @@ def _build_macro6_indicator_chart(
     return fig
 
 
+_MACRO6_DETAIL_CHART_CACHE_MAX_ENTRIES = 64
+_MACRO6_DETAIL_CHART_CACHE = {}
+
+
+def _macro6_preset_contract_signature(preset_cfg: dict) -> str:
+    payload = json.dumps(preset_cfg or {}, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _macro6_series_contract_signature(series: pd.Series | None) -> str:
+    if series is None or series.empty:
+        return "empty"
+    index = pd.DatetimeIndex(pd.to_datetime(series.dropna().index)).normalize()
+    if len(index) == 0:
+        return "empty"
+    return "|".join([
+        str(len(index)),
+        pd.Timestamp(index.min()).isoformat(),
+        pd.Timestamp(index.max()).isoformat(),
+    ])
+
+
+def _macro6_detail_chart_cache_key(
+    chart_kind: str,
+    preset_key: str,
+    detail_id: str,
+    years: int,
+    benchmark_name: str,
+    show_raw: bool,
+    preset_cfg: dict,
+    spx_s: pd.Series | None,
+    sync_bucket: str | None,
+) -> tuple:
+    return (
+        "macro6_detail_chart_v1",
+        str(chart_kind),
+        str(preset_key),
+        str(detail_id),
+        int(years),
+        str(benchmark_name),
+        bool(show_raw),
+        str(sync_bucket or ""),
+        _macro6_preset_contract_signature(preset_cfg),
+        _macro6_series_contract_signature(spx_s),
+    )
+
+
+def _macro6_detail_chart_cache_get(key: tuple) -> go.Figure | None:
+    cached = _MACRO6_DETAIL_CHART_CACHE.get(key)
+    if cached is None:
+        return None
+    _MACRO6_DETAIL_CHART_CACHE.pop(key, None)
+    _MACRO6_DETAIL_CHART_CACHE[key] = cached
+    return go.Figure(cached)
+
+
+def _macro6_detail_chart_cache_put(key: tuple, fig: go.Figure | None) -> None:
+    if fig is None:
+        return
+    _MACRO6_DETAIL_CHART_CACHE[key] = go.Figure(fig)
+    while len(_MACRO6_DETAIL_CHART_CACHE) > _MACRO6_DETAIL_CHART_CACHE_MAX_ENTRIES:
+        oldest_key = next(iter(_MACRO6_DETAIL_CHART_CACHE))
+        _MACRO6_DETAIL_CHART_CACHE.pop(oldest_key, None)
+
+
+def _build_macro6_indicator_chart_cached(
+    preset_key: str,
+    indicator: str,
+    years: int,
+    benchmark_name: str,
+    preset_cfg: dict,
+    spx_s: pd.Series,
+    show_raw: bool,
+    sync_bucket: str | None = None,
+):
+    cache_key = _macro6_detail_chart_cache_key(
+        "indicator",
+        preset_key,
+        indicator,
+        years,
+        benchmark_name,
+        show_raw,
+        preset_cfg,
+        spx_s,
+        sync_bucket,
+    )
+    cached = _macro6_detail_chart_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    fig = _build_macro6_indicator_chart(
+        indicator=indicator,
+        years=years,
+        benchmark_name=benchmark_name,
+        preset_cfg=preset_cfg,
+        spx_s=spx_s,
+        show_raw=show_raw,
+        sync_bucket=sync_bucket,
+    )
+    _macro6_detail_chart_cache_put(cache_key, fig)
+    return fig
+
+
 def _build_macro6_component_chart(
     component_key: str,
     years: int,
@@ -10134,6 +10236,41 @@ def _build_macro6_component_chart(
         borderwidth=1,
         borderpad=4,
     )
+    return fig
+
+
+def _build_macro6_component_chart_cached(
+    preset_key: str,
+    component_key: str,
+    years: int,
+    benchmark_name: str,
+    preset_cfg: dict,
+    spx_s: pd.Series,
+    sync_bucket: str | None = None,
+):
+    cache_key = _macro6_detail_chart_cache_key(
+        "component",
+        preset_key,
+        component_key,
+        years,
+        benchmark_name,
+        False,
+        preset_cfg,
+        spx_s,
+        sync_bucket,
+    )
+    cached = _macro6_detail_chart_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    fig = _build_macro6_component_chart(
+        component_key=component_key,
+        years=years,
+        benchmark_name=benchmark_name,
+        preset_cfg=preset_cfg,
+        spx_s=spx_s,
+        sync_bucket=sync_bucket,
+    )
+    _macro6_detail_chart_cache_put(cache_key, fig)
     return fig
 
 
@@ -17414,7 +17551,8 @@ def main(page="signal"):
                 )
                 if _macro6_is_combo2:
                     _macro6_indicator_charts = {
-                        _component: _build_macro6_component_chart(
+                        _component: _build_macro6_component_chart_cached(
+                            preset_key=_macro6_preset,
                             component_key=_component,
                             years=_macro6_years,
                             benchmark_name="S&P500",
@@ -17426,7 +17564,8 @@ def main(page="signal"):
                     }
                 else:
                     _macro6_indicator_charts = {
-                        _indicator: _build_macro6_indicator_chart(
+                        _indicator: _build_macro6_indicator_chart_cached(
+                            preset_key=_macro6_preset,
                             indicator=_indicator,
                             years=_macro6_years,
                             benchmark_name="S&P500",
