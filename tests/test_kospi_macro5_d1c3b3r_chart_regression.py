@@ -5,7 +5,7 @@ from functools import lru_cache
 import pandas as pd
 
 import technical_signal_dashboard as dash
-from kospi_macro5_runtime.page_adapter import load_macro5_live_page_data
+from kospi_macro5_runtime.page_adapter import build_selected_component_signal_history, load_macro5_live_page_data
 
 
 @lru_cache(maxsize=1)
@@ -20,6 +20,10 @@ def _assets():
 
 def _candidate_map(metrics: pd.DataFrame):
     return {str(row["candidate_id"]): row for _, row in metrics.iterrows()}
+
+
+def _component_history(live: dict, candidate_id: str) -> pd.DataFrame:
+    return build_selected_component_signal_history(live, candidate_id)
 
 
 def _assert_component_fig_equal(left, right) -> None:
@@ -103,9 +107,7 @@ def test_b3r_combo1_default_traces_are_not_raw_only_and_aux_adds_raw():
     metrics = assets["metrics"]
     combo1 = metrics.loc[metrics["model_type"].eq("combo1")].iloc[0]
     parent_id = str(combo1["candidate_id"])
-    component = live["component_signal_history"].loc[
-        live["component_signal_history"]["parent_candidate_id"].eq(parent_id)
-    ].copy()
+    component = _component_history(live, parent_id)
     source_base = live["transformed_source_history"]
     benchmark = live["benchmark_close_history"]
     basis_date = live["candidate_signal_history"].loc[
@@ -159,9 +161,7 @@ def test_b3r_component_indicator_context_matches_standalone_and_does_not_mutate_
     metrics = assets["metrics"]
     combo1 = metrics.loc[metrics["model_type"].eq("combo1")].iloc[0]
     parent_id = str(combo1["candidate_id"])
-    component = live["component_signal_history"].loc[
-        live["component_signal_history"]["parent_candidate_id"].eq(parent_id)
-    ].copy()
+    component = _component_history(live, parent_id)
     source_base = live["transformed_source_history"]
     context = dash._macro5_kospi_prepare_component_indicator_context(source_base)
     prepared_before = context["source"].copy(deep=True)
@@ -180,9 +180,7 @@ def test_b3r_component_chart_context_matches_standalone_and_reuses_prepared_cont
     metrics = assets["metrics"]
     combo1 = metrics.loc[metrics["model_type"].eq("combo1")].iloc[0]
     parent_id = str(combo1["candidate_id"])
-    component = live["component_signal_history"].loc[
-        live["component_signal_history"]["parent_candidate_id"].eq(parent_id)
-    ].copy()
+    component = _component_history(live, parent_id)
     source_base = live["transformed_source_history"]
     benchmark = live["benchmark_close_history"]
     basis_date = live["candidate_signal_history"].loc[
@@ -245,9 +243,7 @@ def test_b3r_combo2_children_have_no_binary_step_trace_and_no_hash_title():
     metrics = assets["metrics"]
     combo2 = metrics.loc[metrics["model_type"].eq("combo2")].iloc[0]
     parent_id = str(combo2["candidate_id"])
-    component = live["component_signal_history"].loc[
-        live["component_signal_history"]["parent_candidate_id"].eq(parent_id)
-    ].copy()
+    component = _component_history(live, parent_id)
     benchmark = live["benchmark_close_history"]
     basis_date = live["candidate_signal_history"].loc[
         live["candidate_signal_history"]["candidate_id"].eq(parent_id), "date"
@@ -291,9 +287,7 @@ def test_b3r_period_options_are_safe_and_legacy_20_maps_to_all():
     candidate = live["candidate_signal_history"].loc[
         live["candidate_signal_history"]["candidate_id"].eq(candidate_id)
     ].copy()
-    components = live["component_signal_history"].loc[
-        live["component_signal_history"]["parent_candidate_id"].eq(candidate_id)
-    ].copy()
+    components = _component_history(live, candidate_id)
     options, common_start = dash._macro5_kospi_available_period_options(
         live["benchmark_close_history"],
         candidate,
