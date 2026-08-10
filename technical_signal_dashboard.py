@@ -7817,7 +7817,24 @@ def _macro6_get_indicator_raw_series(
     benchmark_name: str = "S&P500",
     spx_s: pd.Series | None = None,
     sync_bucket: str | None = None,
+    raw_series_cache: dict | None = None,
 ):
+    spx_index = pd.DatetimeIndex(pd.to_datetime(spx_s.index)).normalize() if isinstance(spx_s, pd.Series) and not spx_s.empty else pd.DatetimeIndex([])
+    spx_signature = (
+        int(len(spx_index)),
+        None if len(spx_index) == 0 else pd.Timestamp(spx_index.min()).isoformat(),
+        None if len(spx_index) == 0 else pd.Timestamp(spx_index.max()).isoformat(),
+    )
+    cache_key = (
+        str(indicator),
+        int(years),
+        str(benchmark_name),
+        str(sync_bucket or ""),
+        spx_signature,
+    )
+    if isinstance(raw_series_cache, dict) and cache_key in raw_series_cache:
+        return raw_series_cache[cache_key].copy()
+
     if indicator == "VIX Spread":
         expected_latest, benchmark_index = _macro6_expected_latest_trading_date(
             benchmark_name=benchmark_name,
@@ -7832,26 +7849,34 @@ def _macro6_get_indicator_raw_series(
             benchmark_dates=tuple(pd.Timestamp(d).isoformat() for d in benchmark_index),
             sync_bucket=sync_bucket,
         )
-        return meta.get("series", pd.Series(dtype=float)).dropna()
-    if indicator == "HY":
-        return _macro3_apply_indicator_availability(
+        series = meta.get("series", pd.Series(dtype=float)).dropna()
+    elif indicator == "HY":
+        series = _macro3_apply_indicator_availability(
             "HY",
             (-_macro6_proxy_credit_spread_series("HY", years, sync_bucket=sync_bucket)).dropna(),
         ).dropna()
-    if indicator == "IG":
-        return _macro3_apply_indicator_availability(
+    elif indicator == "IG":
+        series = _macro3_apply_indicator_availability(
             "IG",
             (-_macro6_proxy_credit_spread_series("IG", years, sync_bucket=sync_bucket)).dropna(),
         ).dropna()
-    if indicator == "Credit Stress":
-        return _macro6_credit_stress_series(years, sync_bucket=sync_bucket)
-    return _macro3_get_indicator_raw_series(
-        indicator=indicator,
-        years=years,
-        benchmark_name=benchmark_name,
-        spx_s=spx_s,
-        sync_bucket=sync_bucket,
-    )
+    elif indicator == "Credit Stress":
+        series = _macro6_credit_stress_series(years, sync_bucket=sync_bucket)
+    else:
+        series = _macro3_get_indicator_raw_series(
+            indicator=indicator,
+            years=years,
+            benchmark_name=benchmark_name,
+            spx_s=spx_s,
+            sync_bucket=sync_bucket,
+        )
+    if series is None:
+        series = pd.Series(dtype=float)
+    series = series.dropna()
+    if isinstance(raw_series_cache, dict):
+        raw_series_cache[cache_key] = series.copy()
+    return series.copy()
+
 
 
 def _macro6_source_mode(source_mode: str | None = None) -> str:
@@ -8008,6 +8033,7 @@ def _macro6_get_indicator_signal_frame(
     benchmark_name: str = "S&P500",
     spx_s: pd.Series | None = None,
     sync_bucket: str | None = None,
+    raw_series_cache: dict | None = None,
 ):
     if not COMBO1_EXPANDED_SIGNALS_AVAILABLE:
         return pd.DataFrame()
@@ -8060,6 +8086,7 @@ def _macro6_get_indicator_signal_frame(
         benchmark_name=benchmark_name,
         spx_s=spx_s,
         sync_bucket=sync_bucket,
+        raw_series_cache=raw_series_cache,
     )
     if raw_series is None or raw_series.empty:
         return pd.DataFrame()
@@ -8300,6 +8327,7 @@ def _compute_macro6_combo_signal_frame(
     combo_l: int,
     sync_bucket: str | None = None,
     source_mode: str | None = None,
+    raw_series_cache: dict | None = None,
 ):
     if spx_s is None or spx_s.empty or not COMBO1_EXPANDED_SIGNALS_AVAILABLE:
         return pd.DataFrame(), []
@@ -8329,6 +8357,7 @@ def _compute_macro6_combo_signal_frame(
                 benchmark_name=benchmark_name,
                 spx_s=spx_s,
                 sync_bucket=sync_bucket,
+                raw_series_cache=raw_series_cache,
             )
         if signal_df.empty:
             return pd.DataFrame(), []
@@ -8360,6 +8389,7 @@ def _compute_macro6_combo2_signal_frame(
     preset_cfg: dict,
     sync_bucket: str | None = None,
     source_mode: str | None = None,
+    raw_series_cache: dict | None = None,
 ):
     if spx_s is None or spx_s.empty or not COMBO1_EXPANDED_SIGNALS_AVAILABLE:
         return pd.DataFrame(), []
@@ -8368,6 +8398,8 @@ def _compute_macro6_combo2_signal_frame(
     component_cfgs = dict(preset_cfg.get("component_cfgs", {}))
     if not components:
         return pd.DataFrame(), []
+    if raw_series_cache is None:
+        raw_series_cache = {}
     frames = {}
     active_components = []
     for component_key in components:
@@ -8383,6 +8415,7 @@ def _compute_macro6_combo2_signal_frame(
             combo_l=int(component_cfg.get("combo_l", 0)),
             sync_bucket=sync_bucket,
             source_mode=source_mode,
+            raw_series_cache=raw_series_cache,
         )
         if component_combo.empty or not component_active:
             return pd.DataFrame(), []
@@ -8418,6 +8451,7 @@ def _compute_macro6_preset_signal_frame(
     preset_cfg: dict,
     sync_bucket: str | None = None,
     source_mode: str | None = None,
+    raw_series_cache: dict | None = None,
 ):
     if preset_cfg.get("kind") == "combo2_final8":
         return _compute_macro6_combo2_signal_frame(
@@ -8426,6 +8460,7 @@ def _compute_macro6_preset_signal_frame(
             preset_cfg=preset_cfg,
             sync_bucket=sync_bucket,
             source_mode=source_mode,
+            raw_series_cache=raw_series_cache,
         )
     return _compute_macro6_combo_signal_frame(
         spx_s=spx_s,
@@ -8436,6 +8471,7 @@ def _compute_macro6_preset_signal_frame(
         combo_l=int(preset_cfg.get("combo_l", 0)),
         sync_bucket=sync_bucket,
         source_mode=source_mode,
+        raw_series_cache=raw_series_cache,
     )
 
 
@@ -8659,6 +8695,7 @@ def _compute_macro6_operating_snapshot_cached(preset_cfg: dict, sync_bucket: str
         benchmark_name=benchmark_name,
         preset_cfg=preset_cfg,
         sync_bucket=sync_bucket,
+        raw_series_cache={},
     )
     if combo.empty or not active_indicators:
         return None

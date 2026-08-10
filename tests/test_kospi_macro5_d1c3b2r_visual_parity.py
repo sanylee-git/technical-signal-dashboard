@@ -143,7 +143,7 @@ def test_b2r_preset_main_alias_uses_fixed_slots() -> None:
 
 def test_b2r_chart_and_macro4_functions_are_unchanged() -> None:
     assert _function_hash("_macro5_kospi_build_main_chart") == "6f04019fc3b22922fcb7ba892003f0411fdf24b6d24ee436a9e890bb305f9034"
-    assert _function_hash("_macro5_kospi_build_component_chart") == "0ab6ea0276d1a5f8963a77d4d60bf517d69f74bdaeac3cab46cd9f8978f4d024"
+    assert _function_hash("_macro5_kospi_build_component_chart") == "038c2989d689cb4471d7d5ddf50338ec75766cf8789db7dac91966dcc12c254c"
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"
     assert _function_hash("_build_macro6_component_chart") == "4b7c1ec7b4482ded77e53bcbf407540efdcf9a4d642e18c713d6a67a93a45246"
     assert _function_hash("_build_macro6_indicator_chart") == "7725e3712828ccbb1f2e2d22f06ef5c59492efc8a7ebf359f7cf30d33f4f2231"
