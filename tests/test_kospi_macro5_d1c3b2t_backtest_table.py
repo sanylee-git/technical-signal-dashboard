@@ -254,6 +254,6 @@ def test_b2t_week_ago_individual_stage_uses_historical_risk_state() -> None:
 def test_b2t_chart_and_runtime_functions_are_unchanged_except_macro4_backtest_table() -> None:
     assert _function_hash("_macro5_kospi_build_main_chart") == "6f04019fc3b22922fcb7ba892003f0411fdf24b6d24ee436a9e890bb305f9034"
     assert _function_hash("_macro5_kospi_build_component_chart") == "038c2989d689cb4471d7d5ddf50338ec75766cf8789db7dac91966dcc12c254c"
-    assert _function_hash("render_macro6_proxy_final_section") == "aee0be189842b248add83b71bbb7eeb1efa9a2cb971f7e025486581b725434f1"
+    assert _function_hash("render_macro6_proxy_final_section") == "2bd3464fbb2b1848cc7e0ceff0457cc9dac06229435875051e12de77a403f326"
     assert _function_hash("_build_macro6_backtest_panel") == "2c9fea51aae5e2805b1eac93356d2b19344474ab0b73190da7d4e0e464f2ee5b"
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"

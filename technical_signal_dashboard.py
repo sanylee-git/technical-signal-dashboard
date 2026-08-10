@@ -8685,22 +8685,17 @@ def _make_macro6_combo_chart_from_snapshot(
     show_spinner=False,
 )
 def _compute_macro6_operating_snapshot_cached(preset_cfg: dict, sync_bucket: str | None = None):
-    benchmark_name = preset_cfg.get("benchmark", "S&P500")
-    benchmark = _get_macro_benchmark(benchmark_name)
-    spx_s = _macro3_filter_confirmed_us_daily(_yf_close(benchmark["code"], 25, sync_bucket=sync_bucket))
-    if spx_s is None or spx_s.empty:
-        return None
-    combo, active_indicators = _compute_macro6_preset_signal_frame(
-        spx_s=spx_s,
-        benchmark_name=benchmark_name,
-        preset_cfg=preset_cfg,
-        sync_bucket=sync_bucket,
-        raw_series_cache={},
-    )
-    if combo.empty or not active_indicators:
-        return None
-    event_df = _macro6_build_event_df(combo, active_indicators, benchmark_name, preset_cfg)
-    if event_df.empty:
+    return _compute_macro6_operating_snapshot_uncached(preset_cfg=preset_cfg, sync_bucket=sync_bucket)
+
+
+def _macro6_operating_state_payload(
+    event_df: pd.DataFrame,
+    active_indicators,
+    preset_cfg: dict,
+    *,
+    compact_event_frame: bool = False,
+) -> dict | None:
+    if event_df is None or event_df.empty:
         return None
     ordered = event_df.sort_values("date").reset_index(drop=True)
     latest = ordered.iloc[-1]
@@ -8708,10 +8703,13 @@ def _compute_macro6_operating_snapshot_cached(preset_cfg: dict, sync_bucket: str
     start_idx = len(ordered) - 1
     while start_idx > 0 and bool(ordered.iloc[start_idx - 1].get("combo_risk_state", False)) == current_state:
         start_idx -= 1
+    if compact_event_frame:
+        keep_cols = [col for col in ["date", "active_count", "combo_risk_state"] if col in event_df.columns]
+        payload_event = event_df[keep_cols].copy()
+    else:
+        payload_event = event_df
     return {
-        "spx_s": spx_s,
-        "combo_frame": combo,
-        "event_frame": event_df,
+        "event_frame": payload_event,
         "active_indicators": list(active_indicators),
         "is_on": current_state,
         "on_count": int(latest.get("active_count", 0)),
@@ -8723,8 +8721,102 @@ def _compute_macro6_operating_snapshot_cached(preset_cfg: dict, sync_bucket: str
     }
 
 
+def _compute_macro6_operating_snapshot_uncached(
+    preset_cfg: dict,
+    sync_bucket: str | None = None,
+    raw_series_cache: dict | None = None,
+):
+    benchmark_name = preset_cfg.get("benchmark", "S&P500")
+    benchmark = _get_macro_benchmark(benchmark_name)
+    spx_s = _macro3_filter_confirmed_us_daily(_yf_close(benchmark["code"], 25, sync_bucket=sync_bucket))
+    if spx_s is None or spx_s.empty:
+        return None
+    if raw_series_cache is None:
+        raw_series_cache = {}
+    combo, active_indicators = _compute_macro6_preset_signal_frame(
+        spx_s=spx_s,
+        benchmark_name=benchmark_name,
+        preset_cfg=preset_cfg,
+        sync_bucket=sync_bucket,
+        raw_series_cache=raw_series_cache,
+    )
+    if combo.empty or not active_indicators:
+        return None
+    event_df = _macro6_build_event_df(combo, active_indicators, benchmark_name, preset_cfg)
+    payload = _macro6_operating_state_payload(event_df, active_indicators, preset_cfg)
+    if not payload:
+        return None
+    payload.update({
+        "spx_s": spx_s,
+        "combo_frame": combo,
+    })
+    return payload
+
+
 def _compute_macro6_operating_snapshot(preset_cfg: dict, sync_bucket: str | None = None):
     return _compute_macro6_operating_snapshot_cached(preset_cfg=preset_cfg, sync_bucket=sync_bucket)
+
+
+def _compute_macro6_operating_summary(
+    preset_cfg: dict,
+    spx_s: pd.Series,
+    benchmark_name: str,
+    sync_bucket: str | None = None,
+    raw_series_cache: dict | None = None,
+) -> dict | None:
+    if spx_s is None or spx_s.empty:
+        return None
+    if raw_series_cache is None:
+        raw_series_cache = {}
+    combo, active_indicators = _compute_macro6_preset_signal_frame(
+        spx_s=spx_s,
+        benchmark_name=benchmark_name,
+        preset_cfg=preset_cfg,
+        sync_bucket=sync_bucket,
+        raw_series_cache=raw_series_cache,
+    )
+    if combo.empty or not active_indicators:
+        return None
+    event_df = _macro6_build_event_df(combo, active_indicators, benchmark_name, preset_cfg)
+    return _macro6_operating_state_payload(
+        event_df,
+        active_indicators,
+        preset_cfg,
+        compact_event_frame=True,
+    )
+
+
+@st.cache_data(
+    ttl=7200,
+    max_entries=16,
+    show_spinner=False,
+)
+def _compute_macro6_operating_summary_map_cached(preset_cfgs: dict, sync_bucket: str | None = None):
+    summary_map = {}
+    raw_series_cache = {}
+    benchmark_series_cache = {}
+    for key, preset_cfg in dict(preset_cfgs or {}).items():
+        benchmark_name = preset_cfg.get("benchmark", "S&P500")
+        if benchmark_name not in benchmark_series_cache:
+            benchmark = _get_macro_benchmark(benchmark_name)
+            benchmark_series_cache[benchmark_name] = _macro3_filter_confirmed_us_daily(
+                _yf_close(benchmark["code"], 25, sync_bucket=sync_bucket)
+            )
+        spx_s = benchmark_series_cache.get(benchmark_name)
+        summary = _compute_macro6_operating_summary(
+            preset_cfg=preset_cfg,
+            spx_s=spx_s,
+            benchmark_name=benchmark_name,
+            sync_bucket=sync_bucket,
+            raw_series_cache=raw_series_cache,
+        )
+        if summary is not None:
+            summary_map[key] = summary
+    return summary_map
+
+
+def _compute_macro6_operating_summary_map(preset_cfgs: dict, sync_bucket: str | None = None):
+    return _compute_macro6_operating_summary_map_cached(preset_cfgs=preset_cfgs, sync_bucket=sync_bucket)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -9388,19 +9480,30 @@ def _macro6_group_consensus_html(
             f"<span style='font-weight:700;color:#FFB86B;'>{label} 합의도 확인 필요</span>"
             f"<span style='color:rgba(255,255,255,0.55);'> · 계산 가능 {available}/{total}</span>"
         )
+
+    def _snapshot_state_series(snapshot: dict | None) -> pd.Series:
+        if not snapshot:
+            return pd.Series(dtype=bool)
+        combo = snapshot.get("combo_frame", pd.DataFrame())
+        if isinstance(combo, pd.DataFrame) and not combo.empty and "combo_risk_state" in combo.columns:
+            return combo["combo_risk_state"].astype(bool).dropna()
+        event_frame = snapshot.get("event_frame", pd.DataFrame())
+        if isinstance(event_frame, pd.DataFrame) and not event_frame.empty and {"date", "combo_risk_state"}.issubset(event_frame.columns):
+            state = event_frame[["date", "combo_risk_state"]].copy()
+            state["date"] = pd.to_datetime(state["date"]).dt.normalize()
+            return state.dropna(subset=["date"]).drop_duplicates("date").set_index("date")["combo_risk_state"].astype(bool).dropna()
+        return pd.Series(dtype=bool)
+
     series_map = {}
     basis_index = None
-    benchmark = _get_macro_benchmark("S&P500")
     for key in keys:
         cfg = preset_defs.get(key, {})
-        snapshot = (snapshot_map or {}).get(key)
-        combo = snapshot.get("combo_frame", pd.DataFrame()) if snapshot else pd.DataFrame()
-        if combo.empty:
+        state = _snapshot_state_series((snapshot_map or {}).get(key))
+        if state.empty:
             return (
                 f"<span style='font-weight:700;color:#FFB86B;'>{label} 합의도 확인 필요</span>"
                 f"<span style='color:rgba(255,255,255,0.55);'> · {cfg.get('label', key)} 계산 불가</span>"
             )
-        state = combo["combo_risk_state"].astype(bool).dropna()
         series_map[key] = state
         basis_index = state.index if basis_index is None else basis_index.intersection(state.index)
     if basis_index is None or len(basis_index) == 0:
@@ -17084,17 +17187,15 @@ def main(page="signal"):
                 st.warning("Proxy-only 후보 프리셋을 불러오지 못했습니다.")
                 return
             _macro6_blocking = {key: _macro3_preset_blocking_reasons(value) for key, value in _macro6_presets.items()}
-            _macro6_snapshot_map = {}
+            _macro6_summary_map = {}
             _macro6_runtime_blocking = {key: [] for key in _macro6_presets}
             with st.spinner("📡 Proxy-only 운영 스냅샷 계산 중..."):
-                for _key, _cfg in _macro6_presets.items():
+                _macro6_summary_map = _compute_macro6_operating_summary_map(_macro6_presets, sync_bucket=_macro6_sync_bucket)
+                for _key in _macro6_presets:
                     if _macro6_blocking.get(_key):
                         continue
-                    _snapshot = _compute_macro6_operating_snapshot(_cfg, sync_bucket=_macro6_sync_bucket)
-                    if _snapshot is None:
+                    if _macro6_summary_map.get(_key) is None:
                         _macro6_runtime_blocking[_key].append("Proxy-only 현재 신호 계산 경로에서 결과를 만들지 못했습니다.")
-                    else:
-                        _macro6_snapshot_map[_key] = _snapshot
             _macro6_blocking = {
                 key: list(dict.fromkeys(_macro6_blocking.get(key, []) + _macro6_runtime_blocking.get(key, [])))
                 for key in _macro6_presets
@@ -17118,7 +17219,7 @@ def main(page="signal"):
                 _macro6_blocking,
                 years=5,
                 sync_bucket=_macro6_sync_bucket,
-                snapshot_map=_macro6_snapshot_map,
+                snapshot_map=_macro6_summary_map,
             )
             _macro6_consensus_combo1 = _macro6_group_consensus_html(
                 "조합1",
@@ -17127,32 +17228,32 @@ def main(page="signal"):
                 _macro6_blocking,
                 years=5,
                 sync_bucket=_macro6_sync_bucket,
-                snapshot_map=_macro6_snapshot_map,
+                snapshot_map=_macro6_summary_map,
             )
             _macro6_stage_combo2 = _macro6_group_market_stage_label(
                 _MACRO6_COMBO2_ORDER,
                 _macro6_presets,
                 _macro6_blocking,
-                snapshot_map=_macro6_snapshot_map,
+                snapshot_map=_macro6_summary_map,
             )
             _macro6_stage_combo1 = _macro6_group_market_stage_label(
                 _MACRO6_COMBO1_ORDER,
                 _macro6_presets,
                 _macro6_blocking,
-                snapshot_map=_macro6_snapshot_map,
+                snapshot_map=_macro6_summary_map,
             )
             _macro6_week_ago_stage_combo2 = _macro6_group_market_stage_label(
                 _MACRO6_COMBO2_ORDER,
                 _macro6_presets,
                 _macro6_blocking,
-                snapshot_map=_macro6_snapshot_map,
+                snapshot_map=_macro6_summary_map,
                 use_week_ago=True,
             )
             _macro6_week_ago_stage_combo1 = _macro6_group_market_stage_label(
                 _MACRO6_COMBO1_ORDER,
                 _macro6_presets,
                 _macro6_blocking,
-                snapshot_map=_macro6_snapshot_map,
+                snapshot_map=_macro6_summary_map,
                 use_week_ago=True,
             )
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
@@ -17290,7 +17391,10 @@ def main(page="signal"):
                 return
 
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
-            _macro6_selected_snapshot = _macro6_snapshot_map.get(_macro6_preset)
+            _macro6_selected_snapshot = _compute_macro6_operating_snapshot(_macro6_preset_cfg, sync_bucket=_macro6_sync_bucket)
+            if _macro6_selected_snapshot is None:
+                st.warning("선택한 Proxy-only 후보 상세 스냅샷을 만들지 못했습니다.")
+                return
             _spx_s6_full = _macro6_selected_snapshot.get("spx_s", pd.Series(dtype=float)) if _macro6_selected_snapshot else pd.Series(dtype=float)
             _macro6_spx_cutoff = pd.Timestamp.now().normalize() - pd.DateOffset(years=int(_macro6_years))
             _spx_s6 = _spx_s6_full.loc[_spx_s6_full.index >= _macro6_spx_cutoff].dropna() if not _spx_s6_full.empty else pd.Series(dtype=float)
@@ -17358,7 +17462,7 @@ def main(page="signal"):
                 preset_order=_MACRO6_COMBO2_ORDER,
                 years=_macro6_years,
                 sync_bucket=_macro6_sync_bucket,
-                snapshot_map=_macro6_snapshot_map,
+                snapshot_map=_macro6_summary_map,
             )
             _macro6_bt_compare_combo1_html = _build_macro6_backtest_panel(
                 _macro6_preset,
@@ -17366,7 +17470,7 @@ def main(page="signal"):
                 preset_order=_MACRO6_COMBO1_ORDER,
                 years=_macro6_years,
                 sync_bucket=_macro6_sync_bucket,
-                snapshot_map=_macro6_snapshot_map,
+                snapshot_map=_macro6_summary_map,
             )
             if _macro6_bt_compare_combo2_html:
                 with st.expander("백테스트 비교 보기 · 조합2", expanded=False):

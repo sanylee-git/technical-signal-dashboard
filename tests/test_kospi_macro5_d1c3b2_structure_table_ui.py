@@ -177,7 +177,7 @@ def test_macro5_b1_chart_and_macro4_functions_are_unchanged() -> None:
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"
     assert _function_hash("_build_macro6_component_chart") == "4b7c1ec7b4482ded77e53bcbf407540efdcf9a4d642e18c713d6a67a93a45246"
     assert _function_hash("_build_macro6_indicator_chart") == "7725e3712828ccbb1f2e2d22f06ef5c59492efc8a7ebf359f7cf30d33f4f2231"
-    assert _function_hash("render_macro6_proxy_final_section") == "aee0be189842b248add83b71bbb7eeb1efa9a2cb971f7e025486581b725434f1"
+    assert _function_hash("render_macro6_proxy_final_section") == "2bd3464fbb2b1848cc7e0ceff0457cc9dac06229435875051e12de77a403f326"
     assert _function_hash("_build_macro6_status_panel") == "b2cf2935f83b2b131e164cf035993ab2101b3f86979f93d79437eae78fc76f73"
     assert _function_hash("_build_macro6_backtest_panel") == "2c9fea51aae5e2805b1eac93356d2b19344474ab0b73190da7d4e0e464f2ee5b"
     assert _function_hash("_macro6_state_duration_html") == "c4ca1c10022d45538e13b561aac8ab42f68e5cfc16be31f615e3017f1f870fee"
