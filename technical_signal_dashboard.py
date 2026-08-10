@@ -6097,7 +6097,7 @@ def _build_macro_combo_status_panel(
         return (
             f"<td style='padding:6px 8px;color:#D6D6D6;'>{entry['label']}</td>"
             f"<td style='padding:6px 8px;text-align:center;'>{_macro_status_circle(entry['selected'], color_on='#7C7CF7')}</td>"
-            f"<td style='padding:6px 8px;text-align:center;'>{_macro_status_circle(entry['flag'], color_on='#4BFFB3')}</td>"
+            f"<td style='padding:6px 8px;text-align:center;'>{_macro_status_circle(entry['flag'], color_on=_MACRO_STATUS_RISK_ON_COLOR)}</td>"
             f"<td style='padding:6px 8px;color:#AFAFAF;'>{entry['latest_date']}</td>"
         )
 
@@ -6203,7 +6203,7 @@ def _build_macro_meta_combo_status_panel(
             )
         return (
             f"<td style='padding:6px 8px;color:#D6D6D6;'>{entry['label']}</td>"
-            f"<td style='padding:6px 8px;text-align:center;'>{_macro_status_circle(entry['flag'], color_on='#4BFFB3')}</td>"
+            f"<td style='padding:6px 8px;text-align:center;'>{_macro_status_circle(entry['flag'], color_on=_MACRO_STATUS_RISK_ON_COLOR)}</td>"
             f"<td style='padding:6px 8px;color:#AFAFAF;'>{entry['latest_date']}</td>"
         )
 
@@ -6290,7 +6290,7 @@ def _build_macro_meta_backtest_panel(
     hold_mdd_10y = _macro_metric_float(hold_metrics.get("10Y MDD"))
     hold_mdd_20y = _macro_metric_float(hold_metrics.get("20Y MDD"))
     def _ratio_span(ratio: float, good: bool) -> str:
-        color = "#7FE7B1" if good else "#8F8F8F"
+        color = _MACRO_STATUS_RISK_ON_COLOR if good else "#8F8F8F"
         weight = "700" if good else "400"
         return f"<span style='color:{color};font-size:11px;font-weight:{weight};'>({ratio:.2f}x)</span>"
     current_state_map = {}
@@ -8623,7 +8623,7 @@ def _build_macro3_status_panel(
         return (
             f"<td style='padding:5px 8px;color:#D6D6D6;line-height:1.32;'>{entry['label']}</td>"
             f"<td style='padding:5px 8px;text-align:center;line-height:1.32;'>{_macro_status_circle(entry['selected'], color_on='#7C7CF7')}</td>"
-            f"<td style='padding:5px 8px;text-align:center;line-height:1.32;'>{_macro_status_circle(entry['flag'], color_on='#4BFFB3')}</td>"
+            f"<td style='padding:5px 8px;text-align:center;line-height:1.32;'>{_macro_status_circle(entry['flag'], color_on=_MACRO_STATUS_RISK_ON_COLOR)}</td>"
             f"<td style='padding:5px 8px;color:#AFAFAF;line-height:1.32;'>{entry['latest_date']}</td>"
         )
 
@@ -9068,7 +9068,7 @@ def _build_macro3_backtest_panel(
     hold_mdd_20y = _macro_metric_float(hold_metrics.get("20Y MDD"))
 
     def _ratio_span(ratio: float, good: bool) -> str:
-        color = "#7FE7B1" if good else "#8F8F8F"
+        color = _MACRO_STATUS_RISK_ON_COLOR if good else "#8F8F8F"
         weight = "700" if good else "400"
         return f"<span style='color:{color};font-size:11px;font-weight:{weight};'>({ratio:.2f}x)</span>"
 
@@ -13627,7 +13627,7 @@ def _macro5_kospi_market_stage_chip(candidate_id: str, live_row_map: dict[str, d
 
 
 def _macro5_kospi_ratio_span(ratio: float, good: bool) -> str:
-    color = "#7FE7B1" if good else "#8F8F8F"
+    color = _MACRO_STATUS_RISK_ON_COLOR if good else "#8F8F8F"
     weight = "700" if good else "400"
     return f"<span style='color:{color};font-size:11px;font-weight:{weight};'>({ratio:.2f}x)</span>"
 
