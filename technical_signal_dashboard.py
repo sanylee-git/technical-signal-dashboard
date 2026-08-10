@@ -6005,6 +6005,25 @@ def _macro_market_stage_label(on_count, start_k, end_l, is_on) -> str:
     return "관망" if risk_off else "홀드"
 
 
+_MACRO_MARKET_STAGE_COLORS = {
+    "홀드": "#65A30D",
+    "매수준비": "#16A34A",
+    "매수": "#15803D",
+    "매수심화": "#166534",
+    "관망": "#D97706",
+    "매도준비": "#EA580C",
+    "매도": "#DC2626",
+    "매도심화": "#991B1B",
+}
+
+
+def _macro_market_stage_html(label: str) -> str:
+    color = _MACRO_MARKET_STAGE_COLORS.get(str(label))
+    if not color:
+        return str(label)
+    return f"<span style='color:{color};font-weight:700;'>{label}</span>"
+
+
 def _build_macro_combo_status_panel(
     benchmark_name: str,
     years: int,
@@ -9237,11 +9256,13 @@ def _build_macro6_backtest_panel(
             current_state.get("start_count", current_state.get("total_count", 1)),
             current_state.get("is_on"),
         )
-        market_stage_html = "-" if current_state is None else _macro_market_stage_label(
-            current_state.get("on_count"),
-            current_state.get("start_count", current_state.get("total_count", 1)),
-            cfg.get("combo_l"),
-            current_state.get("is_on"),
+        market_stage_html = "-" if current_state is None else _macro_market_stage_html(
+            _macro_market_stage_label(
+                current_state.get("on_count"),
+                current_state.get("start_count", current_state.get("total_count", 1)),
+                cfg.get("combo_l"),
+                current_state.get("is_on"),
+            )
         )
         label = _macro6_preset_display_label(cfg) if key != "sp500_buyhold" else cfg.get("label", key)
         display_metrics = _format_with_ratios(key, metrics)
@@ -13591,11 +13612,13 @@ def _macro5_kospi_market_stage_chip(candidate_id: str, live_row_map: dict[str, d
     row = live_row_map.get(str(candidate_id), {})
     if not row or not row.get("calculable"):
         return "계산 불가"
-    return _macro_market_stage_label(
-        row.get("active_count"),
-        start_k,
-        end_l,
-        int(row.get("raw_risk_state") or 0) == 1,
+    return _macro_market_stage_html(
+        _macro_market_stage_label(
+            row.get("active_count"),
+            start_k,
+            end_l,
+            int(row.get("raw_risk_state") or 0) == 1,
+        )
     )
 
 
