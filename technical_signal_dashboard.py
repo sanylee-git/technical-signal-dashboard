@@ -5973,6 +5973,10 @@ _MACRO_STATUS_RISK_ON_COLOR = "#54F2A3"
 _MACRO_STATUS_RISK_OFF_COLOR = "#FF8C69"
 
 
+def _macro_risk_state_display_text(is_risk_off: bool) -> str:
+    return "Risk-off (위험회피)" if bool(is_risk_off) else "Risk-on (투자)"
+
+
 def _macro_flag_ratio_html(on_count: int, start_k: int, is_on: bool | None = None) -> str:
     k_value = max(1, int(start_k))
     on = max(0, int(on_count))
@@ -9039,10 +9043,10 @@ def _macro_compact_status_html(
     except Exception:
         execution_text = "확인 불가"
     if start_event:
-        transition_text = "오늘 Risk-off 시작"
+        transition_text = f"오늘 {_macro_risk_state_display_text(True)} 시작"
         transition_color = _MACRO_STATUS_RISK_OFF_COLOR
     elif end_event:
-        transition_text = "오늘 Risk-off 종료"
+        transition_text = f"오늘 {_macro_risk_state_display_text(True)} 종료"
         transition_color = "#60A5FA"
     else:
         transition_text = "오늘 전환 없음"
@@ -9367,7 +9371,7 @@ def _macro6_group_consensus_html(
     risk_off = sum(1 for state in series_map.values() if bool(state.reindex([basis_date]).iloc[0]))
     color = _MACRO_STATUS_RISK_OFF_COLOR if risk_off > 0 else _MACRO_STATUS_RISK_ON_COLOR
     return (
-        f"<span style='font-weight:700;color:{color};'>{label} Risk-off {risk_off}/{total}</span>"
+        f"<span style='font-weight:700;color:{color};'>{label} {_macro_risk_state_display_text(True)} {risk_off}/{total}</span>"
         f"<span style='color:rgba(255,255,255,0.55);'> · 기준일 {_macro_date_text(basis_date)}</span>"
     )
 
@@ -13754,7 +13758,7 @@ def _macro5_kospi_group_summary_html(
                 f"<span style='color:{unavailable_color};font-weight:700;'>계산 불가 {unavailable}</span>"
             ),
             "risk": (
-                f"<span style='color:{risk_color};font-weight:700;'>{label} Risk-off {risk_off}/{total}</span>"
+                f"<span style='color:{risk_color};font-weight:700;'>{label} {_macro_risk_state_display_text(True)} {risk_off}/{total}</span>"
                 f"<span style='color:rgba(255,255,255,0.55);'> · 기준일 {_macro5_kospi_escape(basis)}</span>"
             ),
             "stage": _macro_group_market_stage_label(stage_labels),
@@ -13886,7 +13890,7 @@ def _macro5_kospi_current_chip(candidate_id: str, live_row_map: dict[str, dict],
         k_value = int(start_k if start_k is not None else row.get("K"))
         label = _macro5_kospi_current_on_k(active_count, k_value)
     except Exception:
-        label = "Risk-off" if raw_state == 1 else "Risk-on"
+        label = _macro_risk_state_display_text(raw_state == 1)
     return f"<span style='color:{color};font-weight:700;'>{label}</span>"
 
 
@@ -14540,7 +14544,7 @@ def _macro5_kospi_fmt_num(value, digits: int = 2) -> str:
 
 def _macro5_kospi_state_label(raw_state: int | bool) -> str:
     try:
-        return "Risk-off" if int(raw_state) == 1 else "Risk-on"
+        return _macro_risk_state_display_text(int(raw_state) == 1)
     except Exception:
         return "계산 불가"
 

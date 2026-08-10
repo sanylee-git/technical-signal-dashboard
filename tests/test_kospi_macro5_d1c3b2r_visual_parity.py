@@ -41,7 +41,7 @@ def test_b2r_top_summary_is_two_line_korean_grouped() -> None:
     html = dash._macro5_kospi_group_summary_html(rows, metrics)
 
     assert html.index("조합2 계산 가능") < html.index("조합1 계산 가능")
-    assert html.index("조합2 Risk-off") < html.index("조합1 Risk-off")
+    assert html.index("조합2 Risk-off (위험회피)") < html.index("조합1 Risk-off (위험회피)")
     assert "Combo1" not in html
     assert "Combo2" not in html
     assert html.count("<div") >= 3
@@ -62,7 +62,7 @@ def test_b2r_status_wording_removes_duplicate_technical_phrases() -> None:
 
     html = dash._macro5_kospi_current_status_html(selected, live, 11, True, ["신용 스트레스", "KOSPI 지수"])
 
-    assert "현재 플래그</b> 9/11 ON" in html
+    assert "현재 플래그</b> 9/K9" in html
     assert "신용 스트레스" not in html
     assert "KOSPI 지수" not in html
     assert "현재 상태 시작일</b> <span style='color:#FF8C69;font-weight:700;'>2026-05-26</span>" in html
@@ -81,9 +81,10 @@ def test_b2r_current_column_uses_active_count_denominator() -> None:
     html = dash._macro5_kospi_current_chip(
         "candidate",
         {"candidate": {"calculable": True, "raw_risk_state": 1, "active_count": 5, "component_count": 9}},
+        start_k=9,
     )
 
-    assert "5/9" in html
+    assert "5/K9" in html
     assert "Risk-off" not in html
 
 
@@ -144,6 +145,6 @@ def test_b2r_chart_and_macro4_functions_are_unchanged() -> None:
     assert _function_hash("_macro5_kospi_build_main_chart") == "6f04019fc3b22922fcb7ba892003f0411fdf24b6d24ee436a9e890bb305f9034"
     assert _function_hash("_macro5_kospi_build_component_chart") == "0ab6ea0276d1a5f8963a77d4d60bf517d69f74bdaeac3cab46cd9f8978f4d024"
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"
-    assert _function_hash("_build_macro6_component_chart") == "68f5010937c9ffa09b9ad498c4982e500b492e055d6b27a3c00d62d1b4d15e21"
-    assert _function_hash("_build_macro6_indicator_chart") == "8ef3b8c4e9de8cfe9951d7a9520ad4670dd0fea97e3890b8b9b329f1f90ae987"
-    assert _function_hash("render_macro6_proxy_final_section") == "6eb77cead55b025adf2b10cad2ddd49807852732bd1ba6b87188fe8ca543fc27"
+    assert _function_hash("_build_macro6_component_chart") == "4b7c1ec7b4482ded77e53bcbf407540efdcf9a4d642e18c713d6a67a93a45246"
+    assert _function_hash("_build_macro6_indicator_chart") == "7725e3712828ccbb1f2e2d22f06ef5c59492efc8a7ebf359f7cf30d33f4f2231"
+    assert _function_hash("render_macro6_proxy_final_section") == "aee0be189842b248add83b71bbb7eeb1efa9a2cb971f7e025486581b725434f1"
