@@ -13382,8 +13382,35 @@ def _macro5_kospi_sha256(path: str) -> str:
     return h.hexdigest()
 
 
+_MACRO5_KOSPI_BACKTEST_ASSET_FILENAMES = (
+    "kospi_final9_candidate_metrics.csv",
+    "kospi_final9_reference_signals.parquet",
+    "kospi_final9_benchmark_close.parquet",
+)
+
+
+def _macro5_kospi_frozen_asset_contract_key() -> str:
+    manifest_path = _macro5_kospi_asset_path("kospi_final9_dashboard_manifest.json")
+    ui_manifest_path = _macro5_kospi_asset_path("kospi_macro5_d1b_ui_manifest.json")
+    checksums_path = _macro5_kospi_asset_path("checksums.json")
+    with open(checksums_path, "r", encoding="utf-8") as f:
+        checksums = json.load(f)
+    payload = {
+        "contract": "macro5_kospi_frozen_backtest_stats_v1",
+        "manifest_sha256": _macro5_kospi_sha256(manifest_path),
+        "ui_manifest_sha256": _macro5_kospi_sha256(ui_manifest_path),
+        "backtest_assets": {
+            filename: checksums.get(filename, {}).get("sha256")
+            for filename in _MACRO5_KOSPI_BACKTEST_ASSET_FILENAMES
+        },
+    }
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 @st.cache_data(show_spinner=False)
-def _load_macro5_kospi_frozen_assets():
+def _load_macro5_kospi_frozen_assets(asset_contract_key: str | None = None):
+    _ = asset_contract_key
     manifest_path = _macro5_kospi_asset_path("kospi_final9_dashboard_manifest.json")
     ui_manifest_path = _macro5_kospi_asset_path("kospi_macro5_d1b_ui_manifest.json")
     metrics_path = _macro5_kospi_asset_path("kospi_final9_candidate_metrics.csv")
@@ -13452,6 +13479,7 @@ def _load_macro5_kospi_frozen_assets():
         "component_dictionary": component_dictionary,
         "manifest_sha256": _macro5_kospi_sha256(manifest_path),
         "ui_manifest_sha256": _macro5_kospi_sha256(ui_manifest_path),
+        "backtest_asset_contract_key": _macro5_kospi_frozen_asset_contract_key(),
     }
 
 
@@ -14081,6 +14109,13 @@ def _macro5_kospi_build_backtest_stats(metrics: pd.DataFrame, signals: pd.DataFr
             "ten_year_start": _macro5_kospi_date_text(ten_year_start),
         },
     }
+
+
+@st.cache_data(show_spinner=False)
+def _macro5_kospi_build_backtest_stats_cached(asset_contract_key: str) -> dict:
+    assets = _load_macro5_kospi_frozen_assets(asset_contract_key)
+    metrics = _macro5_kospi_sort_metrics(assets["metrics"])
+    return _macro5_kospi_build_backtest_stats(metrics, assets["signals"], assets["benchmark"])
 
 
 def _macro5_kospi_with_hold_ratio(value: str, numerator, denominator, kind: str) -> str:
@@ -16266,7 +16301,8 @@ def main(page="signal"):
             """, unsafe_allow_html=True)
 
             try:
-                _assets5k = _load_macro5_kospi_frozen_assets()
+                _macro5_asset_contract_key = _macro5_kospi_frozen_asset_contract_key()
+                _assets5k = _load_macro5_kospi_frozen_assets(_macro5_asset_contract_key)
             except Exception as _exc:
                 st.error(f"KOSPI Macro5 Frozen 자산을 불러오지 못했습니다: {_exc}")
                 return
@@ -16287,7 +16323,7 @@ def main(page="signal"):
             _metrics5k["_model_type_norm"] = _metrics5k["model_type"].map(_macro5_kospi_model_type)
             _combo2_order5k = _metrics5k[_metrics5k["_model_type_norm"].eq("combo2")]["candidate_id"].tolist()
             _combo1_order5k = _metrics5k[_metrics5k["_model_type_norm"].eq("combo1")]["candidate_id"].tolist()
-            _backtest_stats5k = _macro5_kospi_build_backtest_stats(_metrics5k, _signals5k, _benchmark5k)
+            _backtest_stats5k = _macro5_kospi_build_backtest_stats_cached(_macro5_asset_contract_key)
             _separator5k = "__macro5_kospi_combo1_separator__"
             _preset_order5k = _combo2_order5k + _combo1_order5k
             _candidate_map5k = {row["candidate_id"]: row for _, row in _metrics5k.iterrows()}

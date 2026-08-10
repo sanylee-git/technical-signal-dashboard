@@ -47,6 +47,33 @@ def test_b2t_backtest_stats_use_frozen_windows_and_existing_metric_parity() -> N
         assert candidate_stats["전체 Risk-off"] == dash._macro5_kospi_fmt_pct(row["risk_off_ratio"], 1)
 
 
+def test_b2t_cached_backtest_stats_match_uncached_and_reuse_heavy_calculation(monkeypatch) -> None:
+    assets = dash._load_macro5_kospi_frozen_assets()
+    metrics = dash._macro5_kospi_sort_metrics(assets["metrics"])
+    asset_key = assets["backtest_asset_contract_key"]
+
+    assert asset_key == dash._macro5_kospi_frozen_asset_contract_key()
+    assert len(asset_key) == 64
+
+    uncached = dash._macro5_kospi_build_backtest_stats(metrics, assets["signals"], assets["benchmark"])
+    original = dash._macro5_kospi_build_backtest_stats
+    calls = {"count": 0}
+
+    def counted_build_backtest_stats(metrics_arg, signals_arg, benchmark_arg):
+        calls["count"] += 1
+        return original(metrics_arg, signals_arg, benchmark_arg)
+
+    dash._macro5_kospi_build_backtest_stats_cached.clear()
+    monkeypatch.setattr(dash, "_macro5_kospi_build_backtest_stats", counted_build_backtest_stats)
+
+    first = dash._macro5_kospi_build_backtest_stats_cached(asset_key)
+    second = dash._macro5_kospi_build_backtest_stats_cached(asset_key)
+
+    assert first == uncached
+    assert second == uncached
+    assert calls["count"] == 1
+
+
 def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> None:
     _, metrics, stats = _assets()
     dates = pd.date_range("2026-08-03", periods=6, freq="B")
