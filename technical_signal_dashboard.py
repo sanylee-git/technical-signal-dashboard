@@ -15171,6 +15171,152 @@ def _macro5_kospi_build_component_chart(
     return fig
 
 
+_MACRO5_KOSPI_DETAIL_CHART_CACHE_MAX_ENTRIES = 32
+_MACRO5_KOSPI_DETAIL_CHART_CACHE = {}
+
+
+def _macro5_kospi_frame_contract_signature(frame: pd.DataFrame | None, date_col: str = "date") -> str:
+    if frame is None or not isinstance(frame, pd.DataFrame) or frame.empty:
+        return "empty"
+    parts = [str(len(frame)), ",".join(str(col) for col in frame.columns)]
+    if date_col in frame.columns:
+        dates = pd.to_datetime(frame[date_col], errors="coerce").dropna().dt.normalize()
+    else:
+        dates = pd.to_datetime(frame.index, errors="coerce").dropna().normalize()
+    if len(dates):
+        parts.extend([pd.Timestamp(dates.min()).isoformat(), pd.Timestamp(dates.max()).isoformat()])
+    for col in ["component_id", "parent_candidate_id", "candidate_id", "component_risk_state", "combo_risk_state"]:
+        if col in frame.columns:
+            values = frame[col].dropna()
+            if len(values):
+                parts.append(f"{col}:{values.iloc[-1]}")
+                if pd.api.types.is_numeric_dtype(values):
+                    parts.append(f"{col}_sum:{float(pd.to_numeric(values, errors='coerce').fillna(0).sum()):.6g}")
+    return "|".join(parts)
+
+
+def _macro5_kospi_detail_chart_cache_key(
+    candidate_id: str,
+    component_df: pd.DataFrame,
+    benchmark: pd.DataFrame,
+    title: str,
+    years: int | str,
+    *,
+    model_type: str,
+    source_base: pd.DataFrame | None,
+    show_aux: bool,
+    basis_date,
+    common_start,
+    live_sync_bucket: str | None,
+) -> tuple:
+    component_id = ""
+    if component_df is not None and isinstance(component_df, pd.DataFrame) and not component_df.empty and "component_id" in component_df.columns:
+        non_null = component_df["component_id"].dropna()
+        component_id = str(non_null.iloc[0]) if len(non_null) else ""
+    return (
+        "macro5_kospi_detail_chart_v1",
+        str(candidate_id),
+        component_id,
+        str(model_type),
+        str(years),
+        bool(show_aux),
+        "" if basis_date is None else pd.Timestamp(basis_date).normalize().isoformat(),
+        "" if common_start is None else pd.Timestamp(common_start).normalize().isoformat(),
+        str(live_sync_bucket or ""),
+        str(title),
+        _macro5_kospi_frame_contract_signature(component_df),
+        _macro5_kospi_frame_contract_signature(benchmark),
+        _macro5_kospi_frame_contract_signature(source_base),
+    )
+
+
+def _macro5_kospi_detail_chart_cache_get(key: tuple) -> go.Figure | None:
+    cached = _MACRO5_KOSPI_DETAIL_CHART_CACHE.get(key)
+    if cached is None:
+        return None
+    _MACRO5_KOSPI_DETAIL_CHART_CACHE.pop(key, None)
+    _MACRO5_KOSPI_DETAIL_CHART_CACHE[key] = cached
+    return _macro5_kospi_detail_chart_clone(cached)
+
+
+def _macro5_kospi_detail_chart_cache_put(key: tuple, fig: go.Figure | None) -> None:
+    if fig is None:
+        return
+    _MACRO5_KOSPI_DETAIL_CHART_CACHE[key] = _macro5_kospi_detail_chart_clone(fig)
+    while len(_MACRO5_KOSPI_DETAIL_CHART_CACHE) > _MACRO5_KOSPI_DETAIL_CHART_CACHE_MAX_ENTRIES:
+        oldest_key = next(iter(_MACRO5_KOSPI_DETAIL_CHART_CACHE))
+        _MACRO5_KOSPI_DETAIL_CHART_CACHE.pop(oldest_key, None)
+
+
+def _macro5_kospi_detail_chart_clone(fig: go.Figure) -> go.Figure:
+    cloned = copy.deepcopy(fig)
+    if "yaxis" in fig.layout and "title" in fig.layout.yaxis.to_plotly_json() and "title" not in cloned.layout.yaxis.to_plotly_json():
+        cloned.update_layout(yaxis=dict(title=None))
+    if "yaxis2" in fig.layout and "title" in fig.layout.yaxis2.to_plotly_json() and "title" not in cloned.layout.yaxis2.to_plotly_json():
+        cloned.update_layout(yaxis2=dict(title=None))
+    return cloned
+
+
+def _macro5_kospi_build_component_chart_cached(
+    candidate_id: str,
+    component_df: pd.DataFrame,
+    benchmark: pd.DataFrame,
+    title: str,
+    years: int | str,
+    *,
+    model_type: str = "combo1",
+    source_base: pd.DataFrame | None = None,
+    indicator_context: dict | None = None,
+    show_aux: bool = False,
+    basis_date=None,
+    common_start=None,
+    live_sync_bucket: str | None = None,
+) -> go.Figure | None:
+    if _macro5_kospi_model_type(str(model_type)) == "combo2":
+        return _macro5_kospi_build_component_chart(
+            component_df,
+            benchmark,
+            title,
+            years,
+            model_type=model_type,
+            source_base=source_base,
+            indicator_context=indicator_context,
+            show_aux=show_aux,
+            basis_date=basis_date,
+            common_start=common_start,
+        )
+    cache_key = _macro5_kospi_detail_chart_cache_key(
+        candidate_id,
+        component_df,
+        benchmark,
+        title,
+        years,
+        model_type=model_type,
+        source_base=source_base,
+        show_aux=show_aux,
+        basis_date=basis_date,
+        common_start=common_start,
+        live_sync_bucket=live_sync_bucket,
+    )
+    cached = _macro5_kospi_detail_chart_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    fig = _macro5_kospi_build_component_chart(
+        component_df,
+        benchmark,
+        title,
+        years,
+        model_type=model_type,
+        source_base=source_base,
+        indicator_context=indicator_context,
+        show_aux=show_aux,
+        basis_date=basis_date,
+        common_start=common_start,
+    )
+    _macro5_kospi_detail_chart_cache_put(cache_key, fig)
+    return fig
+
+
 def _handle_kospi_macro5_probe_if_requested():
     try:
         probe_requested = st.query_params.get("macro5_probe") == "1"
@@ -16955,7 +17101,8 @@ def main(page="signal"):
                 else:
                     _component_label5k = _component_df5k["component_label"].dropna().iloc[0] if "component_label" in _component_df5k and len(_component_df5k["component_label"].dropna()) else _macro5_kospi_suffix(_component_id5k)
                 with st.expander(f"{_idx5k}. {_component_label5k}", expanded=True):
-                    _component_fig5k = _macro5_kospi_build_component_chart(
+                    _component_fig5k = _macro5_kospi_build_component_chart_cached(
+                        _macro5_kospi_preset,
                         _component_df5k,
                         _benchmark5k,
                         str(_component_label5k),
@@ -16966,6 +17113,7 @@ def main(page="signal"):
                         show_aux=bool(_show_raw_macro5_kospi),
                         basis_date=_chart_basis_date5k,
                         common_start=_period_common_start5k,
+                        live_sync_bucket=_live_sync_bucket5k,
                     )
                     if _component_fig5k is not None:
                         st.plotly_chart(
