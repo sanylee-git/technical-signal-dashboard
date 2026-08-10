@@ -120,14 +120,14 @@ def test_b2t_market_stage_label_uses_existing_on_k_l_and_state() -> None:
 
 def test_b2t_market_stage_html_colors_only_known_labels() -> None:
     expected = {
-        "홀드": "#A16207",
-        "매수준비": "#65A30D",
-        "매수": "#16A34A",
-        "매수심화": "#166534",
-        "관망": "#A16207",
-        "매도준비": "#EA580C",
-        "매도": "#DC2626",
-        "매도심화": "#991B1B",
+        "홀드": "#A18707",
+        "매수준비": "#54F2A3",
+        "매수": "#22C55E",
+        "매수심화": "#15803D",
+        "관망": "#A18707",
+        "매도준비": "#FF8C69",
+        "매도": "#F05A47",
+        "매도심화": "#DC2626",
     }
     for label, color in expected.items():
         html = dash._macro_market_stage_html(label)

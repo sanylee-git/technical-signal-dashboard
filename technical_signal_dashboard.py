@@ -5969,13 +5969,17 @@ def _macro_on_k_text(on_count: int, start_k: int) -> str:
     return f"{max(0, int(on_count))}/K{max(1, int(start_k))}"
 
 
+_MACRO_STATUS_RISK_ON_COLOR = "#54F2A3"
+_MACRO_STATUS_RISK_OFF_COLOR = "#FF8C69"
+
+
 def _macro_flag_ratio_html(on_count: int, start_k: int, is_on: bool | None = None) -> str:
     k_value = max(1, int(start_k))
     on = max(0, int(on_count))
     if is_on is not None:
-        color = "#FF8C69" if bool(is_on) else "#66D9B8"
+        color = _MACRO_STATUS_RISK_OFF_COLOR if bool(is_on) else _MACRO_STATUS_RISK_ON_COLOR
     else:
-        color = "#FF8C69" if on >= k_value else "#66D9B8"
+        color = _MACRO_STATUS_RISK_OFF_COLOR if on >= k_value else _MACRO_STATUS_RISK_ON_COLOR
     return (
         f"<span style='color:{color};font-weight:700;font-variant-numeric:tabular-nums;'>"
         f"{_macro_on_k_text(on, k_value)}</span>"
@@ -6006,14 +6010,14 @@ def _macro_market_stage_label(on_count, start_k, end_l, is_on) -> str:
 
 
 _MACRO_MARKET_STAGE_COLORS = {
-    "홀드": "#A16207",
-    "매수준비": "#65A30D",
-    "매수": "#16A34A",
-    "매수심화": "#166534",
-    "관망": "#A16207",
-    "매도준비": "#EA580C",
-    "매도": "#DC2626",
-    "매도심화": "#991B1B",
+    "홀드": "#A18707",
+    "매수준비": _MACRO_STATUS_RISK_ON_COLOR,
+    "매수": "#22C55E",
+    "매수심화": "#15803D",
+    "관망": "#A18707",
+    "매도준비": _MACRO_STATUS_RISK_OFF_COLOR,
+    "매도": "#F05A47",
+    "매도심화": "#DC2626",
 }
 
 
@@ -6044,7 +6048,7 @@ def _build_macro_combo_status_panel(
     combo_k = int(latest_row.get("combo_k", max(1, combo_n)))
     basis_date = _macro_date_text(latest_row.get("date"))
     status_text = "리스크 사이클 ON" if combo_state else "리스크 사이클 OFF"
-    status_color = "#FF8C69" if combo_state else "#4BFFB3"
+    status_color = _MACRO_STATUS_RISK_OFF_COLOR if combo_state else _MACRO_STATUS_RISK_ON_COLOR
     active_flag_labels = []
     entries = []
 
@@ -6151,7 +6155,7 @@ def _build_macro_meta_combo_status_panel(
     combo_state = bool(latest_meta.get("combo_risk_state", False))
     basis_date = _macro_date_text(latest_meta.get("date"))
     status_text = "리스크 사이클 ON" if combo_state else "리스크 사이클 OFF"
-    status_color = "#FF8C69" if combo_state else "#4BFFB3"
+    status_color = _MACRO_STATUS_RISK_OFF_COLOR if combo_state else _MACRO_STATUS_RISK_ON_COLOR
     a_on = bool(latest_meta.get("a_state", False))
     b_on = bool(latest_meta.get("b_state", False))
     active_count = int(a_on) + int(b_on)
@@ -8541,7 +8545,7 @@ def _build_macro3_status_panel(
     next_exec = _macro3_next_execution_date(latest.get("date"), combo_event_df.get("date", []))
     next_exec_date = _macro_date_text(next_exec) if next_exec is not None else "확인 필요"
     status_text = "리스크 사이클 ON" if combo_state else "리스크 사이클 OFF"
-    status_color = "#FF8C69" if combo_state else "#4BFFB3"
+    status_color = _MACRO_STATUS_RISK_OFF_COLOR if combo_state else _MACRO_STATUS_RISK_ON_COLOR
     if bool(latest.get("combo_start_signal", False)):
         execution_text = f"리스크 시작 신호 · T+1 {next_exec_date} 축소 검토"
     elif bool(latest.get("combo_end_signal", False)):
@@ -8849,7 +8853,7 @@ def _macro_compact_status_html(
     start_k: int | None = None,
 ) -> str:
     risk_on = bool(int(risk_state)) if not isinstance(risk_state, bool) else risk_state
-    risk_color = "#FF8C69" if risk_on else "#4BFFB3"
+    risk_color = _MACRO_STATUS_RISK_OFF_COLOR if risk_on else _MACRO_STATUS_RISK_ON_COLOR
     risk_text = "리스크 사이클 ON" if risk_on else "리스크 사이클 OFF"
     try:
         execution_text = "투자" if int(execution_position) == 1 else "비투자"
@@ -8857,7 +8861,7 @@ def _macro_compact_status_html(
         execution_text = "확인 불가"
     if start_event:
         transition_text = "오늘 Risk-off 시작"
-        transition_color = "#FF8C69"
+        transition_color = _MACRO_STATUS_RISK_OFF_COLOR
     elif end_event:
         transition_text = "오늘 Risk-off 종료"
         transition_color = "#60A5FA"
@@ -8899,7 +8903,7 @@ def _build_macro6_status_panel(
     combo_k = int(latest.get("combo_k", preset_cfg.get("combo_k", max(1, combo_n))))
     basis_date = _macro_date_text(latest.get("date"))
     status_text = "리스크 사이클 ON" if combo_state else "리스크 사이클 OFF"
-    status_color = "#FF8C69" if combo_state else "#4BFFB3"
+    status_color = _MACRO_STATUS_RISK_OFF_COLOR if combo_state else _MACRO_STATUS_RISK_ON_COLOR
     active_labels = []
     entries = []
     if preset_cfg.get("kind") == "combo2_final8":
@@ -9133,7 +9137,7 @@ def _macro6_state_duration_html(combo_event_df: pd.DataFrame) -> str:
     state = _macro6_state_duration_values(combo_event_df)
     if state.get("current_state") is None:
         return ""
-    color = "#FF8C69" if bool(state.get("current_state")) else "#4BFFB3"
+    color = _MACRO_STATUS_RISK_OFF_COLOR if bool(state.get("current_state")) else _MACRO_STATUS_RISK_ON_COLOR
     return (
         '<div style="display:flex;align-items:center;flex-wrap:wrap;'
         f'padding:0 0 14px 0;color:{color};font-size:12px;line-height:1.42;font-weight:700;">'
@@ -9182,7 +9186,7 @@ def _macro6_group_consensus_html(
         )
     basis_date = pd.Timestamp(basis_index.max()).normalize()
     risk_off = sum(1 for state in series_map.values() if bool(state.reindex([basis_date]).iloc[0]))
-    color = "#FF8C69" if risk_off > 0 else "#4BFFB3"
+    color = _MACRO_STATUS_RISK_OFF_COLOR if risk_off > 0 else _MACRO_STATUS_RISK_ON_COLOR
     return (
         f"<span style='font-weight:700;color:{color};'>{label} Risk-off {risk_off}/{total}</span>"
         f"<span style='color:rgba(255,255,255,0.55);'> · 기준일 {_macro_date_text(basis_date)}</span>"
@@ -13472,8 +13476,8 @@ def _macro5_kospi_group_summary_html(candidate_rows: list[dict] | None, metrics:
         basis_dates = [row.get("basis_date") for row in rows if row.get("basis_date")]
         basis = max(basis_dates) if basis_dates else "계산 불가"
         availability_color = "#54F2A3" if unavailable == 0 else "rgba(255,255,255,0.92)"
-        unavailable_color = "#FF8C69" if unavailable else "rgba(255,255,255,0.72)"
-        risk_color = "#FF8C69" if risk_off else "#4BFFB3"
+        unavailable_color = _MACRO_STATUS_RISK_OFF_COLOR if unavailable else "rgba(255,255,255,0.72)"
+        risk_color = _MACRO_STATUS_RISK_OFF_COLOR if risk_off else _MACRO_STATUS_RISK_ON_COLOR
         summary[label] = {
             "availability": (
                 f"<span style='color:{availability_color};font-weight:700;'>{label} 계산 가능 {calculable} / {total}</span>"
@@ -13596,9 +13600,9 @@ def _macro5_kospi_current_status_html(
 def _macro5_kospi_current_chip(candidate_id: str, live_row_map: dict[str, dict], start_k: int | None = None) -> str:
     row = live_row_map.get(str(candidate_id), {})
     if not row or not row.get("calculable"):
-        return "<span style='color:#FF8C69;font-weight:700;'>계산 불가</span>"
+        return f"<span style='color:{_MACRO_STATUS_RISK_OFF_COLOR};font-weight:700;'>계산 불가</span>"
     raw_state = int(row.get("raw_risk_state") or 0)
-    color = "#FF8C69" if raw_state == 1 else "#4BFFB3"
+    color = _MACRO_STATUS_RISK_OFF_COLOR if raw_state == 1 else _MACRO_STATUS_RISK_ON_COLOR
     try:
         active_count = int(row.get("active_count"))
         k_value = int(start_k if start_k is not None else row.get("K"))
