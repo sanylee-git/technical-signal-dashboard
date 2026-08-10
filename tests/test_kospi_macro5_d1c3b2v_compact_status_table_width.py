@@ -29,7 +29,7 @@ def test_b2v_current_status_is_compact_and_does_not_render_active_component_list
     assert "상태</b>" in html
     assert "리스크 사이클 ON" in html
     assert "실행</b> 비투자" in html
-    assert "오늘 Risk-off (위험회피) 시작" in html
+    assert "오늘 Risk-off(위험회피) 시작" in html
     assert "길게 나오면 안 되는 구성요소" not in html
     assert "실행 상태" not in html
     assert "실행 안내" not in html
@@ -51,7 +51,7 @@ def test_b2v_compact_status_end_signal_sentence() -> None:
     assert "현재 플래그</b> 2/K6" in html
     assert "리스크 사이클 OFF" in html
     assert "실행</b> 투자" in html
-    assert "오늘 Risk-off (위험회피) 종료" in html
+    assert "오늘 Risk-off(위험회피) 종료" in html
 
 
 def test_b2v_macro6_status_panel_uses_same_compact_wording() -> None:
@@ -77,7 +77,7 @@ def test_b2v_macro6_status_panel_uses_same_compact_wording() -> None:
     )
 
     assert "현재 플래그</b> 2/K2" in status
-    assert "오늘 Risk-off (위험회피) 시작" in status
+    assert "오늘 Risk-off(위험회피) 시작" in status
     assert "실행</b> 비투자" in status
     assert "(" not in status.split("현재 플래그</b>", 1)[1].split("ON", 1)[1][:8]
 

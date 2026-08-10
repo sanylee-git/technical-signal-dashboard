@@ -42,9 +42,9 @@ def test_macro5_b1_group_summary_uses_existing_candidate_rows() -> None:
 
     assert "조합2 계산 가능 1 / 2" in html
     assert "계산 불가 1" in html
-    assert "조합2 Risk-off (위험회피) 1/2" in html
+    assert "조합2 Risk-off(위험회피) 1/2" in html
     assert "조합1 계산 가능 1 / 1" in html
-    assert "조합1 Risk-off (위험회피) 0/1" in html
+    assert "조합1 Risk-off(위험회피) 0/1" in html
     assert "기준일 2026-07-31" in html
     assert "Combo2" not in html
     assert "Combo1" not in html

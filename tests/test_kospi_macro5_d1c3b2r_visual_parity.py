@@ -41,7 +41,7 @@ def test_b2r_top_summary_is_two_line_korean_grouped() -> None:
     html = dash._macro5_kospi_group_summary_html(rows, metrics)
 
     assert html.index("조합2 계산 가능") < html.index("조합1 계산 가능")
-    assert html.index("조합2 Risk-off (위험회피)") < html.index("조합1 Risk-off (위험회피)")
+    assert html.index("조합2 Risk-off(위험회피)") < html.index("조합1 Risk-off(위험회피)")
     assert "Combo1" not in html
     assert "Combo2" not in html
     assert html.count("<div") >= 3

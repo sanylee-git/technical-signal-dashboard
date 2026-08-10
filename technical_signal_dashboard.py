@@ -5974,7 +5974,7 @@ _MACRO_STATUS_RISK_OFF_COLOR = "#FF8C69"
 
 
 def _macro_risk_state_display_text(is_risk_off: bool) -> str:
-    return "Risk-off (위험회피)" if bool(is_risk_off) else "Risk-on (투자)"
+    return "Risk-off(위험회피)" if bool(is_risk_off) else "Risk-on(투자)"
 
 
 def _macro_flag_ratio_html(on_count: int, start_k: int, is_on: bool | None = None) -> str:
