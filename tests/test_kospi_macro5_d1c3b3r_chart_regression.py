@@ -22,6 +22,23 @@ def _candidate_map(metrics: pd.DataFrame):
     return {str(row["candidate_id"]): row for _, row in metrics.iterrows()}
 
 
+def _assert_component_fig_equal(left, right) -> None:
+    assert left is not None
+    assert right is not None
+    assert len(left.data) == len(right.data)
+    for left_trace, right_trace in zip(left.data, right.data):
+        assert left_trace.name == right_trace.name
+        assert list(pd.to_datetime(list(left_trace.x))) == list(pd.to_datetime(list(right_trace.x)))
+        pd.testing.assert_series_equal(
+            pd.Series(list(left_trace.y)).reset_index(drop=True),
+            pd.Series(list(right_trace.y)).reset_index(drop=True),
+            check_names=False,
+            check_dtype=False,
+        )
+    assert list(left.layout.xaxis.range) == list(right.layout.xaxis.range)
+    assert left.layout.height == right.layout.height
+
+
 def test_b3r_actual_page_route_final9_main_charts_all_render_to_basis_date():
     live = _actual_page_data()
     assets = _assets()
@@ -134,6 +151,87 @@ def test_b3r_combo1_default_traces_are_not_raw_only_and_aux_adds_raw():
         )
         aux_names = {trace.name for trace in aux_fig.data}
         assert default_names.issubset(aux_names)
+
+
+def test_b3r_component_indicator_context_matches_standalone_and_does_not_mutate_source():
+    live = _actual_page_data()
+    assets = _assets()
+    metrics = assets["metrics"]
+    combo1 = metrics.loc[metrics["model_type"].eq("combo1")].iloc[0]
+    parent_id = str(combo1["candidate_id"])
+    component = live["component_signal_history"].loc[
+        live["component_signal_history"]["parent_candidate_id"].eq(parent_id)
+    ].copy()
+    source_base = live["transformed_source_history"]
+    context = dash._macro5_kospi_prepare_component_indicator_context(source_base)
+    prepared_before = context["source"].copy(deep=True)
+
+    for component_id in list(component["component_id"].drop_duplicates())[:4]:
+        standalone = dash._macro5_kospi_component_indicator_frame(str(component_id), source_base=source_base)
+        prepared = dash._macro5_kospi_component_indicator_frame(str(component_id), indicator_context=context)
+        pd.testing.assert_frame_equal(prepared, standalone)
+
+    pd.testing.assert_frame_equal(context["source"], prepared_before)
+
+
+def test_b3r_component_chart_context_matches_standalone_and_reuses_prepared_context(monkeypatch):
+    live = _actual_page_data()
+    assets = _assets()
+    metrics = assets["metrics"]
+    combo1 = metrics.loc[metrics["model_type"].eq("combo1")].iloc[0]
+    parent_id = str(combo1["candidate_id"])
+    component = live["component_signal_history"].loc[
+        live["component_signal_history"]["parent_candidate_id"].eq(parent_id)
+    ].copy()
+    source_base = live["transformed_source_history"]
+    benchmark = live["benchmark_close_history"]
+    basis_date = live["candidate_signal_history"].loc[
+        live["candidate_signal_history"]["candidate_id"].eq(parent_id), "date"
+    ].max()
+    context = dash._macro5_kospi_prepare_component_indicator_context(source_base)
+
+    for component_id, component_frame in list(component.groupby("component_id", sort=False))[:3]:
+        label = dash._macro5_kospi_component_display_label(str(component_id), _candidate_map(metrics), {})
+        standalone_fig = dash._macro5_kospi_build_component_chart(
+            component_frame,
+            benchmark,
+            label,
+            5,
+            model_type="combo1",
+            source_base=source_base,
+            show_aux=True,
+            basis_date=basis_date,
+        )
+        prepared_fig = dash._macro5_kospi_build_component_chart(
+            component_frame,
+            benchmark,
+            label,
+            5,
+            model_type="combo1",
+            source_base=source_base,
+            indicator_context=context,
+            show_aux=True,
+            basis_date=basis_date,
+        )
+        _assert_component_fig_equal(prepared_fig, standalone_fig)
+
+    def fail_prepare(*_args, **_kwargs):
+        raise AssertionError("prepared context should be reused")
+
+    monkeypatch.setattr(dash, "_macro5_kospi_prepare_component_indicator_context", fail_prepare)
+    component_id, component_frame = next(iter(component.groupby("component_id", sort=False)))
+    label = dash._macro5_kospi_component_display_label(str(component_id), _candidate_map(metrics), {})
+    assert dash._macro5_kospi_build_component_chart(
+        component_frame,
+        benchmark,
+        label,
+        5,
+        model_type="combo1",
+        source_base=source_base,
+        indicator_context=context,
+        show_aux=False,
+        basis_date=basis_date,
+    ) is not None
 
 
 def test_b3r_ema_column_detection_covers_confirmed_spans():

@@ -14478,21 +14478,42 @@ def _macro5_kospi_load_transformed_source_cached() -> pd.DataFrame:
     return out
 
 
-def _macro5_kospi_component_indicator_frame(component_id: str, source_base: pd.DataFrame | None = None) -> pd.DataFrame:
+def _macro5_kospi_prepare_component_indicator_context(source_base: pd.DataFrame | None = None) -> dict:
     meta = _macro5_kospi_load_core15_metadata_cached()
-    if meta.empty or component_id not in set(meta["candidate_id"].astype(str)):
+    metadata_by_id = {}
+    if not meta.empty and "candidate_id" in meta.columns:
+        meta = meta.copy()
+        meta["_candidate_id_str"] = meta["candidate_id"].astype(str)
+        metadata_by_id = {
+            str(row["_candidate_id_str"]): row
+            for row in meta.drop_duplicates("_candidate_id_str", keep="first").to_dict("records")
+        }
+
+    source = source_base.copy() if isinstance(source_base, pd.DataFrame) and not source_base.empty else _macro5_kospi_load_transformed_source_cached()
+    if source.empty or "date" not in source.columns:
+        return {"metadata_by_id": metadata_by_id, "source": pd.DataFrame()}
+    source["date"] = pd.to_datetime(source["date"]).dt.normalize()
+    source = source.drop_duplicates("date", keep="last").sort_values("date")
+    return {"metadata_by_id": metadata_by_id, "source": source}
+
+
+def _macro5_kospi_component_indicator_frame(
+    component_id: str,
+    source_base: pd.DataFrame | None = None,
+    indicator_context: dict | None = None,
+) -> pd.DataFrame:
+    context = indicator_context if isinstance(indicator_context, dict) else _macro5_kospi_prepare_component_indicator_context(source_base)
+    row = context.get("metadata_by_id", {}).get(str(component_id))
+    if not row:
         return pd.DataFrame()
-    row = meta[meta["candidate_id"].astype(str).eq(str(component_id))].iloc[0]
     raw_params = row.get("params_json", "{}")
     try:
         params = json.loads(raw_params) if isinstance(raw_params, str) else dict(raw_params)
     except Exception:
         return pd.DataFrame()
-    source = source_base.copy() if isinstance(source_base, pd.DataFrame) and not source_base.empty else _macro5_kospi_load_transformed_source_cached()
+    source = context.get("source", pd.DataFrame())
     if source.empty or "date" not in source.columns:
         return pd.DataFrame()
-    source["date"] = pd.to_datetime(source["date"]).dt.normalize()
-    source = source.drop_duplicates("date", keep="last").sort_values("date")
     source_index = pd.DatetimeIndex(source["date"]).normalize()
     kind = str(row.get("kind", ""))
     try:
@@ -14716,6 +14737,7 @@ def _macro5_kospi_build_component_chart(
     *,
     model_type: str = "combo1",
     source_base: pd.DataFrame | None = None,
+    indicator_context: dict | None = None,
     show_aux: bool = False,
     basis_date=None,
     common_start=None,
@@ -14755,7 +14777,11 @@ def _macro5_kospi_build_component_chart(
     if is_combo2_component:
         pass
     else:
-        indicator = _macro5_kospi_component_indicator_frame(component_id, source_base=source_base)
+        indicator = _macro5_kospi_component_indicator_frame(
+            component_id,
+            source_base=source_base,
+            indicator_context=indicator_context,
+        )
         if not indicator.empty:
             indicator_visible = _macro5_kospi_join_on_benchmark(visible_benchmark, indicator, list(indicator.columns))
             kind = str(indicator.get("macro5_chart_kind", pd.Series([""])).dropna().iloc[0]) if "macro5_chart_kind" in indicator else ""
@@ -16623,6 +16649,9 @@ def main(page="signal"):
                 if isinstance(_live5k, dict) and isinstance(_live5k.get("transformed_source_history"), pd.DataFrame)
                 else _macro5_kospi_load_transformed_source_cached()
             )
+            _chart_indicator_context5k = None
+            if _macro5_kospi_model_type(str(_selected_row5k["model_type"])) != "combo2":
+                _chart_indicator_context5k = _macro5_kospi_prepare_component_indicator_context(_chart_source_base5k)
             _chart_label5k = _macro5_kospi_preset_label(_selected_row5k, len(_selected_components5k))
             _main_fig5k = _macro5_kospi_build_main_chart(
                 _candidate_signal5k,
@@ -16656,6 +16685,7 @@ def main(page="signal"):
                         _macro5_kospi_years,
                         model_type=str(_selected_row5k["model_type"]),
                         source_base=_chart_source_base5k,
+                        indicator_context=_chart_indicator_context5k,
                         show_aux=bool(_show_raw_macro5_kospi),
                         basis_date=_chart_basis_date5k,
                         common_start=_period_common_start5k,
