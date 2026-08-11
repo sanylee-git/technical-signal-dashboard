@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import StringIO
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
@@ -101,7 +102,10 @@ def normalize_yahoo_ohlcv_payload(frame: pd.DataFrame, contract: SourceContract,
         | (out["high"] < out[["open", "close", "low"]].max(axis=1))
         | (out["low"] > out[["open", "close", "high"]].min(axis=1))
     )
-    return _finalize(contract, out, route, invalid, as_of_utc=as_of_utc)
+    result = _finalize(contract, out, route, invalid, as_of_utc=as_of_utc)
+    if contract.source_id == "kospi_ohlcv":
+        result = _mark_suspicious_kospi_latest_stale(result)
+    return result
 
 
 def normalize_yahoo_close_payload(frame: pd.DataFrame, contract: SourceContract, *, route: str = "fixture", as_of_utc: datetime | None = None) -> pd.DataFrame:
@@ -169,6 +173,70 @@ def _finalize(contract: SourceContract, out: pd.DataFrame, route: str, invalid: 
     return result[cols].sort_values("observation_date").reset_index(drop=True)
 
 
+def _mark_suspicious_kospi_latest_stale(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame is None or frame.empty:
+        return frame
+    required = {"observation_date", "open", "high", "low", "close", "valid"}
+    if not required.issubset(frame.columns):
+        return frame
+    out = frame.copy()
+    valid = out.loc[out["valid"].astype(bool)].copy()
+    valid["observation_date"] = pd.to_datetime(valid["observation_date"], errors="coerce").dt.normalize()
+    valid = valid.dropna(subset=["observation_date"]).sort_values("observation_date")
+    if len(valid) < 2:
+        return out
+    latest = valid.iloc[-1]
+    previous = valid.iloc[-2]
+    try:
+        latest_ohlc = [float(latest[col]) for col in ["open", "high", "low", "close"]]
+        previous_close = float(previous["close"])
+    except Exception:
+        return out
+    is_flat_previous_close = all(abs(value - previous_close) <= 1e-9 for value in latest_ohlc)
+    if not is_flat_previous_close:
+        return out
+    latest_date = pd.Timestamp(latest["observation_date"]).normalize()
+    mask = pd.to_datetime(out["observation_date"], errors="coerce").dt.normalize().eq(latest_date)
+    out.loc[mask, "valid"] = False
+    out.loc[mask, "status"] = "INVALID_VALUE"
+    out.loc[mask, "invalid_reason"] = "latest KOSPI OHLC appears stale: OHLC equals previous close"
+    out.loc[mask, "error_type"] = "SUSPICIOUS_LATEST_STALE_OHLC"
+    out.loc[mask, "error_message"] = "latest KOSPI OHLC equals previous close; rejecting latest row"
+    return out
+
+
+def _kospi_yahoo_daily_window(as_of_utc: datetime | None = None) -> tuple[str, str]:
+    now_utc = as_of_utc or datetime.now(timezone.utc)
+    if now_utc.tzinfo is None:
+        now_utc = now_utc.replace(tzinfo=timezone.utc)
+    now_kst = now_utc.astimezone(ZoneInfo("Asia/Seoul"))
+    end = now_kst.date() + timedelta(days=1)
+    start = end - timedelta(days=220)
+    return start.isoformat(), end.isoformat()
+
+
+def _fetch_kospi_yahoo_ohlcv(
+    contract: SourceContract,
+    *,
+    cache_mode: str,
+    bypass_token: str | None,
+    as_of_utc: datetime | None,
+) -> pd.DataFrame:
+    import yfinance as yf
+
+    start, end = _kospi_yahoo_daily_window(as_of_utc)
+    route_suffix = f";cache_mode={cache_mode}"
+    if cache_mode == "BYPASS" and bypass_token:
+        route_suffix += f";bypass={bypass_token}"
+    if cache_mode == "BYPASS":
+        raw = yf.Ticker(contract.provider_series_id).history(start=start, end=end, interval="1d", auto_adjust=False)
+        base_route = f"yf.Ticker.history(start={start},end={end},interval=1d)"
+    else:
+        raw = yf.download(contract.provider_series_id, start=start, end=end, interval="1d", progress=False, auto_adjust=False, threads=False)
+        base_route = f"yf.download(start={start},end={end},interval=1d)"
+    return normalize_yahoo_ohlcv_payload(raw, contract, route=f"{base_route}{route_suffix}", as_of_utc=as_of_utc)
+
+
 def fetch_yahoo(
     contract: SourceContract,
     *,
@@ -179,6 +247,14 @@ def fetch_yahoo(
 ) -> pd.DataFrame:
     try:
         import yfinance as yf
+
+        if contract.source_id == "kospi_ohlcv":
+            return _fetch_kospi_yahoo_ohlcv(
+                contract,
+                cache_mode=cache_mode,
+                bypass_token=bypass_token,
+                as_of_utc=as_of_utc,
+            )
 
         route_suffix = f";cache_mode={cache_mode}"
         if cache_mode == "BYPASS" and bypass_token:
