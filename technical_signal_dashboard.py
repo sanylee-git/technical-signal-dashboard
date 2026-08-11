@@ -14609,6 +14609,44 @@ def _macro5_kospi_build_component_status_panel(
     )
 
 
+def _macro5_kospi_debug_enabled() -> bool:
+    try:
+        return st.query_params.get("macro5_kospi_debug") == "1"
+    except Exception:
+        return False
+
+
+def _macro5_kospi_debug_max_date(frame: pd.DataFrame | None, date_col: str = "date") -> str:
+    if frame is None or not isinstance(frame, pd.DataFrame) or frame.empty or date_col not in frame.columns:
+        return "NONE"
+    dates = pd.to_datetime(frame[date_col], errors="coerce").dropna()
+    if dates.empty:
+        return "NONE"
+    return pd.Timestamp(dates.max()).normalize().strftime("%Y-%m-%d")
+
+
+def _macro5_kospi_debug_fig_x_end(fig: go.Figure | None) -> str:
+    if fig is None:
+        return "NONE"
+    try:
+        x_range = fig.layout.xaxis.range
+    except Exception:
+        return "NONE"
+    if not x_range or len(x_range) < 2:
+        return "NONE"
+    try:
+        return pd.Timestamp(x_range[1]).normalize().strftime("%Y-%m-%d")
+    except Exception:
+        return str(x_range[1])
+
+
+def _macro5_kospi_render_debug_probe(rows: list[dict]) -> None:
+    if not rows:
+        return
+    with st.expander("Macro5 KOSPI debug probe", expanded=True):
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+
+
 
 def _macro5_kospi_view_cut(df: pd.DataFrame, years: int, end_date=None) -> pd.DataFrame:
     if df is None or df.empty or "date" not in df.columns:
@@ -16951,6 +16989,7 @@ def main(page="signal"):
             _reference_label5k = _macro5_kospi_reference_label(_selected_row5k["source_signal_parity"])
             _live_selected5k = _live_row_map5k.get(_macro5_kospi_preset)
             _live_selected_ok5k = bool(_live_selected5k and _live_selected5k.get("calculable") and _live_history_ready5k)
+            _debug_probe_enabled5k = _macro5_kospi_debug_enabled()
             if _live_selected_ok5k:
                 if not _live_candidate_history_selected5k.empty:
                     _state_span5k = _macro5_kospi_current_state_span(
@@ -17095,6 +17134,7 @@ def main(page="signal"):
             else:
                 st.warning("최신 대표 차트를 표시할 수 없습니다.")
 
+            _debug_component_rows5k = []
             for _idx5k, (_component_id5k, _component_df5k) in enumerate(_candidate_components5k.groupby("component_id", sort=False), start=1):
                 if str(_component_id5k) in _candidate_map5k:
                     _component_label5k = _macro5_kospi_component_display_label(str(_component_id5k), _candidate_map5k, _component_dict5k)
@@ -17115,6 +17155,14 @@ def main(page="signal"):
                         common_start=_period_common_start5k,
                         live_sync_bucket=_live_sync_bucket5k,
                     )
+                    if _debug_probe_enabled5k:
+                        _debug_component_rows5k.append(
+                            {
+                                "component_id": str(_component_id5k),
+                                "component_history_max": _macro5_kospi_debug_max_date(_component_df5k),
+                                "component_chart_x_end": _macro5_kospi_debug_fig_x_end(_component_fig5k),
+                            }
+                        )
                     if _component_fig5k is not None:
                         st.plotly_chart(
                             _component_fig5k,
@@ -17124,6 +17172,28 @@ def main(page="signal"):
                         )
                     else:
                         st.warning("component state 차트 데이터가 없습니다.")
+
+            if _debug_probe_enabled5k:
+                _macro5_kospi_render_debug_probe(
+                    [
+                        {
+                            "item": "live_as_of_utc",
+                            "value": _live5k.get("as_of_utc") if isinstance(_live5k, dict) else "NO_LIVE_PAYLOAD",
+                        },
+                        {"item": "live_sync_bucket", "value": _live_sync_bucket5k},
+                        {"item": "candidate_id", "value": _macro5_kospi_preset},
+                        {"item": "live_selected_calculable", "value": bool(_live_selected5k and _live_selected5k.get("calculable"))},
+                        {"item": "live_history_ready", "value": bool(_live_history_ready5k)},
+                        {"item": "live_selected_ok", "value": bool(_live_selected_ok5k)},
+                        {"item": "selected_basis_date", "value": _chart_basis_date5k},
+                        {"item": "candidate_history_max", "value": _macro5_kospi_debug_max_date(_candidate_signal5k)},
+                        {"item": "component_history_max", "value": _macro5_kospi_debug_max_date(_candidate_components5k)},
+                        {"item": "benchmark_history_max", "value": _macro5_kospi_debug_max_date(_benchmark5k)},
+                        {"item": "transformed_source_max", "value": _macro5_kospi_debug_max_date(_chart_source_base5k)},
+                        {"item": "main_chart_x_end", "value": _macro5_kospi_debug_fig_x_end(_main_fig5k)},
+                        {"item": "component_chart_x_end_values", "value": json.dumps(_debug_component_rows5k, ensure_ascii=False)},
+                    ]
+                )
 
             with st.expander("고급 설정 · 모델 및 데이터 정보", expanded=False):
                 st.write(f"candidate_id: `{_macro5_kospi_preset}`")
