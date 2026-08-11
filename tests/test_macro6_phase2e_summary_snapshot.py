@@ -238,3 +238,105 @@ def test_macro6_component_chart_and_status_paths_remain_separate(monkeypatch):
     assert status_table
     assert calls["chart_signal"] == 1
     assert calls["status"] == 1
+
+
+def _sample_signal_frame(index, active=False):
+    values = [False, bool(active), bool(active), bool(active), False, False, bool(active), bool(active)]
+    starts = [False, bool(active), False, False, False, False, bool(active), False]
+    ends = [False, False, False, not active, False, False, False, False]
+    return pd.DataFrame(
+        {
+            "risk_state": values[: len(index)],
+            "risk_start_signal": starts[: len(index)],
+            "risk_end_signal": ends[: len(index)],
+            "valid_signal": [True] * len(index),
+        },
+        index=index,
+    )
+
+
+def test_macro6_summary_signal_frame_reuses_exact_duplicate_within_summary_map(monkeypatch):
+    index = pd.bdate_range("2026-01-01", periods=8)
+    spx = pd.Series(range(100, 108), index=index, dtype=float)
+    cfg = {"kind": "level", "raw": "same", "window": 20, "start": 0.7, "end": 0.3, "ema": 5}
+    presets = {
+        "p1": {"candidate_key": "p1", "benchmark": "S&P500", "combo_k": 1, "combo_l": 0, "selected_indicators": ["VIX"], "cfgs": {"VIX": cfg}},
+        "p2": {"candidate_key": "p2", "benchmark": "S&P500", "combo_k": 2, "combo_l": 1, "selected_indicators": ["VIX"], "cfgs": {"VIX": cfg}},
+    }
+    calls = {"signal": 0}
+
+    monkeypatch.setattr(dash, "_yf_close", lambda *_args, **_kwargs: spx)
+
+    def fake_indicator_signal(**_kwargs):
+        calls["signal"] += 1
+        return _sample_signal_frame(index, active=True)
+
+    monkeypatch.setattr(dash, "_macro6_get_indicator_signal_frame", fake_indicator_signal)
+    summary_map = dash._compute_macro6_operating_summary_map_cached.__wrapped__(presets, sync_bucket="bucket")
+
+    assert calls["signal"] == 1
+    assert list(summary_map) == ["p1", "p2"]
+    assert summary_map["p1"]["start_count"] == 1
+    assert summary_map["p2"]["start_count"] == 2
+
+
+def test_macro6_summary_signal_frame_cache_miss_on_identity_changes(monkeypatch):
+    index = pd.bdate_range("2026-01-01", periods=8)
+    spx = pd.Series(range(100, 108), index=index, dtype=float)
+    spx_shifted = spx + 1
+    cfg = {"kind": "level", "raw": "same", "window": 20, "start": 0.7, "end": 0.3, "ema": 5}
+    changed_cfg = {**cfg, "start": 0.8}
+    calls = {"signal": 0}
+
+    def fake_indicator_signal(**_kwargs):
+        calls["signal"] += 1
+        return _sample_signal_frame(index, active=True)
+
+    monkeypatch.setattr(dash, "_macro6_get_indicator_signal_frame", fake_indicator_signal)
+    cache = {}
+    common = {
+        "benchmark_name": "S&P500",
+        "selected_indicators": ["VIX"],
+        "combo_k": 1,
+        "combo_l": 0,
+        "raw_series_cache": {},
+        "signal_frame_cache": cache,
+    }
+
+    dash._compute_macro6_combo_signal_frame(spx_s=spx, cfgs={"VIX": cfg}, sync_bucket="bucket", **common)
+    dash._compute_macro6_combo_signal_frame(spx_s=spx, cfgs={"VIX": cfg}, sync_bucket="bucket", **common)
+    dash._compute_macro6_combo_signal_frame(spx_s=spx, cfgs={"VIX": changed_cfg}, sync_bucket="bucket", **common)
+    dash._compute_macro6_combo_signal_frame(spx_s=spx, cfgs={"VIX": cfg}, sync_bucket="other", **common)
+    dash._compute_macro6_combo_signal_frame(spx_s=spx_shifted, cfgs={"VIX": cfg}, sync_bucket="bucket", **common)
+
+    assert calls["signal"] == 4
+    assert len(cache) == 4
+
+
+def test_macro6_summary_signal_frame_reuse_returns_defensive_copy():
+    index = pd.bdate_range("2026-01-01", periods=8)
+    cached = _sample_signal_frame(index, active=True)
+
+    returned = dash._macro6_clone_indicator_signal_frame(cached)
+    returned.loc[index[0], "risk_state"] = False
+    returned["new_col"] = 1
+
+    assert "new_col" not in cached.columns
+    assert bool(cached.loc[index[0], "risk_state"]) is False
+    cached.loc[index[1], "risk_state"] = True
+    returned_again = dash._macro6_clone_indicator_signal_frame(cached)
+    returned_again.loc[index[1], "risk_state"] = False
+    assert bool(cached.loc[index[1], "risk_state"]) is True
+
+
+def test_macro6_summary_signal_identity_distinguishes_output_inputs():
+    index = pd.bdate_range("2026-01-01", periods=8)
+    spx = pd.Series(range(100, 108), index=index, dtype=float)
+    cfg = {"kind": "level", "raw": "same", "window": 20, "start": 0.7, "end": 0.3, "ema": 5}
+
+    base = dash._macro6_indicator_signal_reuse_identity("VIX", cfg, index, 5, "S&P500", spx, "bucket", "live_raw")
+    assert base == dash._macro6_indicator_signal_reuse_identity("VIX", dict(cfg), index, 5, "S&P500", spx.copy(), "bucket", None)
+    assert base != dash._macro6_indicator_signal_reuse_identity("VIX", {**cfg, "start": 0.8}, index, 5, "S&P500", spx, "bucket", "live_raw")
+    assert base != dash._macro6_indicator_signal_reuse_identity("VIX", cfg, index[:-1], 5, "S&P500", spx, "bucket", "live_raw")
+    assert base != dash._macro6_indicator_signal_reuse_identity("VIX", cfg, index, 5, "S&P500", spx + 1, "bucket", "live_raw")
+    assert base != dash._macro6_indicator_signal_reuse_identity("VIX", cfg, index, 5, "S&P500", spx, "other", "live_raw")

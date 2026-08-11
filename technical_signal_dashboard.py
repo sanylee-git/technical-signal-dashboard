@@ -8328,6 +8328,7 @@ def _compute_macro6_combo_signal_frame(
     sync_bucket: str | None = None,
     source_mode: str | None = None,
     raw_series_cache: dict | None = None,
+    signal_frame_cache: dict | None = None,
 ):
     if spx_s is None or spx_s.empty or not COMBO1_EXPANDED_SIGNALS_AVAILABLE:
         return pd.DataFrame(), []
@@ -8349,16 +8350,35 @@ def _compute_macro6_combo_signal_frame(
                 benchmark_index=spx_s.index,
             )
         else:
-            signal_df = _macro6_get_indicator_signal_frame(
-                indicator=indicator,
-                cfg=cfg,
-                benchmark_index=spx_s.index,
-                years=fetch_years,
-                benchmark_name=benchmark_name,
-                spx_s=spx_s,
-                sync_bucket=sync_bucket,
-                raw_series_cache=raw_series_cache,
-            )
+            signal_identity = ""
+            signal_df = None
+            if isinstance(signal_frame_cache, dict):
+                signal_identity = _macro6_indicator_signal_reuse_identity(
+                    indicator=indicator,
+                    cfg=cfg,
+                    benchmark_index=spx_s.index,
+                    years=fetch_years,
+                    benchmark_name=benchmark_name,
+                    spx_s=spx_s,
+                    sync_bucket=sync_bucket,
+                    source_mode=source_mode,
+                )
+                cached_signal = signal_frame_cache.get(signal_identity)
+                if cached_signal is not None:
+                    signal_df = _macro6_clone_indicator_signal_frame(cached_signal)
+            if signal_df is None:
+                signal_df = _macro6_get_indicator_signal_frame(
+                    indicator=indicator,
+                    cfg=cfg,
+                    benchmark_index=spx_s.index,
+                    years=fetch_years,
+                    benchmark_name=benchmark_name,
+                    spx_s=spx_s,
+                    sync_bucket=sync_bucket,
+                    raw_series_cache=raw_series_cache,
+                )
+                if isinstance(signal_frame_cache, dict) and signal_identity:
+                    signal_frame_cache[signal_identity] = _macro6_clone_indicator_signal_frame(signal_df)
         if signal_df.empty:
             return pd.DataFrame(), []
         key = _macro3_indicator_key(indicator)
@@ -8390,6 +8410,7 @@ def _compute_macro6_combo2_signal_frame(
     sync_bucket: str | None = None,
     source_mode: str | None = None,
     raw_series_cache: dict | None = None,
+    signal_frame_cache: dict | None = None,
 ):
     if spx_s is None or spx_s.empty or not COMBO1_EXPANDED_SIGNALS_AVAILABLE:
         return pd.DataFrame(), []
@@ -8416,6 +8437,7 @@ def _compute_macro6_combo2_signal_frame(
             sync_bucket=sync_bucket,
             source_mode=source_mode,
             raw_series_cache=raw_series_cache,
+            signal_frame_cache=signal_frame_cache,
         )
         if component_combo.empty or not component_active:
             return pd.DataFrame(), []
@@ -8452,6 +8474,7 @@ def _compute_macro6_preset_signal_frame(
     sync_bucket: str | None = None,
     source_mode: str | None = None,
     raw_series_cache: dict | None = None,
+    signal_frame_cache: dict | None = None,
 ):
     if preset_cfg.get("kind") == "combo2_final8":
         return _compute_macro6_combo2_signal_frame(
@@ -8461,6 +8484,7 @@ def _compute_macro6_preset_signal_frame(
             sync_bucket=sync_bucket,
             source_mode=source_mode,
             raw_series_cache=raw_series_cache,
+            signal_frame_cache=signal_frame_cache,
         )
     return _compute_macro6_combo_signal_frame(
         spx_s=spx_s,
@@ -8472,6 +8496,7 @@ def _compute_macro6_preset_signal_frame(
         sync_bucket=sync_bucket,
         source_mode=source_mode,
         raw_series_cache=raw_series_cache,
+        signal_frame_cache=signal_frame_cache,
     )
 
 
@@ -8502,6 +8527,52 @@ def _macro6_series_fingerprint(series: pd.Series) -> dict:
         "end": None if ser.empty else str(ser.index[-1]),
         "hash": value_hash,
     }
+
+
+def _macro6_index_fingerprint(index) -> dict:
+    idx = pd.DatetimeIndex(pd.to_datetime(index)).normalize()
+    try:
+        marker = pd.Series(range(len(idx)), index=idx)
+        value_hash = hashlib.sha256(pd.util.hash_pandas_object(marker, index=True).values.tobytes()).hexdigest()
+    except Exception:
+        value_hash = hashlib.sha256(pd.Series(idx.astype(str)).to_json(default_handler=str).encode()).hexdigest()
+    return {
+        "len": int(len(idx)),
+        "start": None if len(idx) == 0 else str(idx[0]),
+        "end": None if len(idx) == 0 else str(idx[-1]),
+        "hash": value_hash,
+    }
+
+
+def _macro6_indicator_signal_reuse_identity(
+    indicator: str,
+    cfg: dict,
+    benchmark_index,
+    years: int,
+    benchmark_name: str,
+    spx_s: pd.Series | None,
+    sync_bucket: str | None = None,
+    source_mode: str | None = None,
+) -> str:
+    identity = {
+        "function": "_macro6_get_indicator_signal_frame",
+        "indicator": str(indicator),
+        "cfg": cfg or {},
+        "benchmark_index": _macro6_index_fingerprint(benchmark_index),
+        "years": int(years),
+        "benchmark_name": str(benchmark_name),
+        "spx": _macro6_series_fingerprint(spx_s),
+        "sync_bucket": str(sync_bucket or ""),
+        "source_mode": _macro6_source_mode(source_mode),
+        "raw_series_cache_semantic": "performance_cache_not_output_contract",
+    }
+    return _macro6_json_fingerprint(identity)
+
+
+def _macro6_clone_indicator_signal_frame(signal_df: pd.DataFrame) -> pd.DataFrame:
+    if isinstance(signal_df, pd.DataFrame):
+        return signal_df.copy(deep=True)
+    return pd.DataFrame()
 
 
 def _macro6_preset_signal_reuse_identity(
@@ -8872,6 +8943,7 @@ def _compute_macro6_operating_summary(
     benchmark_name: str,
     sync_bucket: str | None = None,
     raw_series_cache: dict | None = None,
+    signal_frame_cache: dict | None = None,
     reuse_capture_key: str | None = None,
 ) -> dict | None:
     if spx_s is None or spx_s.empty:
@@ -8884,6 +8956,7 @@ def _compute_macro6_operating_summary(
         preset_cfg=preset_cfg,
         sync_bucket=sync_bucket,
         raw_series_cache=raw_series_cache,
+        signal_frame_cache=signal_frame_cache,
     )
     if combo.empty or not active_indicators:
         return None
@@ -8914,6 +8987,7 @@ def _compute_macro6_operating_summary(
 def _compute_macro6_operating_summary_map_cached(preset_cfgs: dict, sync_bucket: str | None = None):
     summary_map = {}
     raw_series_cache = {}
+    signal_frame_cache = {}
     benchmark_series_cache = {}
     reuse_capture_preset_key = _macro6_summary_reuse_capture_key(preset_cfgs)
     reuse_capture_candidate_key = None
@@ -8934,6 +9008,7 @@ def _compute_macro6_operating_summary_map_cached(preset_cfgs: dict, sync_bucket:
             benchmark_name=benchmark_name,
             sync_bucket=sync_bucket,
             raw_series_cache=raw_series_cache,
+            signal_frame_cache=signal_frame_cache,
             reuse_capture_key=reuse_capture_candidate_key,
         )
         if summary is not None:
