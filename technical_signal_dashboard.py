@@ -14640,6 +14640,36 @@ def _macro5_kospi_debug_fig_x_end(fig: go.Figure | None) -> str:
         return str(x_range[1])
 
 
+def _macro5_kospi_debug_last_valid_point(frame: pd.DataFrame | None, value_col: str) -> dict[str, str]:
+    if frame is None or not isinstance(frame, pd.DataFrame) or frame.empty or "date" not in frame.columns or value_col not in frame.columns:
+        return {"date": "NONE", "value": "NONE"}
+    out = frame[["date", value_col]].copy()
+    out["date"] = pd.to_datetime(out["date"], errors="coerce").dt.normalize()
+    out[value_col] = pd.to_numeric(out[value_col], errors="coerce")
+    out = out.dropna(subset=["date", value_col]).sort_values("date")
+    if out.empty:
+        return {"date": "NONE", "value": "NONE"}
+    latest = out.iloc[-1]
+    return {
+        "date": pd.Timestamp(latest["date"]).strftime("%Y-%m-%d"),
+        "value": f"{float(latest[value_col]):.6f}",
+    }
+
+
+def _macro5_kospi_debug_trace_last_point(fig: go.Figure | None, trace_name: str) -> dict[str, str]:
+    if fig is None:
+        return {"date": "NONE", "value": "NONE"}
+    for trace in fig.data:
+        if str(getattr(trace, "name", "")) != trace_name:
+            continue
+        try:
+            points = pd.DataFrame({"date": list(trace.x), "value": list(trace.y)})
+        except Exception:
+            return {"date": "NONE", "value": "NONE"}
+        return _macro5_kospi_debug_last_valid_point(points, "value")
+    return {"date": "NONE", "value": "NONE"}
+
+
 def _macro5_kospi_render_debug_probe(rows: list[dict]) -> None:
     if not rows:
         return
@@ -17174,6 +17204,9 @@ def main(page="signal"):
                         st.warning("component state 차트 데이터가 없습니다.")
 
             if _debug_probe_enabled5k:
+                _debug_benchmark_last5k = _macro5_kospi_debug_last_valid_point(_benchmark5k, "kospi_close")
+                _debug_source_last5k = _macro5_kospi_debug_last_valid_point(_chart_source_base5k, "kospi_close")
+                _debug_main_trace_last5k = _macro5_kospi_debug_trace_last_point(_main_fig5k, "KOSPI")
                 _macro5_kospi_render_debug_probe(
                     [
                         {
@@ -17190,7 +17223,13 @@ def main(page="signal"):
                         {"item": "component_history_max", "value": _macro5_kospi_debug_max_date(_candidate_components5k)},
                         {"item": "benchmark_history_max", "value": _macro5_kospi_debug_max_date(_benchmark5k)},
                         {"item": "transformed_source_max", "value": _macro5_kospi_debug_max_date(_chart_source_base5k)},
+                        {"item": "benchmark_last_valid_close_date", "value": _debug_benchmark_last5k["date"]},
+                        {"item": "benchmark_last_valid_close", "value": _debug_benchmark_last5k["value"]},
+                        {"item": "transformed_kospi_last_valid_close_date", "value": _debug_source_last5k["date"]},
+                        {"item": "transformed_kospi_last_valid_close", "value": _debug_source_last5k["value"]},
                         {"item": "main_chart_x_end", "value": _macro5_kospi_debug_fig_x_end(_main_fig5k)},
+                        {"item": "main_chart_kospi_trace_last_date", "value": _debug_main_trace_last5k["date"]},
+                        {"item": "main_chart_kospi_trace_last_close", "value": _debug_main_trace_last5k["value"]},
                         {"item": "component_chart_x_end_values", "value": json.dumps(_debug_component_rows5k, ensure_ascii=False)},
                     ]
                 )
