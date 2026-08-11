@@ -10375,6 +10375,7 @@ def _build_macro6_component_chart(
     preset_cfg: dict,
     spx_s: pd.Series,
     sync_bucket: str | None = None,
+    signal_frame_cache: dict | None = None,
 ):
     component_cfg = preset_cfg.get("component_cfgs", {}).get(component_key)
     if not component_cfg or spx_s is None or spx_s.empty:
@@ -10393,6 +10394,7 @@ def _build_macro6_component_chart(
         combo_k=int(component_cfg.get("combo_k", 1)),
         combo_l=int(component_cfg.get("combo_l", 0)),
         sync_bucket=sync_bucket,
+        signal_frame_cache=signal_frame_cache,
     )
     if combo.empty:
         return None
@@ -10448,6 +10450,7 @@ def _build_macro6_component_chart_cached(
     preset_cfg: dict,
     spx_s: pd.Series,
     sync_bucket: str | None = None,
+    signal_frame_cache: dict | None = None,
 ):
     cache_key = _macro6_detail_chart_cache_key(
         "component",
@@ -10470,6 +10473,7 @@ def _build_macro6_component_chart_cached(
         preset_cfg=preset_cfg,
         spx_s=spx_s,
         sync_bucket=sync_bucket,
+        signal_frame_cache=signal_frame_cache,
     )
     _macro6_detail_chart_cache_put(cache_key, fig)
     return fig
@@ -18032,6 +18036,7 @@ def main(page="signal"):
                     return_debug=True,
                 )
                 if _macro6_is_combo2:
+                    _macro6_component_signal_frame_cache = {}
                     _macro6_indicator_charts = {
                         _component: _build_macro6_component_chart_cached(
                             preset_key=_macro6_preset,
@@ -18041,6 +18046,7 @@ def main(page="signal"):
                             preset_cfg=_macro6_preset_cfg,
                             spx_s=_spx_s6,
                             sync_bucket=_macro6_sync_bucket,
+                            signal_frame_cache=_macro6_component_signal_frame_cache,
                         )
                         for _component in _macro6_preset_cfg.get("components", [])
                     }

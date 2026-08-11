@@ -25,6 +25,40 @@ def _fig(name="chart"):
     return fig
 
 
+def _signal_frame(index):
+    return pd.DataFrame(
+        {
+            "risk_state": [False] * len(index),
+            "risk_start_signal": [False] * len(index),
+            "risk_end_signal": [False] * len(index),
+            "valid_signal": [True] * len(index),
+        },
+        index=index,
+    )
+
+
+def _component_cfg(raw="same"):
+    return {
+        "combo_k": 1,
+        "combo_l": 0,
+        "selected_indicators": ["VIX"],
+        "cfgs": {"VIX": {"kind": "level", "raw": raw, "window": 20, "start": 0.7, "end": 0.3}},
+    }
+
+
+def _combo2_cfg(*, second_raw="same"):
+    return {
+        "kind": "combo2_final8",
+        "combo_k": 1,
+        "combo_l": 0,
+        "components": ["component_a", "component_b"],
+        "component_cfgs": {
+            "component_a": _component_cfg("same"),
+            "component_b": _component_cfg(second_raw),
+        },
+    }
+
+
 def setup_function():
     dash._MACRO6_DETAIL_CHART_CACHE.clear()
 
@@ -100,3 +134,47 @@ def test_macro6_detail_chart_cache_does_not_store_none(monkeypatch):
 
     assert calls["n"] == 2
     assert len(dash._MACRO6_DETAIL_CHART_CACHE) == 0
+
+
+def test_macro6_component_chart_batch_reuses_exact_signal_identity(monkeypatch):
+    spx = pd.Series(range(100, 108), index=pd.bdate_range("2026-01-01", periods=8), dtype=float)
+    calls = {"signal": 0}
+
+    monkeypatch.setattr(dash, "_yf_close", lambda *_args, **_kwargs: spx)
+
+    def fake_indicator_signal(**kwargs):
+        calls["signal"] += 1
+        return _signal_frame(kwargs["benchmark_index"])
+
+    monkeypatch.setattr(dash, "_macro6_get_indicator_signal_frame", fake_indicator_signal)
+    signal_frame_cache = {}
+    cfg = _combo2_cfg()
+
+    first = dash._build_macro6_component_chart_cached("preset", "component_a", 5, "S&P500", cfg, spx, "bucket", signal_frame_cache)
+    second = dash._build_macro6_component_chart_cached("preset", "component_b", 5, "S&P500", cfg, spx, "bucket", signal_frame_cache)
+
+    assert first is not None
+    assert second is not None
+    assert calls["signal"] == 1
+    assert len(signal_frame_cache) == 1
+
+
+def test_macro6_component_chart_batch_misses_on_identity_change(monkeypatch):
+    spx = pd.Series(range(100, 108), index=pd.bdate_range("2026-01-01", periods=8), dtype=float)
+    calls = {"signal": 0}
+
+    monkeypatch.setattr(dash, "_yf_close", lambda *_args, **_kwargs: spx)
+
+    def fake_indicator_signal(**kwargs):
+        calls["signal"] += 1
+        return _signal_frame(kwargs["benchmark_index"])
+
+    monkeypatch.setattr(dash, "_macro6_get_indicator_signal_frame", fake_indicator_signal)
+    signal_frame_cache = {}
+    cfg = _combo2_cfg(second_raw="changed")
+
+    dash._build_macro6_component_chart_cached("preset", "component_a", 5, "S&P500", cfg, spx, "bucket", signal_frame_cache)
+    dash._build_macro6_component_chart_cached("preset", "component_b", 5, "S&P500", cfg, spx, "bucket", signal_frame_cache)
+
+    assert calls["signal"] == 2
+    assert len(signal_frame_cache) == 2
