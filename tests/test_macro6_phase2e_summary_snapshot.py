@@ -96,3 +96,145 @@ def test_macro6_group_helpers_accept_summary_without_combo_frame(monkeypatch):
     assert "Risk-off(위험회피) 1/2" in consensus
     assert current_stage != "계산 불가"
     assert week_ago_stage != "계산 불가"
+
+
+def test_macro6_selected_snapshot_reuses_exact_summary_signal(monkeypatch):
+    dash._MACRO6_SELECTED_SIGNAL_REUSE_STORE.clear()
+    index = pd.bdate_range("2024-01-01", periods=8)
+    spx = pd.Series(range(100, 108), index=index, dtype=float)
+    cfg = {
+        "candidate_key": "candidate_a",
+        "benchmark": "S&P500",
+        "combo_k": 2,
+        "combo_l": 1,
+        "selected_indicators": ["Credit Stress", "VIX"],
+        "cfgs": {
+            "Credit Stress": {"raw": "a"},
+            "VIX": {"raw": "b"},
+        },
+    }
+    calls = {"signal": 0}
+
+    def fake_signal_frame(**_kwargs):
+        calls["signal"] += 1
+        return _sample_combo(index), ["Credit Stress", "VIX"]
+
+    monkeypatch.setattr(dash, "_yf_close", lambda *_args, **_kwargs: spx)
+    monkeypatch.setattr(dash, "_compute_macro6_preset_signal_frame", fake_signal_frame)
+    summary = dash._compute_macro6_operating_summary(
+        cfg,
+        spx,
+        "S&P500",
+        sync_bucket="bucket",
+        raw_series_cache={},
+        reuse_capture_key="candidate_a",
+    )
+    full = dash._compute_macro6_operating_snapshot_uncached(cfg, sync_bucket="bucket")
+
+    assert calls["signal"] == 1
+    for field in ["is_on", "on_count", "total_count", "start_count", "basis_date", "state_start_date", "state_duration_days"]:
+        assert summary[field] == full[field]
+    assert "combo_frame" not in summary
+    assert "combo_frame" in full
+    dash._MACRO6_SELECTED_SIGNAL_REUSE_STORE.clear()
+
+
+def test_macro6_selected_snapshot_falls_back_on_identity_mismatch(monkeypatch):
+    dash._MACRO6_SELECTED_SIGNAL_REUSE_STORE.clear()
+    index = pd.bdate_range("2024-01-01", periods=8)
+    spx = pd.Series(range(100, 108), index=index, dtype=float)
+    cfg = {
+        "candidate_key": "candidate_a",
+        "benchmark": "S&P500",
+        "combo_k": 2,
+        "combo_l": 1,
+        "selected_indicators": ["Credit Stress", "VIX"],
+        "cfgs": {
+            "Credit Stress": {"raw": "a"},
+            "VIX": {"raw": "b"},
+        },
+    }
+    mismatch_cfg = {**cfg, "combo_k": 3}
+    calls = {"signal": 0}
+
+    def fake_signal_frame(**_kwargs):
+        calls["signal"] += 1
+        return _sample_combo(index), ["Credit Stress", "VIX"]
+
+    monkeypatch.setattr(dash, "_yf_close", lambda *_args, **_kwargs: spx)
+    monkeypatch.setattr(dash, "_compute_macro6_preset_signal_frame", fake_signal_frame)
+    dash._compute_macro6_operating_summary(
+        cfg,
+        spx,
+        "S&P500",
+        sync_bucket="bucket",
+        raw_series_cache={},
+        reuse_capture_key="candidate_a",
+    )
+    full = dash._compute_macro6_operating_snapshot_uncached(mismatch_cfg, sync_bucket="bucket")
+
+    assert calls["signal"] == 2
+    assert full is not None
+    dash._MACRO6_SELECTED_SIGNAL_REUSE_STORE.clear()
+
+
+def test_macro6_component_chart_and_status_paths_remain_separate(monkeypatch):
+    index = pd.bdate_range("2024-01-01", periods=8)
+    spx = pd.Series(range(100, 108), index=index, dtype=float)
+    combo = _sample_combo(index)
+    component_key = "combo1_component"
+    component_cfg = {
+        "combo_k": 2,
+        "combo_l": 1,
+        "selected_indicators": ["Credit Stress", "VIX"],
+        "cfgs": {
+            "Credit Stress": {"raw": "a"},
+            "VIX": {"raw": "b"},
+        },
+    }
+    preset_cfg = {
+        "kind": "combo2_final8",
+        "combo_k": 1,
+        "combo_l": 0,
+        "components": [component_key],
+        "component_cfgs": {component_key: component_cfg},
+    }
+    calls = {"chart_signal": 0, "status": 0}
+
+    def fake_combo_signal(**_kwargs):
+        calls["chart_signal"] += 1
+        return combo, ["Credit Stress", "VIX"]
+
+    def fake_component_status(*_args, **_kwargs):
+        calls["status"] += 1
+        return {
+            "rows": [],
+            "bottleneck": {"label": "Credit Stress", "latest_text": "2024-01-10"},
+        }
+
+    event_df = dash._macro6_build_event_df(combo, [component_key], "S&P500", preset_cfg)
+    monkeypatch.setattr(dash, "_yf_close", lambda *_args, **_kwargs: spx)
+    monkeypatch.setattr(dash, "_compute_macro6_combo_signal_frame", fake_combo_signal)
+    monkeypatch.setattr(dash, "_macro6_component_data_status", fake_component_status)
+
+    fig = dash._build_macro6_component_chart(
+        component_key=component_key,
+        years=5,
+        benchmark_name="S&P500",
+        preset_cfg=preset_cfg,
+        spx_s=spx,
+        sync_bucket="bucket",
+    )
+    status_html, status_table = dash._build_macro6_status_panel(
+        benchmark_name="S&P500",
+        years=5,
+        preset_cfg=preset_cfg,
+        combo_event_df=event_df,
+        sync_bucket="bucket",
+    )
+
+    assert fig is not None
+    assert status_html
+    assert status_table
+    assert calls["chart_signal"] == 1
+    assert calls["status"] == 1

@@ -8475,6 +8475,104 @@ def _compute_macro6_preset_signal_frame(
     )
 
 
+_MACRO6_SELECTED_SIGNAL_REUSE_STORE: dict[str, tuple[pd.DataFrame, list]] = {}
+
+
+def _macro6_json_fingerprint(value) -> str:
+    try:
+        payload = json.dumps(value, sort_keys=True, default=str, ensure_ascii=False, separators=(",", ":"))
+    except Exception:
+        payload = str(value)
+    return hashlib.sha256(payload.encode("utf-8", errors="replace")).hexdigest()
+
+
+def _macro6_series_fingerprint(series: pd.Series) -> dict:
+    if series is None:
+        return {"empty": True, "hash": ""}
+    ser = pd.Series(series).copy()
+    try:
+        value_hash = hashlib.sha256(pd.util.hash_pandas_object(ser, index=True).values.tobytes()).hexdigest()
+    except Exception:
+        value_hash = hashlib.sha256(ser.to_json(date_format="iso", default_handler=str).encode()).hexdigest()
+    return {
+        "len": int(len(ser)),
+        "name": str(ser.name),
+        "dtype": str(ser.dtype),
+        "start": None if ser.empty else str(ser.index[0]),
+        "end": None if ser.empty else str(ser.index[-1]),
+        "hash": value_hash,
+    }
+
+
+def _macro6_preset_signal_reuse_identity(
+    spx_s: pd.Series,
+    benchmark_name: str,
+    preset_cfg: dict,
+    sync_bucket: str | None = None,
+    source_mode: str | None = None,
+) -> str:
+    identity = {
+        "function": "_compute_macro6_preset_signal_frame",
+        "candidate_key": str(preset_cfg.get("candidate_key") or preset_cfg.get("combo_id") or ""),
+        "kind": str(preset_cfg.get("kind") or ""),
+        "benchmark_name": benchmark_name,
+        "sync_bucket": sync_bucket,
+        "source_mode": source_mode,
+        "combo_k": int(preset_cfg.get("combo_k", 1)),
+        "combo_l": int(preset_cfg.get("combo_l", 0)),
+        "selected_indicators": list(preset_cfg.get("selected_indicators", []) or []),
+        "components": list(preset_cfg.get("components", []) or []),
+        "cfgs": preset_cfg.get("cfgs", {}),
+        "component_cfgs": preset_cfg.get("component_cfgs", {}),
+        "spx": _macro6_series_fingerprint(spx_s),
+    }
+    return _macro6_json_fingerprint(identity)
+
+
+def _macro6_clone_signal_result(result: tuple[pd.DataFrame, list]) -> tuple[pd.DataFrame, list]:
+    combo, active = result
+    combo_copy = combo.copy(deep=True) if isinstance(combo, pd.DataFrame) else pd.DataFrame()
+    return combo_copy, list(active or [])
+
+
+def _macro6_capture_selected_signal_reuse(
+    identity: str,
+    result: tuple[pd.DataFrame, list],
+) -> None:
+    if not identity:
+        return
+    _MACRO6_SELECTED_SIGNAL_REUSE_STORE[identity] = _macro6_clone_signal_result(result)
+    while len(_MACRO6_SELECTED_SIGNAL_REUSE_STORE) > 8:
+        oldest = next(iter(_MACRO6_SELECTED_SIGNAL_REUSE_STORE))
+        _MACRO6_SELECTED_SIGNAL_REUSE_STORE.pop(oldest, None)
+
+
+def _macro6_get_selected_signal_reuse(identity: str) -> tuple[pd.DataFrame, list] | None:
+    result = _MACRO6_SELECTED_SIGNAL_REUSE_STORE.get(identity)
+    if result is None:
+        return None
+    return _macro6_clone_signal_result(result)
+
+
+def _macro6_summary_reuse_capture_key(preset_cfgs: dict) -> str | None:
+    if not preset_cfgs:
+        return None
+    separator_key = "macro6_group_separator"
+    ordered = [key for key in list(_MACRO6_COMBO2_ORDER) + list(_MACRO6_COMBO1_ORDER) if key in preset_cfgs]
+    if not ordered:
+        return None
+    try:
+        picker = st.session_state.get("macro6_preset_picker")
+        selected = picker or st.session_state.get("macro6_preset", ordered[0])
+    except Exception:
+        selected = ordered[0]
+    if selected == separator_key:
+        selected = _MACRO6_COMBO1_ORDER[0] if _MACRO6_COMBO1_ORDER else ordered[0]
+    if selected not in preset_cfgs:
+        selected = ordered[0]
+    return selected
+
+
 def _build_macro3_combo_event_df(
     combo: pd.DataFrame,
     active_indicators,
@@ -8733,13 +8831,24 @@ def _compute_macro6_operating_snapshot_uncached(
         return None
     if raw_series_cache is None:
         raw_series_cache = {}
-    combo, active_indicators = _compute_macro6_preset_signal_frame(
+    reuse_identity = _macro6_preset_signal_reuse_identity(
         spx_s=spx_s,
         benchmark_name=benchmark_name,
         preset_cfg=preset_cfg,
         sync_bucket=sync_bucket,
-        raw_series_cache=raw_series_cache,
+        source_mode=None,
     )
+    reusable_result = _macro6_get_selected_signal_reuse(reuse_identity) if not raw_series_cache else None
+    if reusable_result is not None:
+        combo, active_indicators = reusable_result
+    else:
+        combo, active_indicators = _compute_macro6_preset_signal_frame(
+            spx_s=spx_s,
+            benchmark_name=benchmark_name,
+            preset_cfg=preset_cfg,
+            sync_bucket=sync_bucket,
+            raw_series_cache=raw_series_cache,
+        )
     if combo.empty or not active_indicators:
         return None
     event_df = _macro6_build_event_df(combo, active_indicators, benchmark_name, preset_cfg)
@@ -8763,6 +8872,7 @@ def _compute_macro6_operating_summary(
     benchmark_name: str,
     sync_bucket: str | None = None,
     raw_series_cache: dict | None = None,
+    reuse_capture_key: str | None = None,
 ) -> dict | None:
     if spx_s is None or spx_s.empty:
         return None
@@ -8777,6 +8887,16 @@ def _compute_macro6_operating_summary(
     )
     if combo.empty or not active_indicators:
         return None
+    candidate_key = str(preset_cfg.get("candidate_key") or preset_cfg.get("combo_id") or "")
+    if reuse_capture_key and candidate_key == str(reuse_capture_key):
+        reuse_identity = _macro6_preset_signal_reuse_identity(
+            spx_s=spx_s,
+            benchmark_name=benchmark_name,
+            preset_cfg=preset_cfg,
+            sync_bucket=sync_bucket,
+            source_mode=None,
+        )
+        _macro6_capture_selected_signal_reuse(reuse_identity, (combo, active_indicators))
     event_df = _macro6_build_event_df(combo, active_indicators, benchmark_name, preset_cfg)
     return _macro6_operating_state_payload(
         event_df,
@@ -8795,6 +8915,11 @@ def _compute_macro6_operating_summary_map_cached(preset_cfgs: dict, sync_bucket:
     summary_map = {}
     raw_series_cache = {}
     benchmark_series_cache = {}
+    reuse_capture_preset_key = _macro6_summary_reuse_capture_key(preset_cfgs)
+    reuse_capture_candidate_key = None
+    if reuse_capture_preset_key and reuse_capture_preset_key in dict(preset_cfgs or {}):
+        reuse_cfg = dict(preset_cfgs or {}).get(reuse_capture_preset_key, {})
+        reuse_capture_candidate_key = str(reuse_cfg.get("candidate_key") or reuse_cfg.get("combo_id") or "")
     for key, preset_cfg in dict(preset_cfgs or {}).items():
         benchmark_name = preset_cfg.get("benchmark", "S&P500")
         if benchmark_name not in benchmark_series_cache:
@@ -8809,6 +8934,7 @@ def _compute_macro6_operating_summary_map_cached(preset_cfgs: dict, sync_bucket:
             benchmark_name=benchmark_name,
             sync_bucket=sync_bucket,
             raw_series_cache=raw_series_cache,
+            reuse_capture_key=reuse_capture_candidate_key,
         )
         if summary is not None:
             summary_map[key] = summary
