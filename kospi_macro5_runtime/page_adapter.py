@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,9 @@ from .retry import fetch_with_optional_bypass
 from .snapshot import build_final9_snapshot
 
 
+FRED_SOURCE_MAX_WORKERS = 4
+
+
 def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, Any]:
     as_of_utc = as_of_utc or datetime.now(timezone.utc)
     root = Path(__file__).resolve().parents[1]
@@ -32,69 +36,12 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
     sessions_df = kospi_completed_sessions("2024-01-01", session_end, as_of_utc)
     sessions = pd.DatetimeIndex(pd.to_datetime(sessions_df["session_date"])).normalize()
 
-    selected_frames: dict[str, pd.DataFrame] = {}
-    source_rows: list[dict[str, Any]] = []
-    for source_id, contract in SOURCE_CONTRACTS.items():
-        raw, attempts, retry_meta = fetch_with_optional_bypass(
-            contract,
-            as_of_utc=as_of_utc,
-            krx_sessions=sessions,
-            latest_completed_krx=latest_krx,
-            latest_allowed_kospi_session=latest_kospi_live,
-            fetcher=fetch_source,
-        )
-        initial = evaluate_source_freshness(
-            contract,
-            raw,
-            as_of_utc=as_of_utc,
-            krx_sessions=sessions,
-            latest_completed_krx=latest_krx,
-            latest_allowed_kospi_session=latest_kospi_live,
-        )
-        selected, date_audit = normalize_provider_dates_for_freshness(
-            contract,
-            raw,
-            expected_latest_observation_date=initial.expected_latest_observation_date,
-            latest_completed_krx_session=None if latest_krx is None else latest_krx.strftime("%Y-%m-%d"),
-            latest_allowed_kospi_session=None if latest_kospi_live is None else latest_kospi_live.strftime("%Y-%m-%d"),
-        )
-        selected_frames[source_id] = selected
-        evaluation = evaluate_source_freshness(
-            contract,
-            selected,
-            as_of_utc=as_of_utc,
-            krx_sessions=sessions,
-            latest_completed_krx=latest_krx,
-            latest_allowed_kospi_session=latest_kospi_live,
-        )
-        source_rows.append(
-            {
-                "source_id": source_id,
-                "provider": contract.provider,
-                "provider_series_id": contract.provider_series_id,
-                "fetch_status": selected["status"].iloc[0] if not selected.empty and "status" in selected else "FETCH_ERROR",
-                "freshness_status": evaluation.final_freshness_status,
-                "raw_latest_observation_date": date_audit["raw_latest_observation_date"],
-                "selected_latest_observation_date": date_audit["selected_latest_observation_date"],
-                "actual_latest_observation_date": evaluation.actual_latest_observation_date,
-                "actual_latest_available_date": evaluation.actual_latest_available_date,
-                "actual_latest_krx_aligned_date": evaluation.actual_latest_krx_aligned_date,
-                "latest_available_date": evaluation.actual_latest_available_date,
-                "latest_krx_aligned_date": evaluation.actual_latest_krx_aligned_date,
-                "expected_latest_observation_date": evaluation.expected_latest_observation_date,
-                "expected_latest_available_date": evaluation.expected_latest_available_date,
-                "expected_latest_krx_aligned_date": evaluation.expected_latest_krx_aligned_date,
-                "lag_krx_sessions": evaluation.lag_krx_sessions,
-                "allowed_partial_row_count": date_audit.get("allowed_partial_row_count", 0),
-                "excluded_partial_row_count": date_audit.get("excluded_partial_row_count", 0),
-                "kospi_partial_daily_allowed": date_audit.get("kospi_partial_daily_allowed", False),
-                "kospi_latest_row_final": date_audit.get("kospi_latest_row_final"),
-                "kospi_live_observation_type": date_audit.get("kospi_live_observation_type", ""),
-                "selected_route": selected["source_route"].iloc[0] if not selected.empty and "source_route" in selected else "",
-                "selected_attempt": retry_meta["selected_attempt"],
-                "row_count": int(len(selected.loc[selected.get("valid", False).astype(bool)])) if not selected.empty else 0,
-            }
-        )
+    selected_frames, source_rows = _load_source_frames(
+        as_of_utc=as_of_utc,
+        sessions=sessions,
+        latest_krx=latest_krx,
+        latest_kospi_live=latest_kospi_live,
+    )
 
     source_df = pd.DataFrame(source_rows)
     _, consumers = build_canonical_registry(selected_frames)
@@ -128,6 +75,117 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
         "calculation_status": "CALCULABLE",
         "error_message": "",
     }
+
+
+def _load_source_frames(
+    *,
+    as_of_utc: datetime,
+    sessions: pd.DatetimeIndex,
+    latest_krx: pd.Timestamp,
+    latest_kospi_live: pd.Timestamp | None,
+) -> tuple[dict[str, pd.DataFrame], list[dict[str, Any]]]:
+    results: dict[str, tuple[pd.DataFrame, dict[str, Any]]] = {}
+    fred_items = [(source_id, contract) for source_id, contract in SOURCE_CONTRACTS.items() if contract.provider == "fred"]
+    non_fred_items = [(source_id, contract) for source_id, contract in SOURCE_CONTRACTS.items() if contract.provider != "fred"]
+
+    for source_id, contract in non_fred_items:
+        results[source_id] = _load_one_source_frame(
+            source_id=source_id,
+            contract=contract,
+            as_of_utc=as_of_utc,
+            sessions=sessions,
+            latest_krx=latest_krx,
+            latest_kospi_live=latest_kospi_live,
+        )
+
+    with ThreadPoolExecutor(max_workers=FRED_SOURCE_MAX_WORKERS) as executor:
+        future_by_source = {
+            source_id: executor.submit(
+                _load_one_source_frame,
+                source_id=source_id,
+                contract=contract,
+                as_of_utc=as_of_utc,
+                sessions=sessions,
+                latest_krx=latest_krx,
+                latest_kospi_live=latest_kospi_live,
+            )
+            for source_id, contract in fred_items
+        }
+        for source_id, _contract in fred_items:
+            results[source_id] = future_by_source[source_id].result()
+
+    selected_frames = {source_id: results[source_id][0] for source_id in SOURCE_CONTRACTS}
+    source_rows = [results[source_id][1] for source_id in SOURCE_CONTRACTS]
+    return selected_frames, source_rows
+
+
+def _load_one_source_frame(
+    *,
+    source_id: str,
+    contract,
+    as_of_utc: datetime,
+    sessions: pd.DatetimeIndex,
+    latest_krx: pd.Timestamp,
+    latest_kospi_live: pd.Timestamp | None,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    raw, attempts, retry_meta = fetch_with_optional_bypass(
+        contract,
+        as_of_utc=as_of_utc,
+        krx_sessions=sessions,
+        latest_completed_krx=latest_krx,
+        latest_allowed_kospi_session=latest_kospi_live,
+        fetcher=fetch_source,
+    )
+    initial = evaluate_source_freshness(
+        contract,
+        raw,
+        as_of_utc=as_of_utc,
+        krx_sessions=sessions,
+        latest_completed_krx=latest_krx,
+        latest_allowed_kospi_session=latest_kospi_live,
+    )
+    selected, date_audit = normalize_provider_dates_for_freshness(
+        contract,
+        raw,
+        expected_latest_observation_date=initial.expected_latest_observation_date,
+        latest_completed_krx_session=None if latest_krx is None else latest_krx.strftime("%Y-%m-%d"),
+        latest_allowed_kospi_session=None if latest_kospi_live is None else latest_kospi_live.strftime("%Y-%m-%d"),
+    )
+    evaluation = evaluate_source_freshness(
+        contract,
+        selected,
+        as_of_utc=as_of_utc,
+        krx_sessions=sessions,
+        latest_completed_krx=latest_krx,
+        latest_allowed_kospi_session=latest_kospi_live,
+    )
+    row = {
+        "source_id": source_id,
+        "provider": contract.provider,
+        "provider_series_id": contract.provider_series_id,
+        "fetch_status": selected["status"].iloc[0] if not selected.empty and "status" in selected else "FETCH_ERROR",
+        "freshness_status": evaluation.final_freshness_status,
+        "raw_latest_observation_date": date_audit["raw_latest_observation_date"],
+        "selected_latest_observation_date": date_audit["selected_latest_observation_date"],
+        "actual_latest_observation_date": evaluation.actual_latest_observation_date,
+        "actual_latest_available_date": evaluation.actual_latest_available_date,
+        "actual_latest_krx_aligned_date": evaluation.actual_latest_krx_aligned_date,
+        "latest_available_date": evaluation.actual_latest_available_date,
+        "latest_krx_aligned_date": evaluation.actual_latest_krx_aligned_date,
+        "expected_latest_observation_date": evaluation.expected_latest_observation_date,
+        "expected_latest_available_date": evaluation.expected_latest_available_date,
+        "expected_latest_krx_aligned_date": evaluation.expected_latest_krx_aligned_date,
+        "lag_krx_sessions": evaluation.lag_krx_sessions,
+        "allowed_partial_row_count": date_audit.get("allowed_partial_row_count", 0),
+        "excluded_partial_row_count": date_audit.get("excluded_partial_row_count", 0),
+        "kospi_partial_daily_allowed": date_audit.get("kospi_partial_daily_allowed", False),
+        "kospi_latest_row_final": date_audit.get("kospi_latest_row_final"),
+        "kospi_live_observation_type": date_audit.get("kospi_live_observation_type", ""),
+        "selected_route": selected["source_route"].iloc[0] if not selected.empty and "source_route" in selected else "",
+        "selected_attempt": retry_meta["selected_attempt"],
+        "row_count": int(len(selected.loc[selected.get("valid", False).astype(bool)])) if not selected.empty else 0,
+    }
+    return selected, row
 
 
 def _load_transformed_source_base(ctx: D1C1Context) -> pd.DataFrame:
