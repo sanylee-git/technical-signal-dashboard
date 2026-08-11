@@ -87,17 +87,25 @@ def evaluate_source_freshness(
     as_of_utc: datetime | pd.Timestamp,
     krx_sessions: pd.DatetimeIndex,
     latest_completed_krx: pd.Timestamp | None = None,
+    latest_allowed_kospi_session: pd.Timestamp | None = None,
 ) -> FreshnessEvaluation:
     freshness_contract = source_freshness_contracts()[source_contract.source_id]
     latest_completed_krx = latest_completed_krx or kospi_latest_completed_session(as_of_utc)
+    if latest_allowed_kospi_session is None:
+        latest_allowed_kospi_session = latest_completed_krx
+    latest_expected_session = (
+        pd.Timestamp(latest_allowed_kospi_session).normalize()
+        if source_contract.source_id == "kospi_ohlcv" and latest_allowed_kospi_session is not None
+        else pd.Timestamp(latest_completed_krx).normalize() if latest_completed_krx is not None else None
+    )
     actual_obs = _latest_valid(frame)
     actual_avail = None
     if actual_obs is not None:
         actual_avail = (actual_obs + BDay(int(source_contract.lag_bdays))).normalize()
-        if latest_completed_krx is not None and actual_avail > latest_completed_krx:
-            actual_avail = pd.Timestamp(latest_completed_krx).normalize()
+        if latest_expected_session is not None and actual_avail > latest_expected_session:
+            actual_avail = pd.Timestamp(latest_expected_session).normalize()
 
-    expected_avail = pd.Timestamp(latest_completed_krx).normalize() if latest_completed_krx is not None else None
+    expected_avail = latest_expected_session
     expected_obs = None
     if expected_avail is not None:
         if source_contract.source_id == "kospi_ohlcv":

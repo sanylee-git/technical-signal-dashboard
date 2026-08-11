@@ -40,10 +40,18 @@ def fetch_with_optional_bypass(
     as_of_utc: datetime | pd.Timestamp,
     krx_sessions: pd.DatetimeIndex,
     latest_completed_krx: pd.Timestamp,
+    latest_allowed_kospi_session: pd.Timestamp | None = None,
     fetcher: Callable[..., pd.DataFrame],
 ) -> tuple[pd.DataFrame, list[dict[str, object]], dict[str, object]]:
     first = fetcher(contract, cache_mode="NORMAL", as_of_utc=as_of_utc)
-    first_eval = evaluate_source_freshness(contract, first, as_of_utc=as_of_utc, krx_sessions=krx_sessions, latest_completed_krx=latest_completed_krx)
+    first_eval = evaluate_source_freshness(
+        contract,
+        first,
+        as_of_utc=as_of_utc,
+        krx_sessions=krx_sessions,
+        latest_completed_krx=latest_completed_krx,
+        latest_allowed_kospi_session=latest_allowed_kospi_session,
+    )
     attempts = [attempt_record(contract=contract, attempt_number=1, cache_mode="NORMAL", frame=first, freshness_status=first_eval.final_freshness_status)]
     selected = first
     retry_executed = False
@@ -54,7 +62,14 @@ def fetch_with_optional_bypass(
         retry_executed = True
         token = f"d1c2a_{contract.source_id}_{pd.Timestamp(as_of_utc).value}"
         second = fetcher(contract, cache_mode="BYPASS", bypass_token=token, as_of_utc=as_of_utc)
-        second_eval = evaluate_source_freshness(contract, second, as_of_utc=as_of_utc, krx_sessions=krx_sessions, latest_completed_krx=latest_completed_krx)
+        second_eval = evaluate_source_freshness(
+            contract,
+            second,
+            as_of_utc=as_of_utc,
+            krx_sessions=krx_sessions,
+            latest_completed_krx=latest_completed_krx,
+            latest_allowed_kospi_session=latest_allowed_kospi_session,
+        )
         retry_status = second_eval.final_freshness_status
         attempts.append(attempt_record(contract=contract, attempt_number=2, cache_mode="BYPASS", frame=second, freshness_status=second_eval.final_freshness_status))
         first_latest = attempts[0]["latest_observation_date"] or ""

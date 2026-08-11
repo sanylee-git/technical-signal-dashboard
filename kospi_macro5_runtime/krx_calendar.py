@@ -75,6 +75,16 @@ def kospi_latest_completed_session(as_of_utc: object) -> pd.Timestamp | None:
     return latest_completed_session(as_of_utc)
 
 
+def kospi_latest_allowed_live_session(as_of_utc: object) -> pd.Timestamp | None:
+    ts = pd.Timestamp(as_of_utc)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    today_kst = ts.tz_convert(KST).tz_localize(None).normalize()
+    if is_session(today_kst):
+        return pd.Timestamp(today_kst).normalize()
+    return latest_completed_session(as_of_utc)
+
+
 def kospi_next_session(date: object) -> pd.Timestamp | None:
     return next_session(date)
 

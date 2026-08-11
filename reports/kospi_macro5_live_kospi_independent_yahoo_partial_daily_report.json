@@ -1,0 +1,67 @@
+{
+  "as_of_utc": "2026-08-11T07:28:04.325591+00:00",
+  "expected_latest_krx_session": "2026-08-11",
+  "latest_kospi_live_session": "2026-08-11",
+  "kospi_source": {
+    "raw_latest_observation_date": "2026-08-11",
+    "selected_latest_observation_date": "2026-08-11",
+    "actual_latest_observation_date": "2026-08-11",
+    "actual_latest_available_date": "2026-08-11",
+    "actual_latest_krx_aligned_date": "2026-08-11",
+    "freshness_status": "FRESH",
+    "allowed_partial_row_count": 0,
+    "excluded_partial_row_count": 0,
+    "kospi_partial_daily_allowed": true,
+    "kospi_latest_row_final": true,
+    "kospi_live_observation_type": "completed_daily",
+    "selected_route": "yf.download(period=6mo);cache_mode=NORMAL",
+    "row_count": 121
+  },
+  "latest_kospi_benchmark": {
+    "date": "2026-08-11",
+    "close": 6345.52978515625
+  },
+  "independent_yahoo_latest": {
+    "date": "2026-08-11",
+    "close": 6345.52978515625
+  },
+  "kospi_core15_family_latest_dates": {
+    "kospi_index_level": "2026-08-11",
+    "kospi_rsi": "2026-08-11",
+    "kospi_bollinger": "2026-08-11",
+    "kospi_hv": "2026-08-11",
+    "kospi_natr": "2026-08-11"
+  },
+  "final9": {
+    "calculable_count": 9,
+    "freshness_qualified_count": 0,
+    "raw_risk_off_count": 9,
+    "default_candidate_id": "m10::combo2_m10_k7_l4_bbd8c760d49b44bb",
+    "default_raw_state": 1,
+    "default_t1_position": 0,
+    "default_active_count": 10,
+    "default_basis_date": "2026-08-11"
+  },
+  "group_summary": {
+    "combo1": {
+      "total_count": 4,
+      "calculable_count": 4,
+      "freshness_qualified_count": 0,
+      "freshness_unqualified_count": 4,
+      "risk_off_calculated_count": 4,
+      "risk_off_freshness_qualified_count": 0
+    },
+    "combo2": {
+      "total_count": 5,
+      "calculable_count": 5,
+      "freshness_qualified_count": 0,
+      "freshness_unqualified_count": 5,
+      "risk_off_calculated_count": 5,
+      "risk_off_freshness_qualified_count": 0
+    },
+    "final9": {
+      "calculated_risk_off_count": 9,
+      "freshness_qualified_risk_off_count": 0
+    }
+  }
+}

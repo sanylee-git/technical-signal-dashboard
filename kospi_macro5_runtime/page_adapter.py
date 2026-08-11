@@ -10,7 +10,7 @@ from .canonical_registry import build_canonical_registry, consistency_from_regis
 from .engine import D1C1Context, read_json
 from .freshness import evaluate_source_freshness
 from .freshness_snapshot import final9_required_sources, qualify_candidates
-from .krx_calendar import kospi_completed_sessions, kospi_latest_completed_session
+from .krx_calendar import kospi_completed_sessions, kospi_latest_allowed_live_session, kospi_latest_completed_session
 from .live_availability import build_transformed_frame
 from .live_contracts import SOURCE_CONTRACTS
 from .live_engine import compute_live_tree
@@ -27,7 +27,9 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
     ctx = D1C1Context(root, root.parent / "macro_dashboard_kospi")
     frozen = _load_transformed_source_base(ctx)
     latest_krx = kospi_latest_completed_session(as_of_utc)
-    sessions_df = kospi_completed_sessions("2024-01-01", latest_krx, as_of_utc)
+    latest_kospi_live = kospi_latest_allowed_live_session(as_of_utc)
+    session_end = latest_kospi_live or latest_krx
+    sessions_df = kospi_completed_sessions("2024-01-01", session_end, as_of_utc)
     sessions = pd.DatetimeIndex(pd.to_datetime(sessions_df["session_date"])).normalize()
 
     selected_frames: dict[str, pd.DataFrame] = {}
@@ -38,6 +40,7 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
             as_of_utc=as_of_utc,
             krx_sessions=sessions,
             latest_completed_krx=latest_krx,
+            latest_allowed_kospi_session=latest_kospi_live,
             fetcher=fetch_source,
         )
         initial = evaluate_source_freshness(
@@ -46,12 +49,14 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
             as_of_utc=as_of_utc,
             krx_sessions=sessions,
             latest_completed_krx=latest_krx,
+            latest_allowed_kospi_session=latest_kospi_live,
         )
         selected, date_audit = normalize_provider_dates_for_freshness(
             contract,
             raw,
             expected_latest_observation_date=initial.expected_latest_observation_date,
             latest_completed_krx_session=None if latest_krx is None else latest_krx.strftime("%Y-%m-%d"),
+            latest_allowed_kospi_session=None if latest_kospi_live is None else latest_kospi_live.strftime("%Y-%m-%d"),
         )
         selected_frames[source_id] = selected
         evaluation = evaluate_source_freshness(
@@ -60,6 +65,7 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
             as_of_utc=as_of_utc,
             krx_sessions=sessions,
             latest_completed_krx=latest_krx,
+            latest_allowed_kospi_session=latest_kospi_live,
         )
         source_rows.append(
             {
@@ -79,6 +85,11 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
                 "expected_latest_available_date": evaluation.expected_latest_available_date,
                 "expected_latest_krx_aligned_date": evaluation.expected_latest_krx_aligned_date,
                 "lag_krx_sessions": evaluation.lag_krx_sessions,
+                "allowed_partial_row_count": date_audit.get("allowed_partial_row_count", 0),
+                "excluded_partial_row_count": date_audit.get("excluded_partial_row_count", 0),
+                "kospi_partial_daily_allowed": date_audit.get("kospi_partial_daily_allowed", False),
+                "kospi_latest_row_final": date_audit.get("kospi_latest_row_final"),
+                "kospi_live_observation_type": date_audit.get("kospi_live_observation_type", ""),
                 "selected_route": selected["source_route"].iloc[0] if not selected.empty and "source_route" in selected else "",
                 "selected_attempt": retry_meta["selected_attempt"],
                 "row_count": int(len(selected.loc[selected.get("valid", False).astype(bool)])) if not selected.empty else 0,
@@ -102,6 +113,7 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
     return {
         "as_of_utc": as_of_utc.isoformat(),
         "expected_latest_krx_session": None if latest_krx is None else latest_krx.strftime("%Y-%m-%d"),
+        "latest_kospi_live_session": None if latest_kospi_live is None else latest_kospi_live.strftime("%Y-%m-%d"),
         "sources_count": len(SOURCE_CONTRACTS),
         "sources_reachable_count": int(source_df["fetch_status"].astype(str).str.contains("FETCH_OK|NO_NEW_RELEASE", regex=True).sum()) if not source_df.empty else 0,
         "candidate_rows": _candidate_rows(candidate_freshness),

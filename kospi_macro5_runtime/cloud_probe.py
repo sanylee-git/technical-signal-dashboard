@@ -11,7 +11,7 @@ from .engine import D1C1Context, read_json, sha256_file, sha256_text
 from .environment_fingerprint import environment_fingerprint
 from .freshness import evaluate_source_freshness
 from .freshness_snapshot import final9_required_sources, qualify_candidates
-from .krx_calendar import kospi_completed_sessions, kospi_latest_completed_session
+from .krx_calendar import kospi_completed_sessions, kospi_latest_allowed_live_session, kospi_latest_completed_session
 from .live_availability import build_transformed_frame
 from .live_contracts import SOURCE_CONTRACTS
 from .live_engine import compute_live_tree
@@ -96,7 +96,9 @@ def run_kospi_macro5_cloud_probe(
     frozen = pd.read_parquet(frozen_path)
     frozen["date"] = pd.to_datetime(frozen["date"]).dt.normalize()
     latest_krx = kospi_latest_completed_session(as_of_utc)
-    sessions_df = kospi_completed_sessions("2024-01-01", latest_krx, as_of_utc)
+    latest_kospi_live = kospi_latest_allowed_live_session(as_of_utc)
+    session_end = latest_kospi_live or latest_krx
+    sessions_df = kospi_completed_sessions("2024-01-01", session_end, as_of_utc)
     sessions = pd.DatetimeIndex(pd.to_datetime(sessions_df["session_date"])).normalize()
 
     raw_frames = {}
@@ -110,20 +112,36 @@ def run_kospi_macro5_cloud_probe(
             as_of_utc=as_of_utc,
             krx_sessions=sessions,
             latest_completed_krx=latest_krx,
+            latest_allowed_kospi_session=latest_kospi_live,
             fetcher=fetch_source,
         )
         raw_frames[sid] = raw
         retry_rows.extend(attempts)
-        initial = evaluate_source_freshness(contract, raw, as_of_utc=as_of_utc, krx_sessions=sessions, latest_completed_krx=latest_krx)
+        initial = evaluate_source_freshness(
+            contract,
+            raw,
+            as_of_utc=as_of_utc,
+            krx_sessions=sessions,
+            latest_completed_krx=latest_krx,
+            latest_allowed_kospi_session=latest_kospi_live,
+        )
         selected, date_audit = normalize_provider_dates_for_freshness(
             contract,
             raw,
             expected_latest_observation_date=initial.expected_latest_observation_date,
             latest_completed_krx_session=None if latest_krx is None else latest_krx.strftime("%Y-%m-%d"),
+            latest_allowed_kospi_session=None if latest_kospi_live is None else latest_kospi_live.strftime("%Y-%m-%d"),
         )
         selected_frames[sid] = selected
         provider_date_rows.append(date_audit)
-        evaluation = evaluate_source_freshness(contract, selected, as_of_utc=as_of_utc, krx_sessions=sessions, latest_completed_krx=latest_krx)
+        evaluation = evaluate_source_freshness(
+            contract,
+            selected,
+            as_of_utc=as_of_utc,
+            krx_sessions=sessions,
+            latest_completed_krx=latest_krx,
+            latest_allowed_kospi_session=latest_kospi_live,
+        )
         source_rows.append(
             {
                 "source_id": sid,
@@ -139,6 +157,11 @@ def run_kospi_macro5_cloud_probe(
                 "expected_latest_available_date": evaluation.expected_latest_available_date,
                 "expected_latest_krx_aligned_date": evaluation.expected_latest_krx_aligned_date,
                 "lag_krx_sessions": evaluation.lag_krx_sessions,
+                "allowed_partial_row_count": date_audit.get("allowed_partial_row_count", 0),
+                "excluded_partial_row_count": date_audit.get("excluded_partial_row_count", 0),
+                "kospi_partial_daily_allowed": date_audit.get("kospi_partial_daily_allowed", False),
+                "kospi_latest_row_final": date_audit.get("kospi_latest_row_final"),
+                "kospi_live_observation_type": date_audit.get("kospi_live_observation_type", ""),
                 "freshness_status": evaluation.final_freshness_status,
                 "fetch_status": selected["status"].iloc[0] if not selected.empty and "status" in selected else "FETCH_ERROR",
                 "selected_route": selected["source_route"].iloc[0] if not selected.empty and "source_route" in selected else "",
@@ -205,6 +228,7 @@ def run_kospi_macro5_cloud_probe(
         "environment_fingerprint": env,
         "calendar": {
             "latest_completed_session": None if latest_krx is None else latest_krx.strftime("%Y-%m-%d"),
+            "latest_kospi_live_session": None if latest_kospi_live is None else latest_kospi_live.strftime("%Y-%m-%d"),
             "calendar_contract_hash": contract_hashes.get("calendar_contract_hash", ""),
             "calendar_asset_hash": contract_hashes.get("calendar_asset_hash", ""),
         },
