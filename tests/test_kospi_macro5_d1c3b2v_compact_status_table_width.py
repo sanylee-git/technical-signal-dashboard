@@ -54,6 +54,26 @@ def test_b2v_compact_status_end_signal_sentence() -> None:
     assert "오늘 Risk-off(위험회피) 종료" in html
 
 
+def test_b2v_state_period_return_uses_benchmark_close_and_sign_color() -> None:
+    benchmark = pd.DataFrame(
+        {
+            "date": ["2026-07-30", "2026-07-31"],
+            "kospi_close": [100.0, 110.0],
+        }
+    )
+
+    values = dash._macro_state_period_return_values(benchmark, "2026-07-30", "2026-07-31")
+
+    assert values == {"text": "+10.0%", "color": dash._MACRO_STATUS_RISK_ON_COLOR}
+
+    negative = dash._macro_state_period_return_values(
+        benchmark.assign(kospi_close=[100.0, 90.0]),
+        "2026-07-30",
+        "2026-07-31",
+    )
+    assert negative == {"text": "-10.0%", "color": dash._MACRO_STATUS_RISK_OFF_COLOR}
+
+
 def test_b2v_macro6_status_panel_uses_same_compact_wording() -> None:
     event_df = pd.DataFrame(
         [

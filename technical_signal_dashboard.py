@@ -9342,7 +9342,7 @@ def _macro_backtest_header_html(labels: list[tuple[str, str]]) -> str:
 
 def _macro6_state_duration_values(combo_event_df: pd.DataFrame) -> dict:
     if combo_event_df is None or combo_event_df.empty or "combo_risk_state" not in combo_event_df.columns:
-        return {"state_start_text": "확인 불가", "duration_text": "확인 불가", "current_state": None}
+        return {"state_start_text": "확인 불가", "state_start_date": None, "duration_text": "확인 불가", "current_state": None}
     ordered = combo_event_df.sort_values("date").reset_index(drop=True)
     latest = ordered.iloc[-1]
     current_state = bool(latest.get("combo_risk_state", False))
@@ -9352,9 +9352,50 @@ def _macro6_state_duration_values(combo_event_df: pd.DataFrame) -> dict:
     start_text = "계산범위 이전" if start_idx == 0 else _macro_date_text(ordered.iloc[start_idx].get("date"))
     return {
         "state_start_text": start_text,
+        "state_start_date": None if start_idx == 0 else pd.Timestamp(ordered.iloc[start_idx].get("date")).normalize(),
         "duration_text": str(len(ordered) - start_idx),
         "current_state": current_state,
     }
+
+
+def _macro_state_period_return_values(benchmark_history, state_start_date, basis_date) -> dict:
+    """Return the benchmark move over the current uninterrupted risk-state span."""
+    unavailable = {"text": "계산 불가", "color": "#8F8F8F"}
+    if benchmark_history is None or state_start_date is None or basis_date is None:
+        return unavailable
+    try:
+        start = pd.Timestamp(state_start_date).normalize()
+        end = pd.Timestamp(basis_date).normalize()
+    except (TypeError, ValueError):
+        return unavailable
+    if start > end:
+        return unavailable
+
+    if isinstance(benchmark_history, pd.Series):
+        close = pd.to_numeric(benchmark_history, errors="coerce")
+        close.index = pd.DatetimeIndex(pd.to_datetime(close.index)).normalize()
+    elif isinstance(benchmark_history, pd.DataFrame) and "date" in benchmark_history.columns:
+        value_column = next((column for column in ("close", "kospi_close", "value") if column in benchmark_history.columns), None)
+        if value_column is None:
+            return unavailable
+        frame = benchmark_history[["date", value_column]].copy()
+        frame["date"] = pd.to_datetime(frame["date"], errors="coerce").dt.normalize()
+        close = pd.Series(pd.to_numeric(frame[value_column], errors="coerce").to_numpy(), index=frame["date"])
+    else:
+        return unavailable
+
+    close = close[~close.index.duplicated(keep="last")].sort_index().dropna()
+    prices = close.reindex([start, end])
+    if len(prices) != 2 or prices.isna().any() or float(prices.iloc[0]) <= 0:
+        return unavailable
+    change = float(prices.iloc[-1] / prices.iloc[0] - 1.0)
+    if change > 0:
+        color = _MACRO_STATUS_RISK_ON_COLOR
+    elif change < 0:
+        color = _MACRO_STATUS_RISK_OFF_COLOR
+    else:
+        color = "#8F8F8F"
+    return {"text": f"{change:+.1%}", "color": color}
 
 
 def _macro_compact_status_html(
@@ -9368,6 +9409,8 @@ def _macro_compact_status_html(
     state_start: str,
     duration_text: str,
     start_k: int | None = None,
+    state_return_text: str = "계산 불가",
+    state_return_color: str = "#8F8F8F",
 ) -> str:
     risk_on = bool(int(risk_state)) if not isinstance(risk_state, bool) else risk_state
     risk_color = _MACRO_STATUS_RISK_OFF_COLOR if risk_on else _MACRO_STATUS_RISK_ON_COLOR
@@ -9398,6 +9441,7 @@ def _macro_compact_status_html(
         "style='display:flex;align-items:center;flex-wrap:wrap;color:#AFAFAF;font-size:12px;line-height:1.42;padding:0 0 14px 0;'>"
         f"<span><b>현재 상태 시작일</b> <span style='color:{risk_color};font-weight:700;'>{state_start}</span></span>{separator}"
         f"<span><b>지속 거래일</b> <span style='color:{risk_color};font-weight:700;'>{duration_text}</span></span>{separator}"
+        f"<span><b>상태 구간 수익률</b> <span style='color:{state_return_color};font-weight:700;'>{state_return_text}</span></span>{separator}"
         f"<span><b>실행</b> {execution_text}</span>{separator}"
         f"<span style='color:{transition_color};font-weight:700;'>{transition_text}</span>"
         "</div></div>"
@@ -9410,6 +9454,7 @@ def _build_macro6_status_panel(
     preset_cfg: dict,
     combo_event_df: pd.DataFrame,
     sync_bucket: str | None = None,
+    benchmark_series: pd.Series | None = None,
 ):
     if combo_event_df is None or combo_event_df.empty:
         return "", ""
@@ -9472,6 +9517,11 @@ def _build_macro6_status_panel(
                 "latest_date": latest_text,
             })
     state_duration = _macro6_state_duration_values(combo_event_df)
+    state_return = _macro_state_period_return_values(
+        benchmark_series,
+        state_duration.get("state_start_date"),
+        latest.get("date"),
+    )
     summary_html = _macro_compact_status_html(
         basis_date=basis_date,
         active_count=active_count,
@@ -9483,6 +9533,8 @@ def _build_macro6_status_panel(
         end_event=bool(latest.get("combo_end_signal", False)),
         state_start=state_duration.get("state_start_text", "확인 불가"),
         duration_text=state_duration.get("duration_text", "확인 불가"),
+        state_return_text=state_return["text"],
+        state_return_color=state_return["color"],
     )
     midpoint = int(np.ceil(len(entries) / 2))
     left_entries = entries[:midpoint]
@@ -14352,6 +14404,8 @@ def _macro5_kospi_current_status_html(
     active_labels: list[str] | None = None,
     state_start_override: str | None = None,
     duration_override: str | None = None,
+    state_start_date_override=None,
+    benchmark_history: pd.DataFrame | None = None,
 ) -> str:
     if live_ok and live_row:
         basis = _macro5_kospi_escape(live_row.get("basis_date") or "—")
@@ -14369,6 +14423,7 @@ def _macro5_kospi_current_status_html(
         else:
             duration = live_row.get("current_state_trading_days")
             duration_text = "확인 불가" if pd.isna(duration) else f"{int(duration)}"
+        state_start_date = state_start_date_override if state_start_date_override is not None else live_row.get("current_state_start_date")
     else:
         basis = "계산 불가"
         active_count = 0
@@ -14378,6 +14433,9 @@ def _macro5_kospi_current_status_html(
         end_signal = False
         state_start = "확인 불가"
         duration_text = "확인 불가"
+        state_start_date = None
+
+    state_return = _macro_state_period_return_values(benchmark_history, state_start_date, basis)
 
     return _macro_compact_status_html(
         basis_date=basis,
@@ -14390,6 +14448,8 @@ def _macro5_kospi_current_status_html(
         end_event=end_signal,
         state_start=state_start,
         duration_text=duration_text,
+        state_return_text=state_return["text"],
+        state_return_color=state_return["color"],
     )
 
 
@@ -14449,13 +14509,13 @@ def _macro5_kospi_current_state_span(
     evaluation_start: str | pd.Timestamp = "2008-04-01",
 ) -> dict:
     if candidate_signal is None or candidate_signal.empty or "raw_risk_state" not in candidate_signal.columns:
-        return {"state_start_text": "확인 불가", "duration_text": "확인 불가", "raw_state": None, "row_count": 0}
+        return {"state_start_text": "확인 불가", "state_start_date": None, "duration_text": "확인 불가", "raw_state": None, "row_count": 0}
     ordered = candidate_signal.copy()
     ordered["date"] = pd.to_datetime(ordered["date"])
     start = pd.to_datetime(evaluation_start)
     ordered = ordered[ordered["date"] >= start].sort_values("date").reset_index(drop=True)
     if ordered.empty:
-        return {"state_start_text": "확인 불가", "duration_text": "확인 불가", "raw_state": None, "row_count": 0}
+        return {"state_start_text": "확인 불가", "state_start_date": None, "duration_text": "확인 불가", "raw_state": None, "row_count": 0}
     raw = ordered["raw_risk_state"].astype(int)
     current = int(raw.iloc[-1])
     start_idx = len(ordered) - 1
@@ -14464,6 +14524,7 @@ def _macro5_kospi_current_state_span(
     state_start_text = "평가기간 이전부터 지속" if start_idx == 0 else _macro5_kospi_date_text(ordered.iloc[start_idx]["date"])
     return {
         "state_start_text": state_start_text,
+        "state_start_date": None if start_idx == 0 else ordered.iloc[start_idx]["date"].normalize(),
         "duration_text": str(len(ordered) - start_idx),
         "raw_state": current,
         "row_count": len(ordered),
@@ -17267,6 +17328,8 @@ def main(page="signal"):
                     _macro5_kospi_active_label_list(_current_component_status5k, candidate_map=_candidate_map5k, component_dict=_component_dict5k),
                     _state_span5k.get("state_start_text"),
                     _state_span5k.get("duration_text"),
+                    _state_span5k.get("state_start_date"),
+                    _live_benchmark_history_all5k if _live_history_ready5k else _benchmark5k,
                 ),
                 unsafe_allow_html=True,
             )
@@ -18076,6 +18139,7 @@ def main(page="signal"):
                 preset_cfg=_macro6_preset_cfg,
                 combo_event_df=_macro6_full_event_df,
                 sync_bucket=_macro6_sync_bucket,
+                benchmark_series=_spx_s6_full,
             )
             if _macro6_status_html:
                 st.markdown(
