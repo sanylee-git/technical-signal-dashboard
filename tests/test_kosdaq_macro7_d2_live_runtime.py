@@ -4,13 +4,14 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kosdaq_macro7_runtime.live_runtime import run_live_runtime
+from kosdaq_macro7_runtime.live_runtime import _source_availability, normalize_daily_merge_key, run_live_runtime
 from kosdaq_macro7_runtime.live_sources import SOURCE_SPECS
 from kosdaq_macro7_runtime.market_calendar import session_status
 from tools.kosdaq_macro7_validate_live_runtime import validate
@@ -80,3 +81,37 @@ def test_live_runtime_has_no_macro5_or_research_runtime_import() -> None:
     ])
     for forbidden in ["kospi_macro5_runtime", "kospi_macro5_assets", "macro_dashboard_kosdaq", "candidate_metadata.parquet", "outputs/kosdaq/run_"]:
         assert forbidden not in source
+
+
+def test_source_availability_normalizes_mixed_datetime_units_before_asof_merge() -> None:
+    dates = pd.DatetimeIndex(np.array(["2026-07-29", "2026-07-30"], dtype="datetime64[ns]"))
+    source = pd.DataFrame(
+        {
+            "observation_date": np.array(["2026-07-28", "2026-07-29"], dtype="datetime64[s]"),
+            "value": [10.0, 11.0],
+            "valid": [True, True],
+        }
+    )
+
+    aligned, _ = _source_availability(source, "vix", dates)
+
+    assert str(normalize_daily_merge_key(source["observation_date"]).dtype) == "datetime64[ns]"
+    assert str(aligned["date"].dtype) == "datetime64[ns]"
+    assert str(aligned["vix_available_date"].dtype) == "datetime64[ns]"
+    assert aligned["vix"].tolist() == [10.0, 11.0]
+
+
+def test_live_runtime_accepts_provider_frames_with_second_resolution_dates() -> None:
+    frames = _frames()
+    for frame in frames.values():
+        frame["observation_date"] = np.array(
+            pd.to_datetime(frame["observation_date"]).dt.strftime("%Y-%m-%d").tolist(),
+            dtype="datetime64[s]",
+        )
+
+    live = run_live_runtime(
+        as_of=datetime(2026, 8, 1, 8, tzinfo=timezone.utc),
+        provider_frames=frames,
+    )
+
+    assert validate(live_result=live)["gate"] == "PASS_KOSDAQ_MACRO7_D2_LIVE_RUNTIME_READY"

@@ -43,9 +43,18 @@ def _date(value: object) -> str | None:
     return pd.Timestamp(value).strftime("%Y-%m-%d")
 
 
+def normalize_daily_merge_key(series: pd.Series) -> pd.Series:
+    """Return timezone-naive daily merge keys with a stable pandas dtype."""
+
+    converted = pd.to_datetime(series, errors="coerce")
+    if converted.dt.tz is not None:
+        converted = converted.dt.tz_localize(None)
+    return converted.dt.normalize().astype("datetime64[ns]")
+
+
 def _load_frozen() -> pd.DataFrame:
     frame = pd.read_parquet(ASSETS / "frozen/frozen_kosdaq_macro_snapshot.parquet").copy()
-    frame["date"] = pd.to_datetime(frame["date"]).dt.normalize()
+    frame["date"] = normalize_daily_merge_key(frame["date"])
     return frame.sort_values("date").drop_duplicates("date", keep="last").reset_index(drop=True)
 
 
@@ -53,7 +62,7 @@ def _valid(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty or "valid" not in frame:
         return frame.iloc[0:0].copy()
     out = frame.loc[frame["valid"].astype(bool)].copy()
-    out["observation_date"] = pd.to_datetime(out["observation_date"], errors="coerce").dt.normalize()
+    out["observation_date"] = normalize_daily_merge_key(out["observation_date"])
     return out.dropna(subset=["observation_date"]).sort_values("observation_date")
 
 
@@ -64,11 +73,11 @@ def _source_availability(frame: pd.DataFrame, source_id: str, dates: pd.Datetime
         empty = pd.DataFrame({"date": dates, source_id: np.nan, f"{source_id}_observation_date": pd.NaT, f"{source_id}_available_date": pd.NaT})
         return empty, {"source_id": source_id, "observation_date": None, "available_through_date": None, "freshness_status": "FETCH_ERROR", "reason": "no valid provider rows"}
     valid = valid[["observation_date", "value"]].copy()
-    valid["available_date"] = (valid["observation_date"] + BDay(spec.lag_bdays)).dt.normalize()
+    valid["available_date"] = normalize_daily_merge_key(valid["observation_date"] + BDay(spec.lag_bdays))
     # Provider revisions may include old observations. They may seed a new post-cutoff availability date,
     # but never overwrite the Frozen prefix.
     available = valid.loc[valid["available_date"].gt(FROZEN_CUTOFF)].sort_values("available_date")
-    target = pd.DataFrame({"date": dates}).sort_values("date")
+    target = pd.DataFrame({"date": normalize_daily_merge_key(pd.Series(dates)).to_numpy()}).sort_values("date")
     merged = pd.merge_asof(target, available, left_on="date", right_on="available_date", direction="backward")
     merged = merged.rename(columns={"value": source_id, "observation_date": f"{source_id}_observation_date", "available_date": f"{source_id}_available_date"})
     actual_observation = valid["observation_date"].max()
