@@ -1,0 +1,657 @@
+{
+  "contract_version": "kosdaq_macro7_d0_1_stage2_provenance_v1",
+  "created_at_utc": "2026-08-16T12:26:59.666598+00:00",
+  "gate": "PASS_KOSDAQ_MACRO7_D0_1_STAGE2_PROVENANCE_READY",
+  "d0_contract_files_sha256": {
+    "kosdaq_macro7_assets/kosdaq_macro7_final10.csv": "2048053e07be73fb76b6a8a6ee4b8ba0fe070ab13b52f66f4185db717c454551",
+    "kosdaq_macro7_assets/kosdaq_macro7_combo2_child_mapping.csv": "0ab2fe1e202bad7014fe2c263dc0c60fc3247972511df95f446e2fafa2e7e5d3",
+    "kosdaq_macro7_assets/kosdaq_macro7_final_manifest.json": "7353c92265f65012eb7e0f3c56b2503724ccd78a77d99203529728d3a690bf96",
+    "reports/kosdaq_macro7_d0_source_inventory.json": "9d4afc96a06c1c2df5675ea0eacf632b627c7af7315822c324efafc37be1e152",
+    "reports/kosdaq_macro7_d0_contract_freeze.md": "69b231a19a0f9f068b692d27a31e93c161fd245cd1e948340742771a395a335f"
+  },
+  "research_sources": {
+    "frozen_parquet": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/data/frozen/kosdaq/snapshot_kosdaq_kq2_19961211_20260728_ae8665724e6d/frozen_kosdaq_macro_snapshot.parquet",
+      "sha256": "cce9ed139edf94b6547d4530967d201480da82a0ec84cb3d4c8158c35b4442a8"
+    },
+    "candidate_metadata": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/candidate_metadata.parquet",
+      "sha256": "b45ce7162c827068b908753f8a1f9fb42ac7b9d0b81815a87fe1c962fc819a88"
+    },
+    "signal_bank_code": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/signal_bank.py",
+      "sha256": "833dc2e6d23d912a959eaf1880047b82855c8f3e96099bb8646322bed97cdbbe"
+    },
+    "grid_contract_snapshot": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/grid_contract_snapshot.json",
+      "sha256": "cdc2adea3b66673e841ba3c026703b8dcf1b383158c5ea883667f641f3715b28"
+    }
+  },
+  "required_signal_universe": {
+    "logical_references": 45,
+    "unique_candidate_signal_ids": 45,
+    "indicator_families": [
+      "global_credit_stress",
+      "kosdaq_bollinger",
+      "kosdaq_hv",
+      "kosdaq_index_level",
+      "kosdaq_natr",
+      "kosdaq_rsi",
+      "us_10y_2y_spread",
+      "us_10y_3m_spread",
+      "us_10y_real_yield_level",
+      "us_10y_slope",
+      "us_hy_oas_level",
+      "us_ig_oas_level",
+      "usdkrw_level",
+      "vix_level",
+      "vix_spread"
+    ],
+    "matrix_series": [
+      "global_credit_stress",
+      "kosdaq_bollinger",
+      "kosdaq_hv_n10",
+      "kosdaq_hv_n20",
+      "kosdaq_hv_n80",
+      "kosdaq_index_level",
+      "kosdaq_natr_n10",
+      "kosdaq_natr_n20",
+      "kosdaq_natr_n40",
+      "kosdaq_natr_n80",
+      "kosdaq_rsi",
+      "us_10y_2y_spread",
+      "us_10y_3m_spread",
+      "us_10y_real_yield_level",
+      "us_10y_slope",
+      "us_hy_oas_level",
+      "us_ig_oas_level",
+      "usdkrw_level",
+      "vix_level",
+      "vix_spread"
+    ]
+  },
+  "required_matrix_files": [
+    {
+      "logical_role": "global_credit_stress_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/global_credit_stress_risk_state.parquet",
+      "sha256": "36b840d3c8808e1f4b37daf067f98bfe04eb5c88e5cdd87b5e1fb65aefbdd146",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "global_credit_stress_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/global_credit_stress_risk_start.parquet",
+      "sha256": "f2cf079dc011e122fd56641e0bca415a8fdcd466f74924de6b9dc680839b739e",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "global_credit_stress_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/global_credit_stress_risk_end.parquet",
+      "sha256": "b6c6f0cccb6c1bf40aed1c0cf899de280d937dd53cdb22447bca72c9dfb9a79f",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "global_credit_stress_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/global_credit_stress_valid_signal.parquet",
+      "sha256": "2cce37d3d720bdf58af860b8d4f5890a09a60f206fd6d1a233f017f1e18413df",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_bollinger_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_bollinger_risk_state.parquet",
+      "sha256": "b30d79a04a9773438430ac646322e485e94d31f16111927eb3291b24c30c1e34",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_bollinger_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_bollinger_risk_start.parquet",
+      "sha256": "1200dacb902ad90e7423ddd1435e27b4812b6a8eab7cf2c301b8fa7ddeefa619",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_bollinger_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_bollinger_risk_end.parquet",
+      "sha256": "bf3477a1a4ac671c3b94a28610bc817e1cf6b5f66421aa3fb88f802b65387ad0",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_bollinger_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_bollinger_valid_signal.parquet",
+      "sha256": "dc69373ac1fe7ac5e2ea339b699b1dd1b4e1fcd10ec6d7044b723ee41a9cce59",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_hv_n10_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_hv_n10_risk_state.parquet",
+      "sha256": "ba1176cf1cad968f5aee67f1e6f23509026e51cadcff6fbcf9beeabd65d3e033",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_hv_n10_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_hv_n10_risk_start.parquet",
+      "sha256": "234bfb271b861fd8fc445346d7de32f410be19283a3e0141b0183c2f192507c2",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_hv_n10_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_hv_n10_risk_end.parquet",
+      "sha256": "21ff492d5602f449443848da5f853204d2916513f1f2129368255a1d822c24da",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_hv_n10_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_hv_n10_valid_signal.parquet",
+      "sha256": "dcb2db76f8add8a9256f2f5d0eb9ec09972f0e9376e774162722fb0ec939f01f",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_hv_n20_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_hv_n20_risk_state.parquet",
+      "sha256": "ef5a693ffddd456ddcdee22a1dfd23245b565d5ab43827f987abef49dacc8576",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_hv_n20_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_hv_n20_risk_start.parquet",
+      "sha256": "e02635e5ab7c9b3753d91c7180b7bea012b29c2a991674b359215838b9e5c725",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_hv_n20_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_hv_n20_risk_end.parquet",
+      "sha256": "3f004f9d22f7d85fd75fbd24e96c2371b29967ff19751a5ebdb49d2fe3cf8359",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_hv_n20_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_hv_n20_valid_signal.parquet",
+      "sha256": "48e43c6b167c0ad985bbceeb99b3a65781490392f5881adc5ea910ff00543079",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_hv_n80_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_hv_n80_risk_state.parquet",
+      "sha256": "006d6567e1f7bb6337b8f04c1a4ff36e12703cf183f1322c0e3b5388a5577295",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_hv_n80_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_hv_n80_risk_start.parquet",
+      "sha256": "0b07ceb718c81ab4a113dde6d9747359962910da366f4860a279a6d10332c243",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_hv_n80_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_hv_n80_risk_end.parquet",
+      "sha256": "573b35680ab8cbf45e4d200203e383b212da4211c62f159364cf1a6996001dc7",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_hv_n80_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_hv_n80_valid_signal.parquet",
+      "sha256": "a0e1eca1a6213ebe49e912c07a5bf8aacc34fccddf866a1b5b0238ea8077af14",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_index_level_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_index_level_risk_state.parquet",
+      "sha256": "c3a5cc58c8fb4ecbe81dd173eafba77581ccb666b67fc6cf399edc905dcb0371",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_index_level_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_index_level_risk_start.parquet",
+      "sha256": "8d7df3fc92e1418ae1932d61c134ca7155b96c84d0fd7ac373adf492c4483e67",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_index_level_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_index_level_risk_end.parquet",
+      "sha256": "bf019be27c0b253e058dacbe738a01cc7da21f8e7f83e6c141672e75de2b3fdb",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_index_level_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_index_level_valid_signal.parquet",
+      "sha256": "b50eea00ce4f40cd74c1355ec1c0cd08c3d930c0d1547ca1f8dc8ac27b5d166f",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_natr_n10_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_natr_n10_risk_state.parquet",
+      "sha256": "ad0a017d6b0a916a7b9a46557a376da8d30d00854c0d7f13ee1ec3954c6bf5b9",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_natr_n10_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_natr_n10_risk_start.parquet",
+      "sha256": "83b29b7b9e547887077df0773cd608d70de0cbf4d11efa3210f7dcff1d054f18",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_natr_n10_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_natr_n10_risk_end.parquet",
+      "sha256": "1af37f99a7d3a0dbcce8b43963c39db0830af7669c4442bbece78ee929873e94",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_natr_n10_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_natr_n10_valid_signal.parquet",
+      "sha256": "cb42f34e68fba535577de9312101c58a2ea08e9b1e7f803997f307ff5ac50295",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_natr_n20_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_natr_n20_risk_state.parquet",
+      "sha256": "d610ca8e49955bba0d1501badd67f4667d380b93a339274582c943c2cf5b5e3c",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_natr_n20_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_natr_n20_risk_start.parquet",
+      "sha256": "e878abf9873fca4a5b12aff866c71d7129b6599edff8f3056f75b913f5cda45f",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_natr_n20_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_natr_n20_risk_end.parquet",
+      "sha256": "96ba310ea6c9a06c1b5e904600819853feb38e09063439e607653a50c9b8c4b9",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_natr_n20_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_natr_n20_valid_signal.parquet",
+      "sha256": "20e025dd79b167f3dbbe02a2ead167630ca9336f79b5d856671d116a2e6b3377",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_natr_n40_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_natr_n40_risk_state.parquet",
+      "sha256": "abaacf97a647bbc8d2edc8dc8bb5ed2370e42dc0ac59008bb30987839c853834",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_natr_n40_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_natr_n40_risk_start.parquet",
+      "sha256": "7f37852628c42044edf672bb24437c07b7041fe60b141b29dfdffd30062df651",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_natr_n40_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_natr_n40_risk_end.parquet",
+      "sha256": "fe00d2ef6b0e5a8e6a3fb2eabee1f224f5f6288ff3e9d844321a1ef325a26f98",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_natr_n40_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_natr_n40_valid_signal.parquet",
+      "sha256": "61a5d4b37501d3cd39e8d983158b4f1749aab44cb561c5e3223f5acd3f1c9143",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_natr_n80_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_natr_n80_risk_state.parquet",
+      "sha256": "d094eb5077e01076f6305d4f53cd3f6c2ab77e8d2ae3ebfbfb4d18fe3923bf51",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_natr_n80_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_natr_n80_risk_start.parquet",
+      "sha256": "0c95f808cbb4b8ed24d0ad9ded9d65d2130ca81d831ab598c4b0d94393c61707",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_natr_n80_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_natr_n80_risk_end.parquet",
+      "sha256": "8f745a5b71a05c86e68cac18102d64fdf6a9a7eb4003ed73b8ba9c4e0847094b",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_natr_n80_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_natr_n80_valid_signal.parquet",
+      "sha256": "e867361a62ffdff8b49d0d3b18af8a5a10bcc8a053b3578b79dae77de8c30545",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_rsi_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_rsi_risk_state.parquet",
+      "sha256": "97af9e25d3d532f4c181299faeaca23baf06ef8248532090fd6f24e9ef14e71a",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_rsi_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_rsi_risk_start.parquet",
+      "sha256": "ffbf7d4f716277077c61c9edcfb88ff000577becb13e452c6799ae46133496da",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_rsi_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_rsi_risk_end.parquet",
+      "sha256": "2d163baecc7af54bef3f7800a3280dcd2aabb45179d75ce3a70bc59e8e70d723",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "kosdaq_rsi_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/kosdaq_rsi_valid_signal.parquet",
+      "sha256": "5c179388a2051787cdb4123c51bd8ee7be927a158e127e976438f524ef7fa036",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_10y_2y_spread_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_10y_2y_spread_risk_state.parquet",
+      "sha256": "3afeb92f6b5d965d4b0fec3b4db3a0fb7b2b270410ddacc64fcbc936be3d31aa",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_10y_2y_spread_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_10y_2y_spread_risk_start.parquet",
+      "sha256": "a04b8e5d64094d927570faa94ba087e5e772033008ce3840d4d61c43eeb0476a",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_10y_2y_spread_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_10y_2y_spread_risk_end.parquet",
+      "sha256": "205f2dba66477a704068d88e30e4bd034d80be0bd6f97a0522a92488dfae895f",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_10y_2y_spread_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_10y_2y_spread_valid_signal.parquet",
+      "sha256": "1ba15698462cedaa0f713fb39fd4a4b55f80b313f0c17ad8859a03aaac41ff60",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_10y_3m_spread_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_10y_3m_spread_risk_state.parquet",
+      "sha256": "f48e77a0b83a18523d6467072798c51bc3d0fb834593da64f364069c0996ea6a",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_10y_3m_spread_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_10y_3m_spread_risk_start.parquet",
+      "sha256": "10eb4ec45008552efcfdd252b01a92d23965fb9fb7a557510a1f03de85d170cf",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_10y_3m_spread_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_10y_3m_spread_risk_end.parquet",
+      "sha256": "ca652a03bdac700f5eb0b6a7b48eb5d88e7a2e2b7b837644035039460431ba09",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_10y_3m_spread_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_10y_3m_spread_valid_signal.parquet",
+      "sha256": "01b43e30a4d301467afed8f9ebb2f933dad88ded2a8c7f13e790907a79f611fe",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_10y_real_yield_level_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_10y_real_yield_level_risk_state.parquet",
+      "sha256": "74f51d3a46a0a5272ab87ce97a7e5b6acccb5132d18818a2ff8da30448e8f84d",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_10y_real_yield_level_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_10y_real_yield_level_risk_start.parquet",
+      "sha256": "9c271e122b9012b30cd093b95cfe9d31ecd9e9cbfff0669be6ff96d0c7ce62eb",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_10y_real_yield_level_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_10y_real_yield_level_risk_end.parquet",
+      "sha256": "fbbb098c7d0f44cf03fa92d9557388eb2f2ae478c9bbe8fb81e84444ffc6b58c",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_10y_real_yield_level_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_10y_real_yield_level_valid_signal.parquet",
+      "sha256": "8ee5bfe009bea59fab70d9c316bb2ef666c50228f220276cd5469362656f3102",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_10y_slope_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_10y_slope_risk_state.parquet",
+      "sha256": "d78a70bd76d567ac995aac97c43740c64e7b171c6f026ff0ba1ab35b951564d2",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_10y_slope_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_10y_slope_risk_start.parquet",
+      "sha256": "6e684416a63e4c0e46d52ab301e02fb98e9b5b0b7af728e747fe0822a5fb01c3",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_10y_slope_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_10y_slope_risk_end.parquet",
+      "sha256": "4e181c8591fba5c7f2712047179bbad2f9f7c64540962a7d115e2a97650d3157",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_10y_slope_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_10y_slope_valid_signal.parquet",
+      "sha256": "c9a971f4f33f2f58171ff7cf32fd98e7af30d582f5f74fd5fba344820f8acf6a",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_hy_oas_level_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_hy_oas_level_risk_state.parquet",
+      "sha256": "b3fdae6d13dca61e0102005fca9418fb5bc7656cfcde98963f9215e390ac9ceb",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_hy_oas_level_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_hy_oas_level_risk_start.parquet",
+      "sha256": "fed33be39fa7fad42845b3dc99210b3e28a6349359e26be2548f5a4697bdba19",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_hy_oas_level_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_hy_oas_level_risk_end.parquet",
+      "sha256": "cf6ce5046ed3237fa07c57a69e076d1ca47b22bfdadde67987025c77ff3e7bac",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_hy_oas_level_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_hy_oas_level_valid_signal.parquet",
+      "sha256": "1bdef014a5d075660b22c9544d1c3be2b569e68d4c5cd308dc34b68f0777864b",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_ig_oas_level_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_ig_oas_level_risk_state.parquet",
+      "sha256": "e5a17c4f98fc8af7318275dedfc9579d6af68565cf0bce9371163fe27364f7be",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_ig_oas_level_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_ig_oas_level_risk_start.parquet",
+      "sha256": "9bcb2332cb06685f1a8c6d84716fcdb8f7ebadc586c0b78b23a9839f1a380413",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_ig_oas_level_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_ig_oas_level_risk_end.parquet",
+      "sha256": "ccc1ab0e16120941342070a30618a87d97e0348104d85cbcd211f01e88746453",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "us_ig_oas_level_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/us_ig_oas_level_valid_signal.parquet",
+      "sha256": "331daacf595bb300d12cd61a6e0aabaf766730da6ee629d70fd3576c71fc53e6",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "usdkrw_level_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/usdkrw_level_risk_state.parquet",
+      "sha256": "ce6bce24ae2015a73058a8580e9bc85108af5332904294318387d86e58c832a4",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "usdkrw_level_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/usdkrw_level_risk_start.parquet",
+      "sha256": "80d6dcf03b1444761f1d2db00935e3ac008209cf9792f18675ad1342beb00583",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "usdkrw_level_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/usdkrw_level_risk_end.parquet",
+      "sha256": "117f07d549dd4b805a7d7b498294d4a5b4e543d8b325ba6bd368258d340c19b5",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "usdkrw_level_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/usdkrw_level_valid_signal.parquet",
+      "sha256": "5cca2a76178546ca930a89f14c66e4cc90fc342bfe270b0dae3e587b1e3189ed",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "vix_level_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/vix_level_risk_state.parquet",
+      "sha256": "d5b3e5814062f59e11d0d586252ad92a96d1270ad772f3894aa46b4686c986d3",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "vix_level_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/vix_level_risk_start.parquet",
+      "sha256": "d3fb8ccb103450948e7c66a68b4eb5c9ab6c2245180ac182ab9a661ceeb67ade",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "vix_level_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/vix_level_risk_end.parquet",
+      "sha256": "0b8b4d42801993c6472decd7f1bb43cf02e7fd0c9c1afec6012d746c97a146d1",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "vix_level_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/vix_level_valid_signal.parquet",
+      "sha256": "c4b2b9720ba00368d3fbfe30259f457518c4eb27fe8b746da8929664bb7baf12",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "vix_spread_risk_state",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/vix_spread_risk_state.parquet",
+      "sha256": "08a2356e0ce615d96319a30c3f430592a9c64b9e31dd588f72db7bc4d1e28310",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "vix_spread_risk_start",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/vix_spread_risk_start.parquet",
+      "sha256": "ca36e3016ef5588e2424d8071cbbb8046b698edc0bd1b5ee66740963969976f5",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "vix_spread_risk_end",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/vix_spread_risk_end.parquet",
+      "sha256": "a609c3893da2c90523b22b56431daf25ccf299c1aa8e691308939031fcea4224",
+      "rows": null,
+      "candidate_columns": null
+    },
+    {
+      "logical_role": "vix_spread_valid_signal",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260811T152920Z_kq3_core15_signal_bank_v1/03_core15_signal_bank/signals_by_indicator/vix_spread_valid_signal.parquet",
+      "sha256": "e734e87ff0f8a0340ab152aada1787cf0020cb852d859572e96cf61407834f16",
+      "rows": null,
+      "candidate_columns": null
+    }
+  ],
+  "core_exact_parity_fields": [
+    "date",
+    "valid_signal",
+    "risk_state",
+    "risk_start",
+    "risk_end"
+  ],
+  "raw_intermediate_reference": "NOT_AVAILABLE_REFERENCE",
+  "invalid_state_semantics_contract": {
+    "stored_false_when_invalid_not_risk_on": true,
+    "risk_state_and_valid_signal_are_independent": true,
+    "runtime_must_preserve_validity_mask": true,
+    "invalid_component_as_raw_risk_on_forbidden": true,
+    "invalid_component_normal_inactive_count_forbidden": true,
+    "composite_validity_rule": "RESOLVE_FROM_PINNED_RESEARCH_CODE_OR_AUTHORITATIVE_ORACLE_NO_NEW_RULE",
+    "stage2_required_metrics": [
+      "invalid_component_as_risk_on_count",
+      "validity_mask_parity_mismatch"
+    ]
+  },
+  "d0_contract_unchanged": true,
+  "manual_selection_lock": true
+}

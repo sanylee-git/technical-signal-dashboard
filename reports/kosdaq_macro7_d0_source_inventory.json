@@ -1,0 +1,215 @@
+{
+  "inventory_version": 1,
+  "created_at_utc": "2026-08-16T11:53:50.457836+00:00",
+  "research_repo_read_only": true,
+  "entries": [
+    {
+      "logical_role": "combo1_final_n8_official_beam",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260813T231000Z_kq5p_r1_n8_b3_b4_recovery_v1/05p_r1_n8_b3_b4_recovery/kq5p_r1_n8_official_beam.parquet",
+      "source_run_id": "run_20260813T231000Z_kq5p_r1_n8_b3_b4_recovery_v1",
+      "source_manifest": "manifests/kq5p_latest_n8_official_beam_selection.json",
+      "size_bytes": 12221999,
+      "sha256": "3f1622fe70cd14695053299057935b12326ed8cc1894d9a315f9ba1e80fb3bac",
+      "modified_time": "2026-08-13T13:15:59.275071+00:00",
+      "required_for_stage2": true,
+      "notes": ""
+    },
+    {
+      "logical_role": "combo1_final_n9_official_beam",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260813T231500Z_kq5s_n9_official_beam_selection_v1/05s_n9_official_beam_selection/kq5s_n9_official_beam.parquet",
+      "source_run_id": "run_20260813T231500Z_kq5s_n9_official_beam_selection_v1",
+      "source_manifest": "manifests/kq5s_latest_n9_official_beam_selection.json",
+      "size_bytes": 12612240,
+      "sha256": "5bbf8517478c3ceb07e99b07f08fd11abd5cbd34e09f3e7617117732b9df18ef",
+      "modified_time": "2026-08-13T15:04:02.994689+00:00",
+      "required_for_stage2": true,
+      "notes": ""
+    },
+    {
+      "logical_role": "combo1_final_n10_official_beam",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260814T011500Z_kq5u_n10_official_beam_selection_v1/05u_n10_official_beam_selection/kq5u_n10_official_beam.parquet",
+      "source_run_id": "run_20260814T011500Z_kq5u_n10_official_beam_selection_v1",
+      "source_manifest": "manifests/kq5u_latest_n10_official_beam_selection.json",
+      "size_bytes": 12944504,
+      "sha256": "371746e7c2a9ac12f3806e0acee967b63a40509349b61393248fb6e77e39c775",
+      "modified_time": "2026-08-13T22:43:59.299959+00:00",
+      "required_for_stage2": true,
+      "notes": ""
+    },
+    {
+      "logical_role": "combo2_final_review20",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260816T032000Z_kq_c2_15_performance50_review20_v1/c2_15_performance50_review20/05_review20.parquet",
+      "source_run_id": "run_20260816T032000Z_kq_c2_15_performance50_review20_v1",
+      "source_manifest": "manifests/kq_c2_15_latest_performance50_review20.json",
+      "size_bytes": 118068,
+      "sha256": "984701699ba395617264e464e0c1efaa1fafa5d6a49dd9d90a2cbb9cdcc30106",
+      "modified_time": "2026-08-16T00:39:02.171353+00:00",
+      "required_for_stage2": true,
+      "notes": ""
+    },
+    {
+      "logical_role": "material50_dictionary",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260814T180000Z_kq_c2_1_material50_m2_m4_exhaustive_v1/c2_1_material50_m2_m4_exhaustive/00_material50_dictionary.parquet",
+      "source_run_id": "run_20260814T180000Z_kq_c2_1_material50_m2_m4_exhaustive_v1",
+      "source_manifest": "manifests/kq_c2_1_latest_material50.json",
+      "size_bytes": 260402,
+      "sha256": "2a599f14fe46e7e6bb3fa0c6d8ea71ac8bd65b8e3eacd7e99b48e8ae888eef18",
+      "modified_time": "2026-08-14T14:52:23.840804+00:00",
+      "required_for_stage2": true,
+      "notes": ""
+    },
+    {
+      "logical_role": "combo2_review_manifest",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/manifests/kq_c2_15_latest_performance50_review20.json",
+      "source_run_id": null,
+      "source_manifest": null,
+      "size_bytes": 10647,
+      "sha256": "167bbb6552658a142285579cf431e20c5e03249b44efc84d7b81c0e118865750",
+      "modified_time": "2026-08-16T00:39:02.202396+00:00",
+      "required_for_stage2": true,
+      "notes": ""
+    },
+    {
+      "logical_role": "frozen_snapshot_manifest",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/manifests/kq2_frozen_snapshot.json",
+      "source_run_id": null,
+      "source_manifest": null,
+      "size_bytes": 17638,
+      "sha256": "89e89a120e8a7361ba7aa5197e412cf01fdcf8ec5a52fb8bae1677b320cbb28e",
+      "modified_time": "2026-08-11T14:53:37.517491+00:00",
+      "required_for_stage2": true,
+      "notes": ""
+    },
+    {
+      "logical_role": "core15_signal_bank_manifest",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/manifests/kq3_latest_core15_signal_bank.json",
+      "source_run_id": null,
+      "source_manifest": null,
+      "size_bytes": 36330,
+      "sha256": "471b8de6d50056a310600cfab932a94c7c926a780e0fe42f28415a6ec82ac1a1",
+      "modified_time": "2026-08-11T15:38:25.468624+00:00",
+      "required_for_stage2": true,
+      "notes": ""
+    },
+    {
+      "logical_role": "market_source_contract",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/configs/markets/kosdaq.yaml",
+      "source_run_id": null,
+      "source_manifest": null,
+      "size_bytes": 2939,
+      "sha256": "dce2ed6b859fa231794d90d870deeea46a85523a3a73ece5b9e5e4a22ace279d",
+      "modified_time": "2026-08-11T14:22:57.559936+00:00",
+      "required_for_stage2": true,
+      "notes": ""
+    },
+    {
+      "logical_role": "common_risk_state_contract",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/configs/common.yaml",
+      "source_run_id": null,
+      "source_manifest": null,
+      "size_bytes": 805,
+      "sha256": "02318dc7c34700a1a880cc738b8d2b3ffc918db81e0adb753d097552d0f7f14c",
+      "modified_time": "2026-08-11T14:04:58.241455+00:00",
+      "required_for_stage2": true,
+      "notes": ""
+    },
+    {
+      "logical_role": "combo1_execution_core",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/combo1_full_run.py",
+      "source_run_id": null,
+      "source_manifest": null,
+      "size_bytes": 47687,
+      "sha256": "c930889b5170727e8b01eaf995564601817a7c527d2d2fd830c18cc7b0082956",
+      "modified_time": "2026-08-12T11:08:45.575534+00:00",
+      "required_for_stage2": true,
+      "notes": ""
+    },
+    {
+      "logical_role": "combo2_raw_state_core",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/kq_c2_1_material50_m2_m4_exhaustive.py",
+      "source_run_id": null,
+      "source_manifest": null,
+      "size_bytes": 29128,
+      "sha256": "3864d9d5d5c300a98e3bf0a5481b098f96811c7f626e2847f288969de01f5bea",
+      "modified_time": "2026-08-14T15:28:19.778201+00:00",
+      "required_for_stage2": true,
+      "notes": ""
+    },
+    {
+      "logical_role": "single_indicator_evaluation_core",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/single_indicator_backtest.py",
+      "source_run_id": null,
+      "source_manifest": null,
+      "size_bytes": 65125,
+      "sha256": "cfad6edd85bbcc66819184f86ff52e7e458710f498897064c40457aaffa8433c",
+      "modified_time": "2026-08-11T16:21:06.685913+00:00",
+      "required_for_stage2": true,
+      "notes": ""
+    },
+    {
+      "logical_role": "frozen_build_core",
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/frozen_build.py",
+      "source_run_id": null,
+      "source_manifest": null,
+      "size_bytes": 5727,
+      "sha256": "b5f09530d240de9026de1eb3b18b953e093ec025bacae6055a6822374f66e0da",
+      "modified_time": "2026-08-11T14:48:32.254447+00:00",
+      "required_for_stage2": true,
+      "notes": ""
+    }
+  ],
+  "contract_evidence": {
+    "benchmark": {
+      "contract_type": "benchmark",
+      "artifact_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/configs/markets/kosdaq.yaml",
+      "artifact_sha256": "dce2ed6b859fa231794d90d870deeea46a85523a3a73ece5b9e5e4a22ace279d",
+      "research_code_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/frozen_build.py",
+      "code_sha256": "b5f09530d240de9026de1eb3b18b953e093ec025bacae6055a6822374f66e0da",
+      "evidence_symbol": "market.benchmark + KOSDAQ_MARKET_COLUMNS"
+    },
+    "t_plus_1": {
+      "contract_type": "T+1",
+      "artifact_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/manifests/kq_c2_15_latest_performance50_review20.json",
+      "artifact_sha256": "167bbb6552658a142285579cf431e20c5e03249b44efc84d7b81c0e118865750",
+      "research_code_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/combo1_full_run.py",
+      "code_sha256": "c930889b5170727e8b01eaf995564601817a7c527d2d2fd830c18cc7b0082956",
+      "evidence_symbol": "_evaluate_batch: position[:, 1:] = (~states[:, :-1])"
+    },
+    "cost": {
+      "contract_type": "cost",
+      "artifact_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/manifests/kq_c2_15_latest_performance50_review20.json",
+      "artifact_sha256": "167bbb6552658a142285579cf431e20c5e03249b44efc84d7b81c0e118865750",
+      "research_code_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/combo1_full_run.py",
+      "code_sha256": "c930889b5170727e8b01eaf995564601817a7c527d2d2fd830c18cc7b0082956",
+      "evidence_symbol": "TRANSACTION_COST_BPS + strategy_after = strategy_before - trades * cost_rate"
+    },
+    "evaluation": {
+      "contract_type": "evaluation",
+      "artifact_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/manifests/kq_c2_15_latest_performance50_review20.json",
+      "artifact_sha256": "167bbb6552658a142285579cf431e20c5e03249b44efc84d7b81c0e118865750",
+      "research_code_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/single_indicator_backtest.py",
+      "code_sha256": "cfad6edd85bbcc66819184f86ff52e7e458710f498897064c40457aaffa8433c",
+      "evidence_symbol": "EVALUATION_CUTOFF + calc_metrics"
+    },
+    "frozen_cutoff": {
+      "contract_type": "frozen_cutoff",
+      "artifact_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/manifests/kq2_frozen_snapshot.json",
+      "artifact_sha256": "89e89a120e8a7361ba7aa5197e412cf01fdcf8ec5a52fb8bae1677b320cbb28e",
+      "research_code_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/frozen_build.py",
+      "code_sha256": "b5f09530d240de9026de1eb3b18b953e093ec025bacae6055a6822374f66e0da",
+      "evidence_symbol": "validation.frozen_end + apply_market_quality_policy"
+    },
+    "combo2_raw_state": {
+      "contract_type": "combo2_raw_state",
+      "artifact_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260814T180000Z_kq_c2_1_material50_m2_m4_exhaustive_v1/c2_1_material50_m2_m4_exhaustive/00_material50_dictionary.parquet",
+      "artifact_sha256": "2a599f14fe46e7e6bb3fa0c6d8ea71ac8bd65b8e3eacd7e99b48e8ae888eef18",
+      "research_code_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/kq_c2_1_material50_m2_m4_exhaustive.py",
+      "code_sha256": "3864d9d5d5c300a98e3bf0a5481b098f96811c7f626e2847f288969de01f5bea",
+      "evidence_symbol": "COMBO2_INPUT_STATE + COMBO2_T1_APPLICATION"
+    }
+  },
+  "diagnostic_builder": {
+    "path": "/Users/ibaeksan/Documents/프로젝트/_diagnostics/kosdaq_macro7_d0_contract_freeze_20260816.py",
+    "sha256": "1b101c55e43b809c2910a38599e71af937ecc552cf16e08bd9736cf0b8aaf26e"
+  }
+}

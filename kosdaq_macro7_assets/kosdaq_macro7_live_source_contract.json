@@ -1,0 +1,354 @@
+{
+  "contract_version": "kosdaq_macro7_live_source_contract_v1",
+  "created_at_utc": "2026-08-16T13:37:11.215252+00:00",
+  "market": "KOSDAQ",
+  "frozen_cutoff": "2026-07-28",
+  "required_indicator_family_count": 15,
+  "required_indicator_families": [
+    "global_credit_stress",
+    "kosdaq_bollinger",
+    "kosdaq_hv",
+    "kosdaq_index_level",
+    "kosdaq_natr",
+    "kosdaq_rsi",
+    "us_10y_2y_spread",
+    "us_10y_3m_spread",
+    "us_10y_real_yield_level",
+    "us_10y_slope",
+    "us_hy_oas_level",
+    "us_ig_oas_level",
+    "usdkrw_level",
+    "vix_level",
+    "vix_spread"
+  ],
+  "sources": [
+    {
+      "source_id": "kosdaq_ohlcv",
+      "provider": "naver_finance",
+      "provider_identifier": "KOSDAQ",
+      "lag_bdays": 0,
+      "cadence": "daily",
+      "required_by_indicator_families": [
+        "kosdaq_index_level",
+        "kosdaq_bollinger",
+        "kosdaq_hv",
+        "kosdaq_natr",
+        "kosdaq_rsi"
+      ],
+      "fallback_provider": "yahoo",
+      "fallback_identifier": "^KQ11",
+      "timezone": "Asia/Seoul",
+      "calendar_or_release_basis": "XKRX completed session",
+      "availability_policy": "observation_date_plus_0_business_days",
+      "release_lag_policy": "lag_bdays_0",
+      "freshness_policy": "completed_session_exact",
+      "fallback_policy": "naver_primary_yahoo_kq11_authorized_fallback",
+      "partial_final_policy": "completed_daily_only; partial is provisional and excluded from official state",
+      "required_raw_columns": [
+        "date",
+        "open",
+        "high",
+        "low",
+        "close"
+      ],
+      "derived_output_columns": []
+    },
+    {
+      "source_id": "usdkrw",
+      "provider": "yahoo",
+      "provider_identifier": "KRW=X",
+      "lag_bdays": 1,
+      "cadence": "daily",
+      "required_by_indicator_families": [
+        "usdkrw_level"
+      ],
+      "fallback_provider": null,
+      "fallback_identifier": null,
+      "timezone": "America/New_York",
+      "calendar_or_release_basis": "observation_date + business-day availability lag aligned to XKRX",
+      "availability_policy": "observation_date_plus_1_business_days",
+      "release_lag_policy": "lag_bdays_1",
+      "freshness_policy": "latest_observation_available_under_lag_contract",
+      "fallback_policy": "no_authorized_fallback",
+      "partial_final_policy": "provider_observation_not_a_krx_partial_close",
+      "required_raw_columns": [
+        "observation_date",
+        "value"
+      ],
+      "derived_output_columns": []
+    },
+    {
+      "source_id": "vix",
+      "provider": "fred",
+      "provider_identifier": "VIXCLS",
+      "lag_bdays": 1,
+      "cadence": "daily",
+      "required_by_indicator_families": [
+        "vix_level",
+        "vix_spread",
+        "global_credit_stress"
+      ],
+      "fallback_provider": null,
+      "fallback_identifier": null,
+      "timezone": "America/New_York",
+      "calendar_or_release_basis": "observation_date + business-day availability lag aligned to XKRX",
+      "availability_policy": "observation_date_plus_1_business_days",
+      "release_lag_policy": "lag_bdays_1",
+      "freshness_policy": "latest_observation_available_under_lag_contract",
+      "fallback_policy": "no_authorized_fallback",
+      "partial_final_policy": "provider_observation_not_a_krx_partial_close",
+      "required_raw_columns": [
+        "observation_date",
+        "value"
+      ],
+      "derived_output_columns": []
+    },
+    {
+      "source_id": "vix3m",
+      "provider": "fred",
+      "provider_identifier": "VXVCLS",
+      "lag_bdays": 1,
+      "cadence": "daily",
+      "required_by_indicator_families": [
+        "vix_spread"
+      ],
+      "fallback_provider": null,
+      "fallback_identifier": null,
+      "timezone": "America/New_York",
+      "calendar_or_release_basis": "observation_date + business-day availability lag aligned to XKRX",
+      "availability_policy": "observation_date_plus_1_business_days",
+      "release_lag_policy": "lag_bdays_1",
+      "freshness_policy": "latest_observation_available_under_lag_contract",
+      "fallback_policy": "no_authorized_fallback",
+      "partial_final_policy": "provider_observation_not_a_krx_partial_close",
+      "required_raw_columns": [
+        "observation_date",
+        "value"
+      ],
+      "derived_output_columns": []
+    },
+    {
+      "source_id": "us_10y_real_yield",
+      "provider": "fred",
+      "provider_identifier": "DFII10",
+      "lag_bdays": 1,
+      "cadence": "daily",
+      "required_by_indicator_families": [
+        "us_10y_real_yield_level"
+      ],
+      "fallback_provider": null,
+      "fallback_identifier": null,
+      "timezone": "America/New_York",
+      "calendar_or_release_basis": "observation_date + business-day availability lag aligned to XKRX",
+      "availability_policy": "observation_date_plus_1_business_days",
+      "release_lag_policy": "lag_bdays_1",
+      "freshness_policy": "latest_observation_available_under_lag_contract",
+      "fallback_policy": "no_authorized_fallback",
+      "partial_final_policy": "provider_observation_not_a_krx_partial_close",
+      "required_raw_columns": [
+        "observation_date",
+        "value"
+      ],
+      "derived_output_columns": []
+    },
+    {
+      "source_id": "us_10y_yield",
+      "provider": "fred",
+      "provider_identifier": "DGS10",
+      "lag_bdays": 1,
+      "cadence": "daily",
+      "required_by_indicator_families": [
+        "us_10y_2y_spread",
+        "us_10y_3m_spread",
+        "us_10y_slope",
+        "us_hy_oas_level",
+        "us_ig_oas_level",
+        "global_credit_stress"
+      ],
+      "fallback_provider": null,
+      "fallback_identifier": null,
+      "timezone": "America/New_York",
+      "calendar_or_release_basis": "observation_date + business-day availability lag aligned to XKRX",
+      "availability_policy": "observation_date_plus_1_business_days",
+      "release_lag_policy": "lag_bdays_1",
+      "freshness_policy": "latest_observation_available_under_lag_contract",
+      "fallback_policy": "no_authorized_fallback",
+      "partial_final_policy": "provider_observation_not_a_krx_partial_close",
+      "required_raw_columns": [
+        "observation_date",
+        "value"
+      ],
+      "derived_output_columns": []
+    },
+    {
+      "source_id": "us_2y_yield",
+      "provider": "fred",
+      "provider_identifier": "DGS2",
+      "lag_bdays": 1,
+      "cadence": "daily",
+      "required_by_indicator_families": [
+        "us_10y_2y_spread"
+      ],
+      "fallback_provider": null,
+      "fallback_identifier": null,
+      "timezone": "America/New_York",
+      "calendar_or_release_basis": "observation_date + business-day availability lag aligned to XKRX",
+      "availability_policy": "observation_date_plus_1_business_days",
+      "release_lag_policy": "lag_bdays_1",
+      "freshness_policy": "latest_observation_available_under_lag_contract",
+      "fallback_policy": "no_authorized_fallback",
+      "partial_final_policy": "provider_observation_not_a_krx_partial_close",
+      "required_raw_columns": [
+        "observation_date",
+        "value"
+      ],
+      "derived_output_columns": []
+    },
+    {
+      "source_id": "us_3m_yield",
+      "provider": "fred",
+      "provider_identifier": "DGS3MO",
+      "lag_bdays": 1,
+      "cadence": "daily",
+      "required_by_indicator_families": [
+        "us_10y_3m_spread"
+      ],
+      "fallback_provider": null,
+      "fallback_identifier": null,
+      "timezone": "America/New_York",
+      "calendar_or_release_basis": "observation_date + business-day availability lag aligned to XKRX",
+      "availability_policy": "observation_date_plus_1_business_days",
+      "release_lag_policy": "lag_bdays_1",
+      "freshness_policy": "latest_observation_available_under_lag_contract",
+      "fallback_policy": "no_authorized_fallback",
+      "partial_final_policy": "provider_observation_not_a_krx_partial_close",
+      "required_raw_columns": [
+        "observation_date",
+        "value"
+      ],
+      "derived_output_columns": []
+    },
+    {
+      "source_id": "us_baa_corp_yield",
+      "provider": "fred",
+      "provider_identifier": "DBAA",
+      "lag_bdays": 1,
+      "cadence": "daily",
+      "required_by_indicator_families": [
+        "us_hy_oas_level",
+        "global_credit_stress"
+      ],
+      "fallback_provider": null,
+      "fallback_identifier": null,
+      "timezone": "America/New_York",
+      "calendar_or_release_basis": "observation_date + business-day availability lag aligned to XKRX",
+      "availability_policy": "observation_date_plus_1_business_days",
+      "release_lag_policy": "lag_bdays_1",
+      "freshness_policy": "latest_observation_available_under_lag_contract",
+      "fallback_policy": "no_authorized_fallback",
+      "partial_final_policy": "provider_observation_not_a_krx_partial_close",
+      "required_raw_columns": [
+        "observation_date",
+        "value"
+      ],
+      "derived_output_columns": []
+    },
+    {
+      "source_id": "us_aaa_corp_yield",
+      "provider": "fred",
+      "provider_identifier": "DAAA",
+      "lag_bdays": 1,
+      "cadence": "daily",
+      "required_by_indicator_families": [
+        "us_ig_oas_level"
+      ],
+      "fallback_provider": null,
+      "fallback_identifier": null,
+      "timezone": "America/New_York",
+      "calendar_or_release_basis": "observation_date + business-day availability lag aligned to XKRX",
+      "availability_policy": "observation_date_plus_1_business_days",
+      "release_lag_policy": "lag_bdays_1",
+      "freshness_policy": "latest_observation_available_under_lag_contract",
+      "fallback_policy": "no_authorized_fallback",
+      "partial_final_policy": "provider_observation_not_a_krx_partial_close",
+      "required_raw_columns": [
+        "observation_date",
+        "value"
+      ],
+      "derived_output_columns": []
+    },
+    {
+      "source_id": "nfci",
+      "provider": "fred",
+      "provider_identifier": "NFCI",
+      "lag_bdays": 3,
+      "cadence": "weekly",
+      "required_by_indicator_families": [
+        "global_credit_stress"
+      ],
+      "fallback_provider": null,
+      "fallback_identifier": null,
+      "timezone": "America/Chicago",
+      "calendar_or_release_basis": "observation_date + business-day availability lag aligned to XKRX",
+      "availability_policy": "observation_date_plus_3_business_days",
+      "release_lag_policy": "nfci_weekly_friday_plus_3_bday_v1",
+      "freshness_policy": "latest_observation_available_under_lag_contract",
+      "fallback_policy": "no_authorized_fallback",
+      "partial_final_policy": "provider_observation_not_a_krx_partial_close",
+      "required_raw_columns": [
+        "observation_date",
+        "value"
+      ],
+      "derived_output_columns": []
+    }
+  ],
+  "provenance": {
+    "market_config": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/configs/markets/kosdaq.yaml",
+      "sha256": "dce2ed6b859fa231794d90d870deeea46a85523a3a73ece5b9e5e4a22ace279d",
+      "symbol": "market.benchmark"
+    },
+    "source_config": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/configs/data_sources_stage1.yaml",
+      "sha256": "e5ba52607f143aaccf54e2042d204df693fd7910151c25c20abdd30aca24dcee",
+      "symbol": "primary_source/fallback_source"
+    },
+    "frozen_manifest": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/data/frozen/kosdaq/snapshot_kosdaq_kq2_19961211_20260728_ae8665724e6d/data_manifest.json",
+      "sha256": "89e89a120e8a7361ba7aa5197e412cf01fdcf8ec5a52fb8bae1677b320cbb28e",
+      "symbol": "common_macro_lineage"
+    },
+    "signal_bank": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/signal_bank.py",
+      "sha256": "833dc2e6d23d912a959eaf1880047b82855c8f3e96099bb8646322bed97cdbbe",
+      "symbol": "source_specs"
+    },
+    "operational_reference_live_contracts": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/technical-signal-dashboard/kospi_macro5_runtime/live_contracts.py",
+      "sha256": "7bb712b560eff3069b6f6b801da1bb3662370ad66ef74e02429572a92e20cf31",
+      "symbol": "SOURCE_CONTRACTS; read-only provenance only"
+    },
+    "operational_reference_availability": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/technical-signal-dashboard/kospi_macro5_runtime/live_availability.py",
+      "sha256": "02feb7d22833bc724043a6cc89eb5fcf7eeb8d1a68e8998ff042e63cfce0f226",
+      "symbol": "availability/derived policy; read-only provenance only"
+    }
+  },
+  "runtime_dependency_policy": {
+    "research_repo_runtime_import": false,
+    "macro5_runtime_import": false,
+    "macro5_asset_runtime_read": false,
+    "calendar_asset_is_kosdaq_owned_copy": true,
+    "calendar_asset_sha256": "44e485bbb85c1507281df2febadeaa3e9179d278bbc98b9da52e8ab277c810f7"
+  },
+  "semantics": {
+    "live_tail_date": "KRX_CALCULATION_TRADING_DATE_NOT_SOURCE_OBSERVATION_DATE",
+    "source_observation_date_preserved": true,
+    "frozen_prefix_authoritative_through": "2026-07-28",
+    "missing_state_policy": "INVALID_NOT_RISK_ON",
+    "combo2_input_semantics": "CHILD_COMBO1_RAW_RISK_STATE",
+    "final_t1_application_count": 1,
+    "post_gap_restart": "ONLY_IF_PINNED_ORACLE_EXPLICITLY_CONFIRMS; OTHERWISE_UNAVAILABLE",
+    "current_segment_return_end_date": "candidate_basis_date"
+  }
+}

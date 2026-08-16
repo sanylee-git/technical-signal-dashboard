@@ -27,6 +27,7 @@ import copy
 import warnings
 import traceback
 from zoneinfo import ZoneInfo
+from kosdaq_macro7_ui import render_macro7_kosdaq_section
 warnings.filterwarnings('ignore')
 
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -93,7 +94,7 @@ _IS_MARKET_MACRO_APP = any(
 )
 
 def _configure_streamlit_page(page="signal"):
-    is_market_macro_app = page in ("market_macro", "market", "macro", "macro2", "macro3", "macro4", "macro5", "macro6", "macro5_kospi") or _IS_MARKET_MACRO_APP
+    is_market_macro_app = page in ("market_macro", "market", "macro", "macro2", "macro3", "macro4", "macro5", "macro6", "macro5_kospi", "macro7_kosdaq") or _IS_MARKET_MACRO_APP
     st.set_page_config(
         page_title="시장/매크로 지표" if is_market_macro_app else "기술적 신호 스캐너",
         page_icon="🏔️" if is_market_macro_app else "🎯",
@@ -16038,7 +16039,8 @@ def main(page="signal"):
         "macro4": ("MACRO INDICATORS 4", "🧪 매크로 지표 4"),
         "macro5": ("MACRO INDICATORS 5", "🧪 매크로 지표 3"),
         "macro6": ("MACRO INDICATORS 6", "🧪 매크로 지표 4"),
-        "macro5_kospi": ("KOSPI MACRO INDICATORS", "🇰🇷 매크로 지표 5"),
+        "macro5_kospi": ("KOSPI MACRO INDICATORS", "🇰🇷 코스피지표"),
+        "macro7_kosdaq": ("KOSDAQ MACRO INDICATORS", "🇰🇷 코스닥지표"),
         "all": ("TECHNICAL SIGNAL SCANNER", "🎯 기술적 신호 스캐너"),
     }
     _eyebrow, _title = _page_titles.get(page, _page_titles["signal"])
@@ -16058,6 +16060,7 @@ def main(page="signal"):
     tab5 = None
     tab6 = None
     tab7 = None
+    tab8 = None
     _market_macro_section = None
     if page == "all":
         tab1, tab2, tab3 = st.tabs(["📊 신호 스캐너", "🌐 시장 내부지표", "🌍 매크로 지표"])
@@ -16077,7 +16080,8 @@ def main(page="signal"):
             ("macro4", "🧪 매크로 지표 2"),
             ("macro5", "🧪 매크로 지표 3"),
             ("macro6", "🧪 매크로 지표 4"),
-            ("macro5_kospi", "🇰🇷 매크로 지표 5"),
+            ("macro5_kospi", "🇰🇷 코스피지표"),
+            ("macro7_kosdaq", "🇰🇷 코스닥지표"),
             ("market", "🌐 시장 내부지표"),
         ]
         if st.session_state.get("market_macro_section") not in {k for k, _ in _market_macro_sections}:
@@ -16096,6 +16100,7 @@ def main(page="signal"):
         tab5 = st.container()
         tab6 = st.container()
         tab7 = st.container()
+        tab8 = st.container()
         tab1 = None
     elif page == "macro2":
         tab1, tab2, tab3 = None, None, st.container()
@@ -16108,6 +16113,8 @@ def main(page="signal"):
     elif page == "macro6":
         tab1, tab2, tab3 = None, None, st.container()
     elif page == "macro5_kospi":
+        tab1, tab2, tab3 = None, None, st.container()
+    elif page == "macro7_kosdaq":
         tab1, tab2, tab3 = None, None, st.container()
     else:
         st.error(f"알 수 없는 페이지입니다: {page}")
@@ -18873,6 +18880,11 @@ def main(page="signal"):
     if page == "macro5_kospi" or (page == "market_macro" and _market_macro_section == "macro5_kospi"):
         _macro5_kospi_container = tab7 if page == "market_macro" else tab3
         render_macro5_kospi_section(_macro5_kospi_container)
+
+    # TAB 3G — KOSDAQ 매크로 지표 7 (Final10 Shadow)
+    if page == "macro7_kosdaq" or (page == "market_macro" and _market_macro_section == "macro7_kosdaq"):
+        _macro7_kosdaq_container = tab8 if page == "market_macro" else tab3
+        render_macro7_kosdaq_section(_macro7_kosdaq_container)
 
         # ═══════════════════════════════════════════════════════════
         # TAB 3 — 매크로 지표

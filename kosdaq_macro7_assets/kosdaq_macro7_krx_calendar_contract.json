@@ -1,0 +1,10 @@
+{
+  "contract_version": "kosdaq_macro7_xkrx_calendar_v1",
+  "market": "KOSDAQ",
+  "exchange": "XKRX",
+  "timezone": "Asia/Seoul",
+  "asset_path": "kosdaq_macro7_assets/kosdaq_macro7_krx_calendar_asset.parquet",
+  "asset_sha256": "44e485bbb85c1507281df2febadeaa3e9179d278bbc98b9da52e8ab277c810f7",
+  "source_lineage": "independent copied XKRX schedule asset; runtime does not read another market asset",
+  "holiday_hardcoded_count": 0
+}

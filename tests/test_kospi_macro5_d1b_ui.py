@@ -57,8 +57,8 @@ def test_d1a_asset_integrity_and_final9_coverage():
 
 def test_macro5_kospi_route_and_isolation_tokens():
     text = SOURCE.read_text(errors="ignore")
-    assert '"macro5_kospi": ("KOSPI MACRO INDICATORS", "🇰🇷 매크로 지표 5")' in text
-    assert '("macro5_kospi", "🇰🇷 매크로 지표 5")' in text
+    assert '"macro5_kospi": ("KOSPI MACRO INDICATORS", "🇰🇷 코스피지표")' in text
+    assert '("macro5_kospi", "🇰🇷 코스피지표")' in text
     assert 'def render_macro5_kospi_section' in text
     assert 'key="macro5_kospi_preset"' in text
     assert 'key="macro5_kospi_years"' in text

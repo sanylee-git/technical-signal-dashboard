@@ -1,0 +1,177 @@
+{
+  "contract_version": "kosdaq_macro7_final10_operating_contract_v1",
+  "created_at_utc": "2026-08-16T11:53:50.457579+00:00",
+  "research_repo": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq",
+  "dashboard_git_baseline": {
+    "head": "1e4cd49a894189ea5211e706449c9d93f66d20db",
+    "origin_main": "1e4cd49a894189ea5211e706449c9d93f66d20db",
+    "required_ancestor": "a559a1c2c266531ad56060834941dc6194ab7320",
+    "allowed_untracked": [
+      "reports/macro6_post_chart_reuse_cold_retiming.md",
+      "reports/macro6_summary_unique_signal_provider_path_audit.md"
+    ]
+  },
+  "manual_user_selected_final10": true,
+  "final_selection_locked": true,
+  "candidate_reselection_allowed": false,
+  "candidate_reoptimization_allowed": false,
+  "final_combo1_count": 5,
+  "final_combo2_count": 5,
+  "final_total_count": 10,
+  "source_selection_note": "User manually fixed Combo1 Final5 and Combo2 Final5. No artifact rank, review rank, selection_status, survivor rank, or FINAL5_EXECUTED flag is used for reselection.",
+  "c2_15_final5_executed": "NO",
+  "display_contract": {
+    "combo1_slots": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "combo2_slots": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "main1_main2_status": "UNASSIGNED_BY_USER"
+  },
+  "contracts": {
+    "benchmark": {
+      "benchmark_identifier": "KOSDAQ Index",
+      "price_source": "KQ-1 source contract: Naver Finance primary, Yahoo Finance ^KQ11 fallback",
+      "ohlcv_close_contract": "kosdaq_close; completed daily OHLC rows only in frozen contract",
+      "timezone": "Asia/Seoul",
+      "calendar_session_basis": "XKRX; valid close preserves performance/T+1 calendar",
+      "evidence": {
+        "contract_type": "benchmark",
+        "artifact_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/configs/markets/kosdaq.yaml",
+        "artifact_sha256": "dce2ed6b859fa231794d90d870deeea46a85523a3a73ece5b9e5e4a22ace279d",
+        "research_code_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/frozen_build.py",
+        "code_sha256": "b5f09530d240de9026de1eb3b18b953e093ec025bacae6055a6822374f66e0da",
+        "evidence_symbol": "market.benchmark + KOSDAQ_MARKET_COLUMNS"
+      }
+    },
+    "raw_t1_missing": {
+      "combo2_input_semantics": "CHILD_COMBO1_RAW_RISK_STATE",
+      "final_t1_application_count": 1,
+      "missing_state_policy": "INVALID_NOT_RISK_ON",
+      "combo2_raw_state_evidence": {
+        "contract_type": "combo2_raw_state",
+        "artifact_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/outputs/kosdaq/run_20260814T180000Z_kq_c2_1_material50_m2_m4_exhaustive_v1/c2_1_material50_m2_m4_exhaustive/00_material50_dictionary.parquet",
+        "artifact_sha256": "2a599f14fe46e7e6bb3fa0c6d8ea71ac8bd65b8e3eacd7e99b48e8ae888eef18",
+        "research_code_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/kq_c2_1_material50_m2_m4_exhaustive.py",
+        "code_sha256": "3864d9d5d5c300a98e3bf0a5481b098f96811c7f626e2847f288969de01f5bea",
+        "evidence_symbol": "COMBO2_INPUT_STATE + COMBO2_T1_APPLICATION"
+      },
+      "t_plus_1_evidence": {
+        "contract_type": "T+1",
+        "artifact_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/manifests/kq_c2_15_latest_performance50_review20.json",
+        "artifact_sha256": "167bbb6552658a142285579cf431e20c5e03249b44efc84d7b81c0e118865750",
+        "research_code_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/combo1_full_run.py",
+        "code_sha256": "c930889b5170727e8b01eaf995564601817a7c527d2d2fd830c18cc7b0082956",
+        "evidence_symbol": "_evaluate_batch: position[:, 1:] = (~states[:, :-1])"
+      }
+    },
+    "cost": {
+      "transaction_cost_bps": 10.0,
+      "application": "deduct transaction cost from final T+1 position changes",
+      "evidence": {
+        "contract_type": "cost",
+        "artifact_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/manifests/kq_c2_15_latest_performance50_review20.json",
+        "artifact_sha256": "167bbb6552658a142285579cf431e20c5e03249b44efc84d7b81c0e118865750",
+        "research_code_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/combo1_full_run.py",
+        "code_sha256": "c930889b5170727e8b01eaf995564601817a7c527d2d2fd830c18cc7b0082956",
+        "evidence_symbol": "TRANSACTION_COST_BPS + strategy_after = strategy_before - trades * cost_rate"
+      }
+    },
+    "evaluation": {
+      "evaluation_start": "2008-04-01",
+      "evaluation_end": "2026-07-28",
+      "metrics": [
+        "CAGR",
+        "MDD",
+        "Calmar",
+        "risk_off_ratio",
+        "risk_off_cycle_count",
+        "short_cycle_20d_ratio",
+        "total_return",
+        "daily_return",
+        "equity"
+      ],
+      "evidence": {
+        "contract_type": "evaluation",
+        "artifact_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/manifests/kq_c2_15_latest_performance50_review20.json",
+        "artifact_sha256": "167bbb6552658a142285579cf431e20c5e03249b44efc84d7b81c0e118865750",
+        "research_code_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/single_indicator_backtest.py",
+        "code_sha256": "cfad6edd85bbcc66819184f86ff52e7e458710f498897064c40457aaffa8433c",
+        "evidence_symbol": "EVALUATION_CUTOFF + calc_metrics"
+      }
+    },
+    "frozen": {
+      "frozen_cutoff_date": "2026-07-28",
+      "frozen_date_basis": "kq2_frozen_snapshot.validation.frozen_end",
+      "frozen_reference_source": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/manifests/kq2_frozen_snapshot.json",
+      "frozen_file": "data/frozen/kosdaq/snapshot_kosdaq_kq2_19961211_20260728_ae8665724e6d/frozen_kosdaq_macro_snapshot.parquet",
+      "frozen_sha256": "cce9ed139edf94b6547d4530967d201480da82a0ec84cb3d4c8158c35b4442a8",
+      "frame_sha256": "ae8665724e6d335d4e9701e10d2e3134596846b7c380fb6a3cedd6786b4260a4",
+      "evidence": {
+        "contract_type": "frozen_cutoff",
+        "artifact_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/manifests/kq2_frozen_snapshot.json",
+        "artifact_sha256": "89e89a120e8a7361ba7aa5197e412cf01fdcf8ec5a52fb8bae1677b320cbb28e",
+        "research_code_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/src/macro_dashboard_kosdaq/frozen_build.py",
+        "code_sha256": "b5f09530d240de9026de1eb3b18b953e093ec025bacae6055a6822374f66e0da",
+        "evidence_symbol": "validation.frozen_end + apply_market_quality_policy"
+      }
+    }
+  },
+  "runtime_isolation_contract": {
+    "runtime": "kosdaq_macro7_runtime",
+    "assets": "kosdaq_macro7_assets",
+    "session_widget_chart_cache_debug_prefix": "macro7_kosdaq_",
+    "forbidden_macro5_imports_or_sharing": [
+      "kospi_macro5_runtime",
+      "kospi_macro5_assets",
+      "macro5_kospi_",
+      "Macro5 candidate dictionary",
+      "Macro5 cache/session"
+    ]
+  },
+  "kospi_dependency_guard": {
+    "status": "KOSPI_RUNTIME_DEPENDENCY_RULES_FROZEN_NOT_YET_EXECUTABLE",
+    "forbidden_patterns": [
+      "^KS11",
+      "KOSPI",
+      "kospi",
+      "kospi_macro5_runtime",
+      "kospi_macro5_assets",
+      "macro5_kospi_"
+    ],
+    "stage2_required_gate": "PASS_KOSDAQ_MACRO7_NO_KOSPI_RUNTIME_DEPENDENCY"
+  },
+  "research_to_dashboard_cutover": "Stage 2 runtime/page must read dashboard immutable assets only; research paths remain provenance-only.",
+  "files": {
+    "final10_csv": {
+      "path": "kosdaq_macro7_assets/kosdaq_macro7_final10.csv",
+      "sha256": "2048053e07be73fb76b6a8a6ee4b8ba0fe070ab13b52f66f4185db717c454551"
+    },
+    "combo2_child_mapping_csv": {
+      "path": "kosdaq_macro7_assets/kosdaq_macro7_combo2_child_mapping.csv",
+      "sha256": "0ab2fe1e202bad7014fe2c263dc0c60fc3247972511df95f446e2fafa2e7e5d3"
+    }
+  },
+  "cross_validation": {
+    "final10_exact_id_duplicate_count": 0,
+    "combo1_resolved": "5/5 PASS",
+    "combo2_resolved": "5/5 PASS",
+    "combo2_child_mapping_rows": 34,
+    "intra_parent_duplicate_index_count": 0,
+    "mapping_ambiguity_count": 0,
+    "cross_parent_reuse_allowed": true,
+    "status": "PASS"
+  },
+  "stage2_authorized": true,
+  "official_operating_model": false,
+  "dashboard_applied": false
+}

@@ -1,0 +1,403 @@
+"""KOSDAQ Macro7 presentation-only Streamlit renderer.
+
+This module deliberately owns its market-specific UI namespace.  It consumes
+the Stage 3.1 presentation payload as-is: no indicator, hysteresis, T+1, or
+freshness calculation happens here.
+"""
+
+from __future__ import annotations
+
+from html import escape
+from typing import Any, Callable
+
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+from kosdaq_macro7_runtime.live_runtime import run_live_runtime
+from kosdaq_macro7_runtime.presentation_payload import build_presentation_payload
+
+
+RISK_ON = "#54F2A3"
+RISK_OFF = "#FF8C69"
+STAGE_COLORS = {
+    "매수준비": RISK_ON, "매수": "#22C55E", "매수심화": "#15803D",
+    "홀드": "#A18707", "관망": "#A18707", "매도준비": RISK_OFF,
+    "매도": "#F05A47", "매도심화": "#DC2626", "계산 불가": RISK_OFF,
+}
+PERIOD_OPTIONS: list[int | str] = [2, 3, 5, 7, 10, 15, "all"]
+DEFAULT_CANDIDATE = "combo2_m7_k4_l3_58c1eaea19e6d371"
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_macro7_kosdaq_presentation_payload(sync_bucket: str) -> dict[str, Any]:
+    """One Macro7 runtime acquisition per cache miss; UI state is not a key."""
+    del sync_bucket
+    return build_presentation_payload(run_live_runtime())
+
+
+def _fmt_pct(value: object, decimals: int = 1) -> str:
+    try:
+        return f"{float(value) * 100:.{decimals}f}%"
+    except (TypeError, ValueError):
+        return "-"
+
+
+def _fmt_asset(value: object) -> str:
+    try:
+        return f"{float(value):,.1f}"
+    except (TypeError, ValueError):
+        return "-"
+
+
+def _date(value: object) -> str:
+    try:
+        return pd.Timestamp(value).strftime("%Y-%m-%d")
+    except (TypeError, ValueError):
+        return "계산 불가"
+
+
+def _stage(active_count: object, k: object, l: object, risk_off: object) -> str:
+    try:
+        active, start_k, end_l = int(active_count), int(k), int(l)
+    except (TypeError, ValueError):
+        return "계산 불가"
+    if active > start_k:
+        return "매도심화"
+    if active == start_k:
+        return "매도"
+    if active < end_l:
+        return "매수심화"
+    if active == end_l:
+        return "매수"
+    if not bool(risk_off) and active == start_k - 1:
+        return "매도준비"
+    if bool(risk_off) and active == end_l + 1:
+        return "매수준비"
+    return "관망" if bool(risk_off) else "홀드"
+
+
+def _stage_html(label: str) -> str:
+    return f"<span style='color:{STAGE_COLORS.get(label, '#AFAFAF')};font-weight:700;'>{escape(label)}</span>"
+
+
+def _on_k_html(active_count: object, k: object, risk_off: object) -> str:
+    try:
+        label = f"{max(0, int(active_count))}/K{max(1, int(k))}"
+    except (TypeError, ValueError):
+        return "계산 불가"
+    color = RISK_OFF if bool(risk_off) else RISK_ON
+    return f"<span style='color:{color};font-weight:700;'>{label}</span>"
+
+
+def _candidate_label(row: pd.Series | dict[str, Any]) -> str:
+    family = str(row.get("model_family", ""))
+    prefix = "조합1" if family == "COMBO1" else "조합2"
+    unit = "지표" if family == "COMBO1" else "조합1"
+    return f"[{prefix}] {row.get('display_role', '')} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
+
+
+def _view(frame: pd.DataFrame, *, candidate_id: str | None = None, parent_id: str | None = None, end: object = None, years: int | str = "all") -> pd.DataFrame:
+    if frame is None or frame.empty:
+        return pd.DataFrame()
+    out = frame.copy()
+    out["date"] = pd.to_datetime(out["date"], errors="coerce").dt.normalize()
+    if candidate_id is not None and "candidate_id" in out:
+        out = out.loc[out["candidate_id"].eq(candidate_id)]
+    if parent_id is not None and "parent_candidate_id" in out:
+        out = out.loc[out["parent_candidate_id"].eq(parent_id)]
+    if end is not None:
+        out = out.loc[out["date"].le(pd.Timestamp(end).normalize())]
+    if out.empty:
+        return out
+    out = out.sort_values("date")
+    if years != "all":
+        out = out.loc[out["date"].ge(out["date"].max() - pd.DateOffset(years=int(years)))]
+    return out.reset_index(drop=True)
+
+
+def _add_risk_background(fig: go.Figure, history: pd.DataFrame, state_column: str, x_end: pd.Timestamp) -> None:
+    if history.empty or state_column not in history:
+        return
+    values = pd.to_numeric(history[state_column], errors="coerce")
+    start: pd.Timestamp | None = None
+    for row, state in zip(history.itertuples(index=False), values.fillna(-1), strict=False):
+        date = pd.Timestamp(row.date)
+        if state == 1 and start is None:
+            start = date
+        elif state != 1 and start is not None:
+            fig.add_vrect(x0=start, x1=date, fillcolor="rgba(183,62,74,0.18)", line_width=0, layer="below")
+            start = None
+    if start is not None:
+        fig.add_vrect(x0=start, x1=x_end, fillcolor="rgba(183,62,74,0.18)", line_width=0, layer="below")
+
+
+def _layout(fig: go.Figure, title: str, x_start: pd.Timestamp, x_end: pd.Timestamp) -> go.Figure:
+    fig.update_layout(
+        template="plotly_dark", height=300, margin=dict(l=50, r=20, t=38, b=30),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        title=dict(text=title, font=dict(size=12, color="#9B9B9B"), x=0),
+        font=dict(color="#C9C9C9"), hovermode="x unified",
+        legend=dict(orientation="h", y=1.01, x=1, xanchor="right", font=dict(size=10)),
+    )
+    fig.update_xaxes(range=[x_start, x_end], autorange=False, gridcolor="rgba(255,255,255,0.04)")
+    fig.update_yaxes(gridcolor="rgba(255,255,255,0.04)")
+    return fig
+
+
+def _main_chart(payload: dict[str, Any], candidate_id: str, basis: object, years: int | str) -> go.Figure | None:
+    history = _view(payload["candidate_history"], candidate_id=candidate_id, end=basis, years=years)
+    benchmark = _view(payload["benchmark_history"], candidate_id=candidate_id, end=basis, years=years)
+    if history.empty or benchmark.empty:
+        return None
+    x_start, x_end = benchmark["date"].min(), pd.Timestamp(basis).normalize()
+    fig = go.Figure()
+    _add_risk_background(fig, history, "raw_risk_state", x_end)
+    fig.add_trace(go.Scatter(x=benchmark["date"], y=benchmark["kosdaq_close"], name="KOSDAQ", line=dict(color="#BDBDBD", width=1.6)))
+    for column, name, color, symbol in (("risk_start", "Risk 시작", "#F05A47", "triangle-down"), ("risk_end", "Risk 종료", "#60A5FA", "triangle-up")):
+        event = history.loc[history[column].astype(bool)] if column in history else history.iloc[0:0]
+        if not event.empty:
+            points = benchmark.merge(event[["date"]], on="date", how="inner")
+            fig.add_trace(go.Scatter(x=points["date"], y=points["kosdaq_close"], name=name, mode="markers", marker=dict(color=color, size=10, symbol=symbol)))
+    return _layout(fig, _candidate_label(_snapshot_row(payload, candidate_id)), x_start, x_end)
+
+
+def _component_chart(payload: dict[str, Any], parent_id: str, component_id: str, component_kind: str, basis: object, years: int | str, *, show_aux: bool = False) -> go.Figure | None:
+    component = payload["component_history"].loc[
+        payload["component_history"]["parent_candidate_id"].eq(parent_id)
+        & payload["component_history"]["component_id"].eq(component_id)
+    ]
+    component = _view(component, end=basis, years=years)
+    benchmark = _view(payload["benchmark_history"], candidate_id=parent_id, end=basis, years=years)
+    if component.empty or benchmark.empty:
+        return None
+    x_start, x_end = benchmark["date"].min(), pd.Timestamp(basis).normalize()
+    fig = go.Figure()
+    _add_risk_background(fig, component, "component_risk_state", x_end)
+    # Combo2 children are complete Combo1 state histories.  No indicator
+    # series is requested or synthesized for them.
+    if component_kind == "CHILD_COMBO1_RAW_STATE":
+        fig.add_trace(go.Scatter(x=benchmark["date"], y=benchmark["kosdaq_close"], name="KOSDAQ", line=dict(color="#BDBDBD", width=1.5)))
+    else:
+        chart = _view(payload["component_chart_history"], end=basis, years=years)
+        chart = chart.loc[chart["component_id"].eq(component_id)]
+        if chart.empty:
+            return None
+        fields = (("ema", "EMA", "#A78BFA"), ("start_line", "시작선", "#F05A47"), ("end_line", "종료선", "#60A5FA"))
+        if show_aux:
+            fields = (("value", "Raw", "#BDBDBD"),) + fields
+        for column, label, color in fields:
+            if column in chart and chart[column].notna().any():
+                fig.add_trace(go.Scatter(x=chart["date"], y=chart[column], name=label, line=dict(color=color, width=1.25)))
+        for column, label, color in (("lower", "하단", "#60A5FA"), ("upper", "상단", "#F05A47")):
+            if column in chart and chart[column].notna().any():
+                fig.add_trace(go.Scatter(x=chart["date"], y=chart[column], name=label, line=dict(color=color, width=1, dash="dot")))
+        fig.add_trace(go.Scatter(x=benchmark["date"], y=benchmark["kosdaq_close"], name="KOSDAQ", yaxis="y2", line=dict(color="#777777", width=1)))
+        fig.update_layout(yaxis2=dict(overlaying="y", side="right", showgrid=False, color="#808080"))
+    return _layout(fig, str(component["component_label"].iloc[-1]), x_start, x_end)
+
+
+def _snapshot_row(payload: dict[str, Any], candidate_id: str) -> pd.Series:
+    return payload["snapshot"].loc[payload["snapshot"]["candidate_id"].eq(candidate_id)].iloc[0]
+
+
+def _group_summary(payload: dict[str, Any]) -> str:
+    snapshot = payload["snapshot"]
+    chunks = []
+    for family, name in (("COMBO2", "조합2"), ("COMBO1", "조합1")):
+        rows = snapshot.loc[snapshot["model_family"].eq(family)]
+        usable = rows.loc[rows["status"].eq("USABLE")]
+        risk_off = int(usable["raw_risk_state"].astype(bool).sum())
+        basis = max((_date(value) for value in usable["basis_date"]), default="계산 불가")
+        chunks.append(
+            f"<span style='color:{RISK_ON};font-weight:700'>{name} 계산 가능 {len(usable)} / {len(rows)}</span>"
+            f"<span style='color:rgba(255,255,255,.55)'> · 계산 불가 {len(rows)-len(usable)}</span><br>"
+            f"<span style='color:{RISK_OFF if risk_off else RISK_ON};font-weight:700'>{name} Risk-off(위험회피) {risk_off}/{len(rows)}</span>"
+            f"<span style='color:rgba(255,255,255,.55)'> · 기준일 {basis}</span>"
+        )
+    return "<div class='macro2-helper-text' style='line-height:1.55;'>" + "<span style='padding:0 10px;color:rgba(255,255,255,.36)'>|</span>".join(chunks) + "</div>"
+
+
+def _current_status_html(row: pd.Series) -> str:
+    if row["status"] != "USABLE":
+        return "<div class='macro2-helper-text'>현재 상태를 계산할 수 없습니다.</div>"
+    state = bool(row["raw_risk_state"])
+    color = RISK_OFF if state else RISK_ON
+    state_text = "리스크 사이클 ON" if state else "리스크 사이클 OFF"
+    execution = "비투자" if int(row["invest_position"]) == 0 else "투자"
+    segment = row.get("current_segment_return")
+    segment_html = "확인 불가" if pd.isna(segment) else f"<span style='color:{RISK_ON if float(segment) >= 0 else RISK_OFF};font-weight:700'>{float(segment)*100:.2f}%</span>"
+    return (
+        "<div class='macro2-helper-text' style='line-height:1.75;'>"
+        f"기준일 {_date(row['basis_date'])} <span style='color:rgba(255,255,255,.45)'>·</span> "
+        f"현재 플래그 {_on_k_html(row['active_count'], row['K'], state)} <span style='color:rgba(255,255,255,.45)'>·</span> "
+        f"상태 <span style='color:{color};font-weight:700'>{state_text}</span><br>"
+        f"현재 상태 시작일 <span style='color:{color};font-weight:700'>{_date(row['current_risk_start_date'])}</span> <span style='color:rgba(255,255,255,.45)'>·</span> "
+        f"지속 거래일 <span style='color:{color};font-weight:700'>{int(row['current_duration_trading_days'])}</span> <span style='color:rgba(255,255,255,.45)'>·</span> "
+        f"구간 수익률 {segment_html} <span style='color:rgba(255,255,255,.45)'>·</span> 실행 {execution}</div>"
+    )
+
+
+def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> str:
+    final = payload["final10"].loc[payload["final10"]["model_family"].eq(family)].sort_values("display_slot")
+    snapshot = payload["snapshot"].set_index("candidate_id")
+    metrics = payload["frozen_display_metrics"]
+    hold = payload["benchmark_display_metrics"].set_index("window")
+    headers = ["역할 / 후보", "10Y 자산", "전체 자산", "전체 CAGR", "10Y MDD", "전체 MDD", "전체 Risk-off", "전체 Cycle", "짧은 Cycle", "1주 전", "시장단계(1주 전)", "현재", "시장단계"]
+    colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in ["22%", "7.6545%", "7.6545%", "6.561%", "7.29%", "7.29%", "6.561%", "5.67%", "5.67%", "5%", "7%", "5%", "7% "]) + "</colgroup>"
+    style = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
+    rows = []
+    for _, candidate in final.iterrows():
+        cid = str(candidate["candidate_id"])
+        state = snapshot.loc[cid]
+        stats = metrics.loc[metrics["candidate_id"].eq(cid)].set_index("window")
+        ten, full = stats.loc["10Y"], stats.loc["FULL"]
+        week_stage = _stage(state["week_ago_active_count"], state["K"], state["L"], state["week_ago_raw_risk_state"])
+        now_stage = _stage(state["active_count"], state["K"], state["L"], state["raw_risk_state"])
+        selected_style = "background:rgba(120,126,231,.16);border-top:1px solid rgba(120,126,231,.34);border-bottom:1px solid rgba(120,126,231,.34);" if cid == selected_id else ""
+        cells = [
+            f"<td title='{escape(_candidate_label(candidate))}' style='padding:7px 8px;color:#EDEDED;font-weight:700;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{escape(_candidate_label(candidate))}</td>",
+            f"<td style='{style}'>{_fmt_asset(ten.asset)}</td>", f"<td style='{style}'>{_fmt_asset(full.asset)}</td>", f"<td style='{style}'>{_fmt_pct(full.cagr)}</td>",
+            f"<td style='{style}'>{_fmt_pct(ten.mdd)}</td>", f"<td style='{style}'>{_fmt_pct(full.mdd)}</td>", f"<td style='{style}'>{_fmt_pct(full.risk_off_ratio)}</td>",
+            f"<td style='{style}'>{int(full.cycle)}</td>", f"<td style='{style}'>{int(full.short_cycle)}</td>",
+            f"<td style='padding:7px 8px;text-align:center'>{_on_k_html(state.week_ago_active_count, state.K, state.week_ago_raw_risk_state)}</td>",
+            f"<td style='padding:7px 8px;text-align:center'>{_stage_html(week_stage)}</td>",
+            f"<td style='padding:7px 8px;text-align:center'>{_on_k_html(state.active_count, state.K, state.raw_risk_state)}</td>",
+            f"<td style='padding:7px 8px;text-align:center'>{_stage_html(now_stage)}</td>",
+        ]
+        rows.append(f"<tr style='{selected_style}'>" + "".join(cells) + "</tr>")
+    return (
+        "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:100%;min-width:1480px;table-layout:fixed;border-collapse:collapse;font-size:12px'>"
+        + colgroup + "<thead><tr>" + "".join(f"<th style='text-align:{'left' if i == 0 else 'right'};padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>{header}</th>" for i, header in enumerate(headers)) + "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>"
+    )
+
+
+def _component_status_table(payload: dict[str, Any], candidate_id: str) -> str:
+    history = _view(payload["component_history"], parent_id=candidate_id)
+    if history.empty:
+        return ""
+    latest = history.sort_values("date").drop_duplicates("component_id", keep="last").sort_values("component_order")
+    entries = []
+    for row in latest.to_dict("records"):
+        valid = bool(row.get("component_valid"))
+        state = bool(row.get("component_risk_state")) if valid else False
+        flag = f"<span style='color:{RISK_OFF if state else 'rgba(255,255,255,.18)'};font-weight:700'>●</span>"
+        entries.append((escape(str(row["component_label"])), flag, _date(row["date"])))
+    midpoint = int(np.ceil(len(entries) / 2))
+    left, right = entries[:midpoint], entries[midpoint:]
+    body = []
+    for index in range(max(len(left), len(right))):
+        cells = []
+        for entry in (left[index] if index < len(left) else None, right[index] if index < len(right) else None):
+            if entry is None:
+                cells.append("<td></td><td></td><td></td><td style='width:12px'></td>")
+            else:
+                cells.append(f"<td style='padding:5px 8px;color:#D6D6D6'>{entry[0]}</td><td style='padding:5px 8px;text-align:center;color:#7C7CF7'>●</td><td style='padding:5px 8px;text-align:center'>{entry[1]}</td><td style='padding:5px 8px;color:#AFAFAF'>{entry[2]}</td><td style='width:12px'></td>")
+        body.append("<tr>" + "".join(cells) + "</tr>")
+    header = "<th style='text-align:left;padding:6px 8px;color:#8F8F8F'>지표</th><th style='padding:6px 8px;color:#8F8F8F'>선택</th><th style='padding:6px 8px;color:#8F8F8F'>플래그</th><th style='text-align:left;padding:6px 8px;color:#8F8F8F'>최신 사용값</th><th style='width:12px'></th>"
+    return f"<table style='width:100%;border-collapse:collapse;font-size:11px'><thead><tr>{header}{header}</tr></thead><tbody>{''.join(body)}</tbody></table>"
+
+
+def _render_css() -> None:
+    st.markdown("""
+    <style>
+    .st-key-macro7_kosdaq_preset div[data-baseweb="select"] > div,
+    .st-key-macro7_kosdaq_benchmark div[data-baseweb="select"] > div,
+    .st-key-macro7_kosdaq_selected_components div[data-baseweb="select"] > div {min-height:2.55rem;border-color:rgba(95,86,214,.72)!important;background:rgba(52,44,112,.22)!important}
+    .st-key-macro7_kosdaq_selected_components [data-baseweb="tag"] {background:rgba(92,79,214,.96)!important;color:#F6F4FF!important}
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def render_macro7_kosdaq_section(
+    container: Any,
+    *,
+    payload: dict[str, Any] | None = None,
+    payload_loader: Callable[[str], dict[str, Any]] = _load_macro7_kosdaq_presentation_payload,
+    sync_bucket: str | None = None,
+) -> None:
+    """Render Macro7 using one already-computed presentation payload."""
+    with container:
+        _render_css()
+        st.markdown('<div class="macro2-helper-text">KOSDAQ Final10을 최신 데이터로 판단하고 공식 백테스트 결과와 비교합니다.</div>', unsafe_allow_html=True)
+        if payload is None:
+            bucket = sync_bucket or pd.Timestamp.now(tz="UTC").strftime("%Y%m%d%H%M")
+            try:
+                payload = payload_loader(bucket)
+            except Exception as exc:
+                st.error(f"KOSDAQ Macro7 Live 데이터를 준비하지 못했습니다: {exc}")
+                return
+        if not isinstance(payload, dict) or payload.get("ui_side_model_calculation_count") != 0:
+            st.error("KOSDAQ Macro7 presentation contract 검증 실패")
+            return
+        snapshot = payload["snapshot"].copy()
+        final = payload["final10"].copy().sort_values(["model_family", "display_slot"])
+        candidate_map = {str(row.candidate_id): row for row in final.itertuples(index=False)}
+        ordered = final.loc[final["model_family"].eq("COMBO2"), "candidate_id"].tolist() + final.loc[final["model_family"].eq("COMBO1"), "candidate_id"].tolist()
+        if st.session_state.get("macro7_kosdaq_preset") not in ordered:
+            st.session_state["macro7_kosdaq_preset"] = DEFAULT_CANDIDATE
+        st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+        st.markdown(_group_summary(payload), unsafe_allow_html=True)
+        st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+        labels = {cid: _candidate_label(candidate_map[cid]._asdict()) for cid in ordered}
+        c1, c2, c3, c4 = st.columns([1.8, 1.0, 2.2, 1.0], vertical_alignment="bottom")
+        with c1:
+            st.markdown('<div class="macro2-control-label">조합 프리셋</div>', unsafe_allow_html=True)
+            candidate_id = st.selectbox("조합 프리셋", ordered, format_func=lambda value: labels[value], key="macro7_kosdaq_preset", label_visibility="collapsed")
+        with c2:
+            st.markdown('<div class="macro2-control-label">기준지수</div>', unsafe_allow_html=True)
+            st.selectbox("기준지수", ["KOSDAQ"], key="macro7_kosdaq_benchmark", disabled=True, label_visibility="collapsed")
+        state = _snapshot_row(payload, candidate_id)
+        component_history = _view(payload["component_history"], parent_id=candidate_id, end=state["basis_date"])
+        options = [option for option in PERIOD_OPTIONS if option == "all" or (pd.Timestamp(state["basis_date"]) - component_history["date"].min()).days >= int(option) * 365]
+        if not options:
+            options = ["all"]
+        with c3:
+            st.markdown('<div class="macro2-control-label">기간</div>', unsafe_allow_html=True)
+            period = st.select_slider("기간", options=options, value=5 if 5 in options else options[0], key="macro7_kosdaq_years", label_visibility="collapsed", format_func=lambda v: "전체" if v == "all" else f"{v}년")
+        with c4:
+            st.markdown('<div class="macro2-control-label">보조선 표시</div>', unsafe_allow_html=True)
+            st.checkbox("보조선 표시", value=False, key="macro7_kosdaq_show_raw", label_visibility="collapsed")
+        components = component_history.sort_values("component_order")["component_id"].drop_duplicates().tolist()
+        st.markdown('<div class="macro2-control-label" style="margin-top:14px">조합 지표</div>', unsafe_allow_html=True)
+        controls, criteria = st.columns([4.4, 1.6], vertical_alignment="bottom")
+        with controls:
+            st.multiselect("조합 지표", components, default=components, disabled=True, key="macro7_kosdaq_selected_components", label_visibility="collapsed", format_func=lambda cid: str(component_history.loc[component_history["component_id"].eq(cid), "component_label"].iloc[0]))
+        with criteria:
+            st.markdown(
+                f"<div style='padding-top:8px;font-size:11.5px;line-height:1.42;color:rgba(255,255,255,.84)'>시작 {int(state['K'])}개 이상 ON<br>종료 {int(state['L'])}개 이하 ON</div>",
+                unsafe_allow_html=True,
+            )
+        st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+        st.markdown(_current_status_html(state), unsafe_allow_html=True)
+        st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+        main = _main_chart(payload, candidate_id, state["basis_date"], period)
+        if main is None:
+            st.warning("대표 차트 데이터를 준비하지 못했습니다.")
+        else:
+            st.plotly_chart(main, width="stretch", config={"displayModeBar": False}, key=f"macro7_kosdaq_main_chart_{candidate_id}_{period}")
+        st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+        with st.expander("백테스트 비교 보기 · 조합2", expanded=False):
+            st.markdown(_backtest_table(payload, "COMBO2", candidate_id), unsafe_allow_html=True)
+        with st.expander("백테스트 비교 보기 · 조합1", expanded=False):
+            st.markdown(_backtest_table(payload, "COMBO1", candidate_id), unsafe_allow_html=True)
+        with st.expander("지표별 상태 보기", expanded=False):
+            st.markdown(_component_status_table(payload, candidate_id), unsafe_allow_html=True)
+        st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+        for index, component_id in enumerate(components):
+            row = component_history.loc[component_history["component_id"].eq(component_id)].iloc[-1]
+            with st.expander(f"{index + 1}. {row['component_label']}", expanded=True):
+                fig = _component_chart(payload, candidate_id, component_id, str(row["component_kind"]), state["basis_date"], period, show_aux=bool(st.session_state["macro7_kosdaq_show_raw"]))
+                if fig is None:
+                    st.warning("상세 차트 필수 표시 필드가 없습니다.")
+                else:
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False}, key=f"macro7_kosdaq_component_chart_{candidate_id}_{index}_{period}")
+        with st.expander("고급 설정 · 모델 및 데이터 정보", expanded=False):
+            st.write(f"candidate_id: `{candidate_id}`")
+            st.write(f"slot: `{int(state['display_slot'])}`")
+            st.write("공식 Frozen 백테스트: `2008-04-01 ~ 2026-07-28 · T+1 · 10bp · 현금수익 미적용`")
+            st.write(f"CAGR: `{_fmt_pct(payload['live_metrics'].set_index('candidate_id').loc[candidate_id, 'CAGR'])}`")
+            st.write(f"MDD: `{_fmt_pct(payload['live_metrics'].set_index('candidate_id').loc[candidate_id, 'MDD'])}`")
+            st.write(f"Calmar: `{payload['live_metrics'].set_index('candidate_id').loc[candidate_id, 'Calmar']:.3f}`")
+            st.write("Final10은 재선별하지 않습니다.")

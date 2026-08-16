@@ -1,0 +1,42 @@
+{
+  "contract_version": "kosdaq_macro7_d3_ui_clone_v1",
+  "stage": "D3_UI_CLONE_ISOLATION",
+  "gate": "PASS_KOSDAQ_MACRO7_D3_UI_CLONE_ISOLATION_READY",
+  "ui_source_reference": "Macro5 KOSPI structure and visual ordering only",
+  "macro5_runtime_modified": false,
+  "macro5_candidate_or_cache_dependency": false,
+  "macro7_runtime_module": "kosdaq_macro7_runtime",
+  "macro7_asset_directory": "kosdaq_macro7_assets",
+  "default_selected_candidate": "combo2_m7_k4_l3_58c1eaea19e6d371",
+  "selection_semantics": "UI_INITIAL_DISPLAY_ONLY",
+  "main_assignment": false,
+  "candidate_ranking_change": false,
+  "ui_side_model_calculation": false,
+  "combo1_detailed_chart": {
+    "history": "component_chart_history",
+    "allowed_fields": ["value", "ema", "start_line", "end_line", "rsi", "lower", "upper", "close", "high", "low", "risk_state", "risk_start", "risk_end", "valid_signal"]
+  },
+  "combo2_detailed_chart": {
+    "history": "component_history",
+    "component_semantics": "CHILD_COMBO1_RAW_RISK_STATE",
+    "benchmark_context": "benchmark_history",
+    "forbidden_synthesis": ["raw_indicator", "ema", "threshold", "indicator_formula"]
+  },
+  "presentation_payload_cache": {
+    "namespace": "macro7_kosdaq",
+    "key_inputs": ["live_data_sync_bucket"],
+    "excluded_presentation_inputs": ["candidate_selection", "component_selection", "chart_period", "expander_state", "chart_visibility"],
+    "payload_acquisition_per_page_render": 1,
+    "actual_run_live_runtime_cache_hit": 0,
+    "actual_run_live_runtime_cache_miss_max": 1,
+    "presentation_only_ui_change_causing_runtime_refetch": 0
+  },
+  "isolation": {
+    "session_state_prefix": "macro7_kosdaq_",
+    "widget_key_prefix": "macro7_kosdaq_",
+    "cache_namespace": "macro7_kosdaq",
+    "kospi_runtime_calls_from_macro7": 0,
+    "kosdaq_runtime_calls_from_macro5": 0,
+    "shared_mutable_preset_object_count": 0
+  }
+}

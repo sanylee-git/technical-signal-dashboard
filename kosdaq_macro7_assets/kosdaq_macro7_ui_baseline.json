@@ -1,0 +1,44 @@
+{
+  "contract_version": "kosdaq_macro7_d3_ui_baseline_v1",
+  "gate": "PASS_KOSDAQ_MACRO7_D3_UI_CLONE_ISOLATION_READY",
+  "stage3_1_baseline": "kosdaq_macro7_presentation_baseline.json",
+  "stage3_1_baseline_preserved": true,
+  "default_selected_candidate": "combo2_m7_k4_l3_58c1eaea19e6d371",
+  "selection_semantics": "UI_INITIAL_DISPLAY_ONLY",
+  "main_assignment": false,
+  "ui_side_model_calculation": false,
+  "ui_files": [
+    {
+      "relative_path": "kosdaq_macro7_ui.py",
+      "sha256": "3a29c7e327098cfec2413658b14db1ba91ef33853c054e26fca287ca97f0a587"
+    },
+    {
+      "relative_path": "kosdaq_macro7_assets/kosdaq_macro7_ui_contract.json",
+      "sha256": "c3adb89f322ee798e01812fbb47c1fdf0f6e98ee28b6d23384846d3b863d9afe"
+    },
+    {
+      "relative_path": "tests/test_kosdaq_macro7_d3_ui_clone_isolation.py",
+      "sha256": "abaf2b0a749e8eb62fd8c3f2eb5ab1f7176b669d4fa3ffb9acd351445c0638c4"
+    },
+    {
+      "relative_path": "reports/kosdaq_macro7_d3_ui_clone_isolation.md",
+      "sha256": "7c3ce540c0669bdc4bb27160d5a68a45d5b2b59cf76828f03cf1918e0f270109"
+    }
+  ],
+  "dashboard_integration": {
+    "relative_path": "technical_signal_dashboard.py",
+    "sha256": "9292c401e6748ae261fd064ce7020c5bb9ebe8cb07411e0b8ec8adee5d82d50c",
+    "allowed_changes": [
+      "import render_macro7_kosdaq_section",
+      "macro7_kosdaq route and market-macro selector entry",
+      "Macro5 visible label: 매크로 지표 5 -> 코스피지표"
+    ]
+  },
+  "isolation": {
+    "kospi_runtime_calls_from_macro7": 0,
+    "kosdaq_runtime_calls_from_macro5": 0,
+    "shared_session_state_key_count": 0,
+    "shared_mutable_preset_object_count": 0,
+    "presentation_only_ui_change_causing_runtime_refetch": 0
+  }
+}

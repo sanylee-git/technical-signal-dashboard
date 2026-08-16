@@ -1,0 +1,70 @@
+{
+  "contract_version": "kosdaq_macro7_d4_shadow_release_manifest_v1",
+  "stage": "D4A_SHADOW_DEPLOY_READINESS",
+  "gate": "BLOCKED_KOSDAQ_MACRO7_D4_SHADOW_TARGET_NOT_RESOLVED",
+  "substatus": [
+    "BLOCKED_KOSDAQ_MACRO7_D4_CLOUD_OBSERVABILITY_CONTRACT_INSUFFICIENT"
+  ],
+  "external_mutation_approval": "NOT_GRANTED",
+  "stage4_ui_baseline_sha256": "19190339ccf5d4ff5d38f5d424411d445c49e677f39a24da379562929deddf12",
+  "presentation_baseline_sha256": "409227c2e65ffa9979ec2b201a1d8cc98805554247d6801a87ed156badccaebf",
+  "local_head": "1e4cd49a894189ea5211e706449c9d93f66d20db",
+  "origin_main": "1e4cd49a894189ea5211e706449c9d93f66d20db",
+  "deployment_provider": "NOT_RESOLVED_FROM_REPOSITORY",
+  "deployment_entrypoint": "market_macro_dashboard.py -> technical_signal_dashboard.main(page=market_macro)",
+  "deployment_dependency_contract": "requirements.txt",
+  "production_target": "NOT_RESOLVED_FROM_REPOSITORY",
+  "shadow_target": "NOT_RESOLVED_FROM_REPOSITORY",
+  "proposed_branch": null,
+  "proposed_commit_scope": null,
+  "runtime_required_files": [
+    "technical_signal_dashboard.py",
+    "market_macro_dashboard.py",
+    "kosdaq_macro7_ui.py",
+    "kosdaq_macro7_runtime/",
+    "kosdaq_macro7_assets/",
+    "requirements.txt",
+    ".streamlit/config.toml"
+  ],
+  "excluded_files": [
+    "__pycache__/",
+    "*.pyc",
+    ".pytest_cache/",
+    ".streamlit/secrets.toml",
+    ".env",
+    "*_handoff_*.zip",
+    "_trash/",
+    "reports/macro6_*"
+  ],
+  "secret_names_required_by_macro7": [],
+  "secret_presence_only": {
+    "local_streamlit_secret_file": "PRESENT_AND_GITIGNORED",
+    "macro7_runtime_reads_secret_or_environment": false
+  },
+  "predeploy_tests": {
+    "py_compile": "PASS",
+    "stage1_to_d3_targeted_pytest": "17 passed",
+    "full_pytest": "126 passed, 21 existing warnings",
+    "stage3_1_immutable_baseline_hash": "PASS",
+    "stage4_ui_baseline_hash": "PASS"
+  },
+  "local_live_snapshot_metadata": {
+    "market_session_status": "NON_SESSION_DAY",
+    "last_valid_close_date": "2026-08-14",
+    "last_valid_close_value": 864.65,
+    "final10_rows": 10,
+    "usable_rows": 10,
+    "unavailable_rows": 0,
+    "candidate_basis_date_unique_values": ["2026-08-14"],
+    "invalid_component_as_risk_on_count": 0,
+    "combo2_input_semantics": "CHILD_COMBO1_RAW_RISK_STATE",
+    "final_t1_application_count": 1,
+    "source_freshness_counts": {
+      "FRESH": 10,
+      "NO_NEW_RELEASE_EXPECTED": 1
+    }
+  },
+  "deployment_ready": false,
+  "actual_deployment_performed": false,
+  "code_asset_config_modified": false
+}
