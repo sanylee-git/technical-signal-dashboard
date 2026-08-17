@@ -9317,10 +9317,10 @@ _MACRO_BACKTEST_COLGROUP = (
     '<col style="width:6.561%">'
     '<col style="width:5.103%">'
     '<col style="width:5.103%">'
-    '<col style="width:4.5%">'
-    '<col style="width:6.3%">'
-    '<col style="width:4.5%">'
-    '<col style="width:6.3%">'
+    '<col style="width:4.05%">'
+    '<col style="width:5.67%">'
+    '<col style="width:4.05%">'
+    '<col style="width:5.67%">'
     "</colgroup>"
 )
 _MACRO_BACKTEST_TABLE_STYLE = "width:100%;min-width:1406px;table-layout:fixed;border-collapse:collapse;font-size:11px;"

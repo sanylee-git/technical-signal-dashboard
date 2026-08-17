@@ -132,7 +132,7 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     assert "전체 자산" in table
     assert "전체 자산 (18Y)" in table
     assert "width:17.82%" in table
-    for width in ("5.103%", "4.5%", "6.3%"):
+    for width in ("5.103%", "4.05%", "5.67%"):
         assert table.count(f"width:{width}") == 2
     assert "전체 CAGR" in table
     assert "x)</span>" in table

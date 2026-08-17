@@ -387,7 +387,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
     metrics = payload["frozen_display_metrics"]
     hold = payload["benchmark_display_metrics"].set_index("window")
     headers = ["역할 / 후보", "10Y 자산", _full_asset_header(payload["backtest_windows"]), "전체 CAGR", "10Y MDD", "전체 MDD", "전체 Risk-off", "전체 Cycle", "짧은 Cycle", "1주 전", "시장단계(1주 전)", "현재", "시장단계"]
-    colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in ["17.82%", "7.6545%", "7.6545%", "6.561%", "7.29%", "7.29%", "6.561%", "5.103%", "5.103%", "4.5%", "6.3%", "4.5%", "6.3% "]) + "</colgroup>"
+    colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in ["17.82%", "7.6545%", "7.6545%", "6.561%", "7.29%", "7.29%", "6.561%", "5.103%", "5.103%", "4.05%", "5.67%", "4.05%", "5.67% "]) + "</colgroup>"
     style = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
     rows = []
     ten_hold, full_hold = hold.loc["10Y"], hold.loc["FULL"]
