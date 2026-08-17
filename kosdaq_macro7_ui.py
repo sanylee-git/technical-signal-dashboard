@@ -347,12 +347,22 @@ def _metric_html(value: object, hold_value: object, formatter: Callable[[object]
     return f"{text} <span style='color:{color};font-size:11px;font-weight:{weight};'>({ratio:.2f}x)</span>"
 
 
+def _full_asset_header(backtest_windows: dict[str, Any]) -> str:
+    try:
+        start = pd.Timestamp(backtest_windows["evaluation_start"])
+        end = pd.Timestamp(backtest_windows["frozen_cutoff"])
+        years = int((end - start).days / 365.25)
+    except (KeyError, TypeError, ValueError):
+        return "전체 자산"
+    return f"전체 자산 ({max(1, years)}Y)"
+
+
 def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> str:
     final = payload["final10"].loc[payload["final10"]["model_family"].eq(family)].sort_values("display_slot")
     snapshot = payload["snapshot"].set_index("candidate_id")
     metrics = payload["frozen_display_metrics"]
     hold = payload["benchmark_display_metrics"].set_index("window")
-    headers = ["역할 / 후보", "10Y 자산", "전체 자산", "전체 CAGR", "10Y MDD", "전체 MDD", "전체 Risk-off", "전체 Cycle", "짧은 Cycle", "1주 전", "시장단계(1주 전)", "현재", "시장단계"]
+    headers = ["역할 / 후보", "10Y 자산", _full_asset_header(payload["backtest_windows"]), "전체 CAGR", "10Y MDD", "전체 MDD", "전체 Risk-off", "전체 Cycle", "짧은 Cycle", "1주 전", "시장단계(1주 전)", "현재", "시장단계"]
     colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in ["22%", "7.6545%", "7.6545%", "6.561%", "7.29%", "7.29%", "6.561%", "5.67%", "5.67%", "5%", "7%", "5%", "7% "]) + "</colgroup>"
     style = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
     rows = []
@@ -387,7 +397,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
         rows.append(f"<tr style='{selected_style}'>" + "".join(cells) + "</tr>")
     alignments = ["left"] + ["right"] * 8 + ["center"] * 4
     return (
-        "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:100%;min-width:1480px;table-layout:fixed;border-collapse:collapse;font-size:12px'>"
+        "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:100%;min-width:1406px;table-layout:fixed;border-collapse:collapse;font-size:11px'>"
         + colgroup + "<thead><tr>" + "".join(f"<th style='text-align:{alignment};padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>{header}</th>" for header, alignment in zip(headers, alignments, strict=True)) + "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>"
     )
 

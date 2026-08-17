@@ -24,11 +24,11 @@ def test_b2v_current_status_is_compact_and_does_not_render_active_component_list
         ["길게 나오면 안 되는 구성요소"],
     )
 
-    assert "기준일</b> 2026-07-31" in html
-    assert "현재 플래그</b> 4/K4" in html
-    assert "상태</b>" in html
+    assert "기준일 2026-07-31" in html
+    assert "현재 플래그 <span style='color:#FF8C69;font-weight:700;font-variant-numeric:tabular-nums;'>4/K4</span>" in html
+    assert "상태 <span" in html
     assert "리스크 사이클 ON" in html
-    assert "실행</b> 비투자" in html
+    assert "실행 비투자" in html
     assert "오늘 Risk-off(위험회피) 시작" in html
     assert "길게 나오면 안 되는 구성요소" not in html
     assert "실행 상태" not in html
@@ -48,9 +48,9 @@ def test_b2v_compact_status_end_signal_sentence() -> None:
         duration_text="1",
     )
 
-    assert "현재 플래그</b> 2/K6" in html
+    assert "현재 플래그 <span style='color:#54F2A3;font-weight:700;font-variant-numeric:tabular-nums;'>2/K6</span>" in html
     assert "리스크 사이클 OFF" in html
-    assert "실행</b> 투자" in html
+    assert "실행 투자" in html
     assert "오늘 Risk-off(위험회피) 종료" in html
 
 
@@ -96,10 +96,10 @@ def test_b2v_macro6_status_panel_uses_same_compact_wording() -> None:
         combo_event_df=event_df,
     )
 
-    assert "현재 플래그</b> 2/K2" in status
+    assert "현재 플래그 <span style='color:#FF8C69;font-weight:700;font-variant-numeric:tabular-nums;'>2/K2</span>" in status
     assert "오늘 Risk-off(위험회피) 시작" in status
-    assert "실행</b> 비투자" in status
-    assert "(" not in status.split("현재 플래그</b>", 1)[1].split("ON", 1)[1][:8]
+    assert "실행 비투자" in status
+    assert status.count("2/K2") == 1
 
 
 def test_b2v_default_preset_is_unique_combo2_main_and_invalid_state_recovers_to_it() -> None:
@@ -170,7 +170,8 @@ def test_b2v_macro4_macro5_backtest_tables_share_fixed_width_contract() -> None:
 
     for html in (macro5_html, macro6_html):
         assert "macro-backtest-table-wrap" in html
-        assert "min-width:1480px" in html
+        assert "min-width:1406px" in html
+        assert "font-size:11px" in html
         assert "table-layout:fixed" in html
         assert html.count("<col style=") == 13
         assert dash._MACRO_BACKTEST_COLGROUP in html

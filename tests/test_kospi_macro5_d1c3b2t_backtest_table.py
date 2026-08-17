@@ -118,6 +118,7 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
     for html in (combo2, combo1):
         for column in required:
             assert column in html
+        assert "전체 자산 (18Y)" in html
         assert "20Y" not in html
         assert "연 전환" not in html
         assert "KOSPI 홀드" in html
@@ -127,6 +128,12 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
     assert combo1.count("<tr") == 6
     assert combo2.find("KOSPI 홀드") < combo2.find("[조합2]")
     assert combo1.find("KOSPI 홀드") < combo1.find("[조합1]")
+
+
+def test_b2t_full_asset_header_uses_frozen_window_duration() -> None:
+    _, _, stats = _assets()
+
+    assert dash._macro5_kospi_full_asset_header(stats) == "전체 자산 (18Y)"
 
 
 def test_b2t_current_column_uses_live_active_count_over_entry_k() -> None:
@@ -254,6 +261,6 @@ def test_b2t_week_ago_individual_stage_uses_historical_risk_state() -> None:
 def test_b2t_chart_and_runtime_functions_are_unchanged_except_macro4_backtest_table() -> None:
     assert _function_hash("_macro5_kospi_build_main_chart") == "139e595560114d98c4214e6e2421f8fd626fa14cc6bdfbc9b2f2e4332d104b66"
     assert _function_hash("_macro5_kospi_build_component_chart") == "fba1a49263474867b229aceb804783a08e28ec23792939175108e1aaada299de"
-    assert _function_hash("render_macro6_proxy_final_section") == "3f7aa8e5861bd7fa1b28ed5b12901c843bd26726df561550b7c1d307310ef046"
+    assert _function_hash("render_macro6_proxy_final_section") == "f8e03bacb7c87ef6617baef6fbfc93d9e3eb0141a4734b037666d87334671022"
     assert _function_hash("_build_macro6_backtest_panel") == "2c9fea51aae5e2805b1eac93356d2b19344474ab0b73190da7d4e0e464f2ee5b"
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"

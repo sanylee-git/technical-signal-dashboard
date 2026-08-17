@@ -9323,7 +9323,7 @@ _MACRO_BACKTEST_COLGROUP = (
     '<col style="width:7%">'
     "</colgroup>"
 )
-_MACRO_BACKTEST_TABLE_STYLE = "width:100%;min-width:1480px;table-layout:fixed;border-collapse:collapse;font-size:12px;"
+_MACRO_BACKTEST_TABLE_STYLE = "width:100%;min-width:1406px;table-layout:fixed;border-collapse:collapse;font-size:11px;"
 _MACRO_BACKTEST_TABLE_WRAP_OPEN = "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto;'>"
 _MACRO_BACKTEST_CELL_LEFT = "padding:7px 8px;color:#EDEDED;font-weight:700;line-height:1.28;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
 _MACRO_BACKTEST_CELL_NUM = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
@@ -9421,31 +9421,21 @@ def _macro_compact_status_html(
     except Exception:
         execution_text = "확인 불가"
     if start_event:
-        transition_text = f"오늘 {_macro_risk_state_display_text(True)} 시작"
-        transition_color = _MACRO_STATUS_RISK_OFF_COLOR
+        transition_html = f"<span style='color:{_MACRO_STATUS_RISK_OFF_COLOR};font-weight:700;'>오늘 {_macro_risk_state_display_text(True)} 시작</span>"
     elif end_event:
-        transition_text = f"오늘 {_macro_risk_state_display_text(True)} 종료"
-        transition_color = "#60A5FA"
+        transition_html = f"<span style='color:#60A5FA;font-weight:700;'>오늘 {_macro_risk_state_display_text(True)} 종료</span>"
     else:
-        transition_text = "오늘 전환 없음"
-        transition_color = "rgba(255,255,255,0.72)"
-    separator = "<span style='color:rgba(255,255,255,0.42);padding:0 8px;'>·</span>"
+        transition_html = "오늘 전환 없음"
+    separator = "<span style='color:rgba(255,255,255,.45)'>·</span>"
     return (
-        "<div class='macro-compact-status'>"
-        "<div class='macro-compact-status-line-primary' "
-        "style='display:flex;align-items:center;flex-wrap:wrap;color:#CFCFCF;font-size:12px;line-height:1.42;padding:0 0 2px 0;'>"
-        f"<span><b>기준일</b> {basis_date}</span>{separator}"
-        f"<span><b>현재 플래그</b> {_macro_on_k_text(int(active_count), int(start_k or component_count or 1))}</span>{separator}"
-        f"<span><b>상태</b> <span style='color:{risk_color};font-weight:700;'>{risk_text}</span></span>"
-        "</div>"
-        "<div class='macro-compact-status-line-secondary' "
-        "style='display:flex;align-items:center;flex-wrap:wrap;color:#AFAFAF;font-size:12px;line-height:1.42;padding:0 0 14px 0;'>"
-        f"<span><b>현재 상태 시작일</b> <span style='color:{risk_color};font-weight:700;'>{state_start}</span></span>{separator}"
-        f"<span><b>지속 거래일</b> <span style='color:{risk_color};font-weight:700;'>{duration_text}</span></span>{separator}"
-        f"<span><b>상태 구간 수익률</b> <span style='color:{state_return_color};font-weight:700;'>{state_return_text}</span></span>{separator}"
-        f"<span><b>실행</b> {execution_text}</span>{separator}"
-        f"<span style='color:{transition_color};font-weight:700;'>{transition_text}</span>"
-        "</div></div>"
+        "<div class='macro2-helper-text' style='line-height:1.75;'>"
+        f"기준일 {basis_date} {separator} "
+        f"현재 플래그 {_macro_flag_ratio_html(int(active_count), int(start_k or component_count or 1), bool(risk_state))} {separator} "
+        f"상태 <span style='color:{risk_color};font-weight:700'>{risk_text}</span><br>"
+        f"현재 상태 시작일 <span style='color:{risk_color};font-weight:700'>{state_start}</span> {separator} "
+        f"지속 거래일 <span style='color:{risk_color};font-weight:700'>{duration_text}</span> {separator} "
+        f"상태 구간 수익률 <span style='color:{state_return_color};font-weight:700'>{state_return_text}</span> {separator} 실행 {execution_text} {separator} "
+        f"{transition_html}</div>"
     )
 
 
@@ -14677,6 +14667,17 @@ def _macro5_kospi_with_hold_ratio(value: str, numerator, denominator, kind: str)
         return value
 
 
+def _macro5_kospi_full_asset_header(backtest_stats: dict | None) -> str:
+    try:
+        window = (backtest_stats or {}).get("window", {})
+        start = pd.Timestamp(window["frozen_start"])
+        end = pd.Timestamp(window["frozen_end"])
+        years = int((end - start).days / 365.25)
+    except (KeyError, TypeError, ValueError):
+        return "전체 자산"
+    return f"전체 자산 ({max(1, years)}Y)"
+
+
 def _macro5_kospi_build_backtest_panel(
     metrics: pd.DataFrame,
     live_row_map: dict[str, dict],
@@ -14780,7 +14781,7 @@ def _macro5_kospi_build_backtest_panel(
         + _macro_backtest_header_html([
             ("역할 / 후보", "left"),
             ("10Y 자산", "right"),
-            ("전체 자산", "right"),
+            (_macro5_kospi_full_asset_header(backtest_stats), "right"),
             ("전체 CAGR", "right"),
             ("10Y MDD", "right"),
             ("전체 MDD", "right"),
@@ -17339,6 +17340,8 @@ def main(page="signal"):
             if not _live_selected_ok5k:
                 st.warning(f"Live 상태를 계산할 수 없습니다: {(_live_error5k or 'Live history unavailable')[:180]}")
 
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+
             _bt_metrics5k = [
                 ("CAGR", _macro5_kospi_fmt_pct(_selected_row5k["cagr"])),
                 ("MDD", _macro5_kospi_fmt_pct(_selected_row5k["mdd"])),
@@ -18145,6 +18148,8 @@ def main(page="signal"):
                     _macro6_status_html,
                     unsafe_allow_html=True,
                 )
+
+            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
 
             _macro6_bt_compare_combo2_html = _build_macro6_backtest_panel(
                 _macro6_preset,

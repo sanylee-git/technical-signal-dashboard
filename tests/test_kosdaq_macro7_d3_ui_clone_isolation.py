@@ -129,6 +129,7 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     assert "시장단계" in summary
     assert "KOSDAQ 홀드" in table
     assert "전체 자산" in table
+    assert "전체 자산 (18Y)" in table
     assert "전체 CAGR" in table
     assert "x)</span>" in table
 

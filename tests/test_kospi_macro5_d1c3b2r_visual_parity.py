@@ -62,12 +62,12 @@ def test_b2r_status_wording_removes_duplicate_technical_phrases() -> None:
 
     html = dash._macro5_kospi_current_status_html(selected, live, 11, True, ["신용 스트레스", "KOSPI 지수"])
 
-    assert "현재 플래그</b> 9/K9" in html
+    assert "현재 플래그 <span style='color:#FF8C69;font-weight:700;font-variant-numeric:tabular-nums;'>9/K9</span>" in html
     assert "신용 스트레스" not in html
     assert "KOSPI 지수" not in html
-    assert "현재 상태 시작일</b> <span style='color:#FF8C69;font-weight:700;'>2026-05-26</span>" in html
-    assert "지속 거래일</b> <span style='color:#FF8C69;font-weight:700;'>47</span>" in html
-    assert "실행</b> 비투자" in html
+    assert "현재 상태 시작일 <span style='color:#FF8C69;font-weight:700'>2026-05-26</span>" in html
+    assert "지속 거래일 <span style='color:#FF8C69;font-weight:700'>47</span>" in html
+    assert "실행 비투자" in html
     assert "오늘 전환 없음" in html
     assert "T+1" not in html
     assert "47거래일 지속" not in html
@@ -147,4 +147,4 @@ def test_b2r_chart_and_macro4_functions_are_unchanged() -> None:
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"
     assert _function_hash("_build_macro6_component_chart") == "019bc507b5093fae7ad0ef6bea27b36fd297020e2ab6f2bf562b5926d7d8d85d"
     assert _function_hash("_build_macro6_indicator_chart") == "7725e3712828ccbb1f2e2d22f06ef5c59492efc8a7ebf359f7cf30d33f4f2231"
-    assert _function_hash("render_macro6_proxy_final_section") == "3f7aa8e5861bd7fa1b28ed5b12901c843bd26726df561550b7c1d307310ef046"
+    assert _function_hash("render_macro6_proxy_final_section") == "f8e03bacb7c87ef6617baef6fbfc93d9e3eb0141a4734b037666d87334671022"
