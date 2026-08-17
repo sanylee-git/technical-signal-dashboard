@@ -16038,7 +16038,7 @@ def main(page="signal"):
         "macro3": ("MACRO INDICATORS 3", "🧪 매크로 지표 3"),
         "macro4": ("MACRO INDICATORS 4", "🧪 매크로 지표 4"),
         "macro5": ("MACRO INDICATORS 5", "🧪 매크로 지표 3"),
-        "macro6": ("MACRO INDICATORS 6", "🧪 매크로 지표 4"),
+        "macro6": ("S&P INDICATORS", "🇺🇸 S&P지표"),
         "macro5_kospi": ("KOSPI MACRO INDICATORS", "🇰🇷 코스피지표"),
         "macro7_kosdaq": ("KOSDAQ MACRO INDICATORS", "🇰🇷 코스닥지표"),
         "all": ("TECHNICAL SIGNAL SCANNER", "🎯 기술적 신호 스캐너"),
@@ -16079,7 +16079,7 @@ def main(page="signal"):
             ("macro", "🌍 매크로 지표"),
             ("macro4", "🧪 매크로 지표 2"),
             ("macro5", "🧪 매크로 지표 3"),
-            ("macro6", "🧪 매크로 지표 4"),
+            ("macro6", "🇺🇸 S&P지표"),
             ("macro5_kospi", "🇰🇷 코스피지표"),
             ("macro7_kosdaq", "🇰🇷 코스닥지표"),
             ("market", "🌐 시장 내부지표"),
@@ -17057,10 +17057,6 @@ def main(page="signal"):
     def render_macro5_kospi_section(container):
         with container:
             _started = time.perf_counter()
-            st.markdown(
-                '<div class="macro2-helper-text">KOSPI 후보를 최신 데이터로 판단하고 공식 백테스트 결과와 비교합니다.</div>',
-                unsafe_allow_html=True,
-            )
             _render_macro_combo_common_css()
             st.markdown("""
             <style>
@@ -17838,10 +17834,6 @@ def main(page="signal"):
     def render_macro6_proxy_final_section(container):
         with container:
             _started = time.perf_counter()
-            st.markdown(
-                '<div class="macro2-helper-text">Proxy-only 신용지표 기준 사용자 선택 완료·운영 미승인 후보를 최신 Yahoo/FRED 데이터와 백테스트 availability 정책으로 재계산해 비교합니다.</div>',
-                unsafe_allow_html=True,
-            )
             _macro6_sync_bucket = _macro_sync_bucket(60)
             _render_macro_combo_common_css()
             st.markdown("""

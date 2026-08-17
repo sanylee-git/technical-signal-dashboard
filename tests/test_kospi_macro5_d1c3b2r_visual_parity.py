@@ -120,7 +120,7 @@ def test_b2r_render_section_removes_general_technical_captions_and_metric_card()
     text = SOURCE.read_text()
     section = text.split("def render_macro5_kospi_section", 1)[1].split("def render_macro5_final8_section", 1)[0]
 
-    assert "KOSPI 후보를 최신 데이터로 판단하고 공식 백테스트 결과와 비교합니다." in section
+    assert "KOSPI 후보를 최신 데이터로 판단하고 공식 백테스트 결과와 비교합니다." not in section
     assert "Live Shadow 상태 · freshness=" not in section
     assert "성과/차트는 Frozen 기준" not in section
     assert "_bt_html5k" not in section
@@ -147,4 +147,4 @@ def test_b2r_chart_and_macro4_functions_are_unchanged() -> None:
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"
     assert _function_hash("_build_macro6_component_chart") == "019bc507b5093fae7ad0ef6bea27b36fd297020e2ab6f2bf562b5926d7d8d85d"
     assert _function_hash("_build_macro6_indicator_chart") == "7725e3712828ccbb1f2e2d22f06ef5c59492efc8a7ebf359f7cf30d33f4f2231"
-    assert _function_hash("render_macro6_proxy_final_section") == "50bad188866add9f8de5e2317ad7cfb3e9841d7cd15fc7a4767541c4d60b5821"
+    assert _function_hash("render_macro6_proxy_final_section") == "3f7aa8e5861bd7fa1b28ed5b12901c843bd26726df561550b7c1d307310ef046"

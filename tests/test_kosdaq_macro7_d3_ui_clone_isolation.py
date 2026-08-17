@@ -88,6 +88,23 @@ def test_chart_ranges_and_default_candidate_are_bound_to_payload_basis_date() ->
     assert DEFAULT_CANDIDATE == "combo2_m7_k4_l3_58c1eaea19e6d371"
 
 
+def test_all_period_charts_start_at_official_evaluation_boundary() -> None:
+    payload = _payload()
+    row = _snapshot_row(payload, DEFAULT_CANDIDATE)
+    component = payload["component_history"].loc[
+        payload["component_history"]["parent_candidate_id"].eq(DEFAULT_CANDIDATE)
+    ].sort_values("component_order").iloc[0]
+
+    main = _main_chart(payload, DEFAULT_CANDIDATE, row["basis_date"], "all")
+    detail = _component_chart(payload, DEFAULT_CANDIDATE, component["component_id"], component["component_kind"], row["basis_date"], "all")
+    expected_start = pd.Timestamp(payload["backtest_windows"]["evaluation_start"]).normalize()
+
+    assert main is not None
+    assert detail is not None
+    assert pd.Timestamp(main.layout.xaxis.range[0]).normalize() == expected_start
+    assert pd.Timestamp(detail.layout.xaxis.range[0]).normalize() == expected_start
+
+
 def test_stage_display_is_only_a_label_projection() -> None:
     assert _stage(4, 4, 2, True) == "매도"
     assert _stage(1, 4, 2, False) == "매수심화"
@@ -142,7 +159,7 @@ def test_kosdaq_ui_owns_macro5_visual_parity_styles_without_shared_runtime_impor
     source = (ROOT / "kosdaq_macro7_ui.py").read_text(encoding="utf-8")
     assert ".macro2-divider {border-top:1px solid rgba(255,255,255,0.08);margin:24px 0}" in source
     assert ".macro2-helper-text {font-size:11.5px;line-height:1.45;color:rgba(255,255,255,0.56);margin:2px 0 14px 0}" in source
-    assert "KOSDAQ 후보를 최신 데이터로 판단" in source
+    assert "KOSDAQ 후보를 최신 데이터로 판단" not in source
     assert "kospi_macro5_runtime" not in source
 
 

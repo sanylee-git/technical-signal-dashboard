@@ -107,7 +107,7 @@ def _component_display_label(row: pd.Series | dict[str, Any]) -> str:
     return str(row.get("component_label", ""))
 
 
-def _view(frame: pd.DataFrame, *, candidate_id: str | None = None, parent_id: str | None = None, end: object = None, years: int | str = "all") -> pd.DataFrame:
+def _view(frame: pd.DataFrame, *, candidate_id: str | None = None, parent_id: str | None = None, start: object = None, end: object = None, years: int | str = "all") -> pd.DataFrame:
     if frame is None or frame.empty:
         return pd.DataFrame()
     out = frame.copy()
@@ -118,6 +118,8 @@ def _view(frame: pd.DataFrame, *, candidate_id: str | None = None, parent_id: st
         out = out.loc[out["parent_candidate_id"].eq(parent_id)]
     if end is not None:
         out = out.loc[out["date"].le(pd.Timestamp(end).normalize())]
+    if start is not None:
+        out = out.loc[out["date"].ge(pd.Timestamp(start).normalize())]
     if out.empty:
         return out
     out = out.sort_values("date")
@@ -155,9 +157,17 @@ def _layout(fig: go.Figure, title: str, x_start: pd.Timestamp, x_end: pd.Timesta
     return fig
 
 
+def _chart_display_start(payload: dict[str, Any], years: int | str) -> pd.Timestamp | None:
+    """Keep all-period charts within the official signal/backtest interval."""
+    if years != "all":
+        return None
+    return pd.Timestamp(payload["backtest_windows"]["evaluation_start"]).normalize()
+
+
 def _main_chart(payload: dict[str, Any], candidate_id: str, basis: object, years: int | str) -> go.Figure | None:
-    history = _view(payload["candidate_history"], candidate_id=candidate_id, end=basis, years=years)
-    benchmark = _view(payload["benchmark_history"], candidate_id=candidate_id, end=basis, years=years)
+    display_start = _chart_display_start(payload, years)
+    history = _view(payload["candidate_history"], candidate_id=candidate_id, start=display_start, end=basis, years=years)
+    benchmark = _view(payload["benchmark_history"], candidate_id=candidate_id, start=display_start, end=basis, years=years)
     if history.empty or benchmark.empty:
         return None
     x_start, x_end = benchmark["date"].min(), pd.Timestamp(basis).normalize()
@@ -178,8 +188,9 @@ def _component_chart(payload: dict[str, Any], parent_id: str, component_id: str,
         payload["component_history"]["parent_candidate_id"].eq(parent_id)
         & payload["component_history"]["component_id"].eq(component_id)
     ]
-    component = _view(component, end=basis, years=years)
-    benchmark = _view(payload["benchmark_history"], candidate_id=parent_id, end=basis, years=years)
+    display_start = _chart_display_start(payload, years)
+    component = _view(component, start=display_start, end=basis, years=years)
+    benchmark = _view(payload["benchmark_history"], candidate_id=parent_id, start=display_start, end=basis, years=years)
     if component.empty or benchmark.empty:
         return None
     x_start, x_end = benchmark["date"].min(), pd.Timestamp(basis).normalize()
@@ -190,7 +201,7 @@ def _component_chart(payload: dict[str, Any], parent_id: str, component_id: str,
     if component_kind == "CHILD_COMBO1_RAW_STATE":
         fig.add_trace(go.Scatter(x=benchmark["date"], y=benchmark["kosdaq_close"], name="KOSDAQ", line=dict(color="#BDBDBD", width=1.5)))
     else:
-        chart = _view(payload["component_chart_history"], end=basis, years=years)
+        chart = _view(payload["component_chart_history"], start=display_start, end=basis, years=years)
         chart = chart.loc[chart["component_id"].eq(component_id)]
         if chart.empty:
             return None
@@ -444,7 +455,6 @@ def render_macro7_kosdaq_section(
     """Render Macro7 using one already-computed presentation payload."""
     with container:
         _render_css()
-        st.markdown('<div class="macro2-helper-text">KOSDAQ 후보를 최신 데이터로 판단하고 공식 백테스트 결과와 비교합니다.</div>', unsafe_allow_html=True)
         if payload is None:
             bucket = sync_bucket or pd.Timestamp.now(tz="UTC").strftime("%Y%m%d%H%M")
             try:
