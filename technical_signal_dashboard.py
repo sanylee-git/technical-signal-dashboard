@@ -16989,8 +16989,6 @@ def main(page="signal"):
                             _macro4_whipsaw_caption = _macro4_whipsaw_caption_map.get(_macro4_preset)
                             if _macro4_whipsaw_caption:
                                 st.caption(_macro4_whipsaw_caption)
-                    with st.expander("지표별 최신 소스 확인 스케줄", expanded=False):
-                        st.markdown(source_schedule_table_html("snp"), unsafe_allow_html=True)
                     st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
                     st.plotly_chart(_macro4_combo_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_combo_{_macro4_preset}_{_benchmark_name4}_{_macro4_years}_{'_'.join(_selected_codes4)}_{_combo_k4}_{_macro_dynamic_cfg_signature(_macro4_cfgs, _selected_codes4)}")
                     if _macro4_is_meta:
@@ -18166,6 +18164,8 @@ def main(page="signal"):
                         st.caption(f"선정 이유: {_macro6_preset_cfg['selection_reason']}")
                     if _macro6_preset_cfg.get("dashboard_review_focus"):
                         st.caption(f"대시보드 확인 포인트: {_macro6_preset_cfg['dashboard_review_focus']}")
+            with st.expander("지표별 최신 소스 확인 스케줄", expanded=False):
+                st.markdown(source_schedule_table_html("snp"), unsafe_allow_html=True)
 
             st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
             st.plotly_chart(
