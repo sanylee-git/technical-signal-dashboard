@@ -1,5 +1,5 @@
 {
-  "contract_version": "kosdaq_macro7_live_source_contract_v1",
+  "contract_version": "kosdaq_macro7_live_source_contract_v2",
   "created_at_utc": "2026-08-16T13:37:11.215252+00:00",
   "market": "KOSDAQ",
   "frozen_cutoff": "2026-07-28",
@@ -38,12 +38,12 @@
       "fallback_provider": "yahoo",
       "fallback_identifier": "^KQ11",
       "timezone": "Asia/Seoul",
-      "calendar_or_release_basis": "XKRX completed session",
+      "calendar_or_release_basis": "XKRX current session during open; completed session otherwise",
       "availability_policy": "observation_date_plus_0_business_days",
       "release_lag_policy": "lag_bdays_0",
-      "freshness_policy": "completed_session_exact",
+      "freshness_policy": "current_session_intraday_allowed",
       "fallback_policy": "naver_primary_yahoo_kq11_authorized_fallback",
-      "partial_final_policy": "completed_daily_only; partial is provisional and excluded from official state",
+      "partial_final_policy": "current-session partial is provisional and included in live state; completed row is final",
       "required_raw_columns": [
         "date",
         "open",

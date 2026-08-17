@@ -51,6 +51,16 @@ def latest_completed_session(as_of: datetime | pd.Timestamp | None = None, calen
     return pd.Timestamp(completed["session_date"].iloc[-1]).normalize()
 
 
+def latest_allowed_live_session(as_of: datetime | pd.Timestamp | None = None, calendar: pd.DataFrame | None = None) -> pd.Timestamp | None:
+    """Use the current XKRX session only while it is actually open or closed."""
+    asset = calendar if calendar is not None else load_calendar()
+    now_kst = _as_kst(as_of)
+    today = now_kst.tz_localize(None).normalize()
+    if session_status(as_of, asset) in {"INTRADAY", "AFTER_CLOSE"}:
+        return today
+    return latest_completed_session(as_of, asset)
+
+
 def sessions_between(start: object, end: object, calendar: pd.DataFrame | None = None) -> pd.DatetimeIndex:
     asset = calendar if calendar is not None else load_calendar()
     left, right = pd.Timestamp(start).normalize(), pd.Timestamp(end).normalize()

@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 
 from kosdaq_macro7_runtime.live_runtime import _source_availability, normalize_daily_merge_key, run_live_runtime
 from kosdaq_macro7_runtime.live_sources import SOURCE_SPECS
-from kosdaq_macro7_runtime.market_calendar import session_status
+from kosdaq_macro7_runtime.market_calendar import latest_allowed_live_session, latest_completed_session, session_status
 from tools.kosdaq_macro7_validate_live_runtime import validate
 
 
@@ -53,11 +53,17 @@ def test_fixture_live_runtime_preserves_frozen_prefix() -> None:
     assert live["provisional_intraday_model_state"] == "NOT_COMPUTED"
 
 
-def test_intraday_market_row_is_not_treated_as_final() -> None:
+def test_intraday_market_row_is_used_as_provisional_live_state() -> None:
     live = run_live_runtime(as_of=datetime(2026, 8, 3, 2, tzinfo=timezone.utc), provider_frames=_frames(include_intraday_market_row=True))
     assert session_status(datetime(2026, 8, 3, 2, tzinfo=timezone.utc)) == "INTRADAY"
-    assert live["merge"]["last_valid_close_date"] == "2026-07-31"
-    assert live["merge"]["live_tail_last_date"] == "2026-07-31"
+    assert latest_completed_session(datetime(2026, 8, 3, 2, tzinfo=timezone.utc)).strftime("%Y-%m-%d") == "2026-07-31"
+    assert latest_allowed_live_session(datetime(2026, 8, 3, 2, tzinfo=timezone.utc)).strftime("%Y-%m-%d") == "2026-08-03"
+    assert live["merge"]["last_valid_close_date"] == "2026-08-03"
+    assert live["merge"]["last_market_row_status"] == "INTRADAY"
+    assert live["merge"]["live_tail_last_date"] == "2026-08-03"
+    assert live["provisional_intraday_model_state"] == "COMPUTED"
+    assert (live["combined"].loc[live["combined"]["date"].eq(pd.Timestamp("2026-08-03")), "kosdaq_market_data_status"] == "LIVE_INTRADAY").all()
+    assert live["snapshot"]["basis_date"].eq("2026-08-03").all()
 
 
 def test_stale_or_missing_source_does_not_become_risk_on() -> None:

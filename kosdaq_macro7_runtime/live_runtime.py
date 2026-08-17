@@ -13,7 +13,7 @@ from pandas.tseries.offsets import BDay
 
 from .frozen_replay import _candidate_frame, _combine, _final_t1, _metrics, _performance
 from .live_sources import SOURCE_SPECS, fetch_all_sources
-from .market_calendar import latest_completed_session, load_calendar, session_status, sessions_between
+from .market_calendar import latest_allowed_live_session, latest_completed_session, load_calendar, session_status, sessions_between
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -110,7 +110,13 @@ def _freshness(source_id: str, info: dict[str, Any], latest_session: pd.Timestam
     return {**info, "freshness_status": status, "expected_observation_date": _date(expected)}
 
 
-def _market_tail(frame: pd.DataFrame, sessions: pd.DatetimeIndex, latest_session: pd.Timestamp | None) -> tuple[pd.DataFrame, dict[str, Any]]:
+def _market_tail(
+    frame: pd.DataFrame,
+    sessions: pd.DatetimeIndex,
+    latest_session: pd.Timestamp | None,
+    *,
+    session_is_intraday: bool,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
     valid = _valid(frame)
     if latest_session is None:
         return valid.iloc[0:0].copy(), {"last_market_row_date": None, "last_market_row_status": "INVALID", "last_valid_close_date": None, "last_valid_close_value": None}
@@ -118,10 +124,12 @@ def _market_tail(frame: pd.DataFrame, sessions: pd.DatetimeIndex, latest_session
     valid = valid.loc[valid["observation_date"].isin(session_set)].copy()
     tail = valid.loc[valid["observation_date"].gt(FROZEN_CUTOFF) & valid["observation_date"].le(latest_session)].copy()
     tail["row_status"] = "FINAL"
+    if session_is_intraday:
+        tail.loc[tail["observation_date"].eq(latest_session), "row_status"] = "INTRADAY"
     last = tail.sort_values("observation_date").tail(1)
     return tail, {
         "last_market_row_date": _date(valid["observation_date"].max() if not valid.empty else pd.NaT),
-        "last_market_row_status": "FINAL" if not last.empty else "INVALID",
+        "last_market_row_status": str(last["row_status"].iloc[0]) if not last.empty else "INVALID",
         "last_valid_close_date": _date(last["observation_date"].iloc[0] if not last.empty else pd.NaT),
         "last_valid_close_value": None if last.empty else float(last["close"].iloc[0]),
     }
@@ -135,9 +143,16 @@ def _rolling_zscore(series: pd.Series, window: int = 252) -> pd.Series:
 
 def _combined_frame(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame], as_of: pd.Timestamp) -> tuple[pd.DataFrame, list[dict[str, Any]], dict[str, Any]]:
     calendar_asset = load_calendar()
-    latest_session = latest_completed_session(as_of, calendar_asset)
+    completed_session = latest_completed_session(as_of, calendar_asset)
+    latest_session = latest_allowed_live_session(as_of, calendar_asset)
+    session_is_intraday = session_status(as_of, calendar_asset) == "INTRADAY"
     available_sessions = sessions_between(FROZEN_CUTOFF + pd.Timedelta(days=1), latest_session, calendar_asset) if latest_session is not None else pd.DatetimeIndex([])
-    market, market_meta = _market_tail(frames["kosdaq_ohlcv"], available_sessions, latest_session)
+    market, market_meta = _market_tail(
+        frames["kosdaq_ohlcv"],
+        available_sessions,
+        latest_session,
+        session_is_intraday=session_is_intraday,
+    )
     tail_dates = pd.DatetimeIndex(pd.to_datetime(market["observation_date"])).normalize().sort_values().unique() if not market.empty else pd.DatetimeIndex([])
     out = frozen.copy()
     if len(tail_dates):
@@ -151,7 +166,7 @@ def _combined_frame(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame], as_of
         tail["kosdaq_performance_price"] = tail["kosdaq_close"]
         tail["kosdaq_performance_calendar_eligible"] = tail["kosdaq_close"].notna() & tail["kosdaq_close"].gt(0)
         tail["kosdaq_ohlc_signal_eligible"] = tail[["kosdaq_open", "kosdaq_high", "kosdaq_low", "kosdaq_close"]].notna().all(axis=1)
-        tail["kosdaq_market_data_status"] = "LIVE_FINAL"
+        tail["kosdaq_market_data_status"] = market["row_status"].map({"FINAL": "LIVE_FINAL", "INTRADAY": "LIVE_INTRADAY"}).to_numpy()
         out = pd.concat([out, tail], ignore_index=True)
     out = out.sort_values("date").drop_duplicates("date", keep="first").reset_index(drop=True)
     tail_dates = pd.DatetimeIndex(out.loc[out["date"].gt(FROZEN_CUTOFF), "date"]).normalize()
@@ -195,7 +210,7 @@ def _combined_frame(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame], as_of
             out[column] = restored.reindex(output_index).to_numpy()
     market_info = _freshness("kosdaq_ohlcv", {"source_id": "kosdaq_ohlcv", "observation_date": market_meta["last_valid_close_date"], "available_through_date": market_meta["last_valid_close_date"], "raw_available_date": market_meta["last_valid_close_date"], "reason": ""}, latest_session, as_of)
     source_info.insert(0, market_info)
-    merge = {**market_meta, "latest_completed_session": _date(latest_session), "frozen_rows_overwritten": 0, "live_rows_on_or_before_cutoff_used_for_runtime": 0, "duplicate_date_count": int(out["date"].duplicated().sum()), "live_tail_first_date": _date(tail_dates.min() if len(tail_dates) else pd.NaT), "live_tail_last_date": _date(tail_dates.max() if len(tail_dates) else pd.NaT), "live_tail_row_count": int(len(tail_dates))}
+    merge = {**market_meta, "latest_completed_session": _date(completed_session), "latest_calculation_session": _date(latest_session), "frozen_rows_overwritten": 0, "live_rows_on_or_before_cutoff_used_for_runtime": 0, "duplicate_date_count": int(out["date"].duplicated().sum()), "live_tail_first_date": _date(tail_dates.min() if len(tail_dates) else pd.NaT), "live_tail_last_date": _date(tail_dates.max() if len(tail_dates) else pd.NaT), "live_tail_row_count": int(len(tail_dates))}
     return out, source_info, merge
 
 
@@ -316,4 +331,5 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
         performance.insert(0, "candidate_id", row.candidate_id)
         performances.append(performance)
         metrics.append({"candidate_id": row.candidate_id, **_metrics(performance)})
-    return {"as_of_utc": as_of_utc.isoformat(), "as_of_kst": as_of_utc.tz_convert("Asia/Seoul").isoformat(), "market_session_status": session_status(as_of_utc), "provisional_intraday_model_state": "NOT_COMPUTED", "contract": contract, "combined": combined, "source_status": pd.DataFrame(source_status), "merge": merge, "core": core, "core_bases": core_bases, "core_reasons": core_reasons, "child": child, "child_bases": child_bases, "final_combo1": final_combo1, "final_combo2": final_combo2, "t1": t1, "snapshot": pd.DataFrame(snapshots), "performance": pd.concat(performances, ignore_index=True) if performances else pd.DataFrame(), "metrics": pd.DataFrame(metrics), "combo2_input_semantics": "CHILD_COMBO1_RAW_RISK_STATE", "final_t1_application_count": 1, "invalid_component_as_risk_on_count": 0}
+    provisional_state = "COMPUTED" if merge["last_market_row_status"] == "INTRADAY" else "NOT_COMPUTED"
+    return {"as_of_utc": as_of_utc.isoformat(), "as_of_kst": as_of_utc.tz_convert("Asia/Seoul").isoformat(), "market_session_status": session_status(as_of_utc), "provisional_intraday_model_state": provisional_state, "contract": contract, "combined": combined, "source_status": pd.DataFrame(source_status), "merge": merge, "core": core, "core_bases": core_bases, "core_reasons": core_reasons, "child": child, "child_bases": child_bases, "final_combo1": final_combo1, "final_combo2": final_combo2, "t1": t1, "snapshot": pd.DataFrame(snapshots), "performance": pd.concat(performances, ignore_index=True) if performances else pd.DataFrame(), "metrics": pd.DataFrame(metrics), "combo2_input_semantics": "CHILD_COMBO1_RAW_RISK_STATE", "final_t1_application_count": 1, "invalid_component_as_risk_on_count": 0}
