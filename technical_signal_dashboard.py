@@ -8836,6 +8836,13 @@ def _make_macro6_combo_chart_from_snapshot(
             height=300,
         ),
     )
+    fig.update_xaxes(
+        range=[
+            pd.Timestamp(spx_aligned.index.min()).strftime("%Y-%m-%d"),
+            pd.Timestamp(spx_aligned.index.max()).strftime("%Y-%m-%d"),
+        ],
+        autorange=False,
+    )
     labels = event_df["selected_labels"].iloc[0] if not event_df.empty and "selected_labels" in event_df.columns else ""
     fig.add_annotation(
         xref="paper", yref="paper", x=0.01, y=0.98, showarrow=False,

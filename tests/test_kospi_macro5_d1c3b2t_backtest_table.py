@@ -263,4 +263,4 @@ def test_b2t_chart_and_runtime_functions_are_unchanged_except_macro4_backtest_ta
     assert _function_hash("_macro5_kospi_build_component_chart") == "b45e95a1ab04b261261446f4d3ff9d8dd05265e2ed0f181fd03aed8ce3e7b185"
     assert _function_hash("render_macro6_proxy_final_section") == "88cf84c8847528c71a9569f761750d79ab5c37ea377eb3422559ad96faeb42fa"
     assert _function_hash("_build_macro6_backtest_panel") == "2c9fea51aae5e2805b1eac93356d2b19344474ab0b73190da7d4e0e464f2ee5b"
-    assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"
+    assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "b20008ba521082938df09881c1b048aa7cce260547f71041e88c9ec66dcc48fd"
