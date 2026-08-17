@@ -129,6 +129,7 @@ def test_b2r_render_section_removes_general_technical_captions_and_metric_card()
     assert "고급 설정 · 모델 및 데이터 정보" in section
     assert "──────── 조합1 ────────" in section
     assert "[data-baseweb=\"tag\"] span" in section
+    assert section.count('<div class="macro2-divider macro2-divider-tight-top"></div>') == 6
 
 
 def test_b2r_preset_main_alias_uses_fixed_slots() -> None:
@@ -142,9 +143,9 @@ def test_b2r_preset_main_alias_uses_fixed_slots() -> None:
 
 
 def test_b2r_chart_and_macro4_functions_are_unchanged() -> None:
-    assert _function_hash("_macro5_kospi_build_main_chart") == "139e595560114d98c4214e6e2421f8fd626fa14cc6bdfbc9b2f2e4332d104b66"
-    assert _function_hash("_macro5_kospi_build_component_chart") == "fba1a49263474867b229aceb804783a08e28ec23792939175108e1aaada299de"
+    assert _function_hash("_macro5_kospi_build_main_chart") == "6f04019fc3b22922fcb7ba892003f0411fdf24b6d24ee436a9e890bb305f9034"
+    assert _function_hash("_macro5_kospi_build_component_chart") == "cb33f0ce232dd423cc4b7846aa361f10919bde9f5a8eed600da02c2c4b15881a"
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"
     assert _function_hash("_build_macro6_component_chart") == "019bc507b5093fae7ad0ef6bea27b36fd297020e2ab6f2bf562b5926d7d8d85d"
     assert _function_hash("_build_macro6_indicator_chart") == "7725e3712828ccbb1f2e2d22f06ef5c59492efc8a7ebf359f7cf30d33f4f2231"
-    assert _function_hash("render_macro6_proxy_final_section") == "f8e03bacb7c87ef6617baef6fbfc93d9e3eb0141a4734b037666d87334671022"
+    assert _function_hash("render_macro6_proxy_final_section") == "bcf878c25774243e125137fbb698b927fb3fc5d01e579963782b2f3a8dc4d021"

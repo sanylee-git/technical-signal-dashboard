@@ -172,12 +172,12 @@ def test_macro5_b1_render_section_has_split_expanders_and_no_general_dataframe()
 
 
 def test_macro5_b1_chart_and_macro4_functions_are_unchanged() -> None:
-    assert _function_hash("_macro5_kospi_build_main_chart") == "139e595560114d98c4214e6e2421f8fd626fa14cc6bdfbc9b2f2e4332d104b66"
-    assert _function_hash("_macro5_kospi_build_component_chart") == "fba1a49263474867b229aceb804783a08e28ec23792939175108e1aaada299de"
+    assert _function_hash("_macro5_kospi_build_main_chart") == "6f04019fc3b22922fcb7ba892003f0411fdf24b6d24ee436a9e890bb305f9034"
+    assert _function_hash("_macro5_kospi_build_component_chart") == "cb33f0ce232dd423cc4b7846aa361f10919bde9f5a8eed600da02c2c4b15881a"
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"
     assert _function_hash("_build_macro6_component_chart") == "019bc507b5093fae7ad0ef6bea27b36fd297020e2ab6f2bf562b5926d7d8d85d"
     assert _function_hash("_build_macro6_indicator_chart") == "7725e3712828ccbb1f2e2d22f06ef5c59492efc8a7ebf359f7cf30d33f4f2231"
-    assert _function_hash("render_macro6_proxy_final_section") == "3f7aa8e5861bd7fa1b28ed5b12901c843bd26726df561550b7c1d307310ef046"
+    assert _function_hash("render_macro6_proxy_final_section") == "bcf878c25774243e125137fbb698b927fb3fc5d01e579963782b2f3a8dc4d021"
     assert _function_hash("_build_macro6_status_panel") == "e38378a8559b713f42236edac8d6c7f2bb868f802c140dd7de6d6176fd827f5e"
     assert _function_hash("_build_macro6_backtest_panel") == "2c9fea51aae5e2805b1eac93356d2b19344474ab0b73190da7d4e0e464f2ee5b"
     assert _function_hash("_macro6_state_duration_html") == "c4ca1c10022d45538e13b561aac8ab42f68e5cfc16be31f615e3017f1f870fee"

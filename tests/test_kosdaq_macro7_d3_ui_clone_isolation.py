@@ -19,6 +19,7 @@ from kosdaq_macro7_ui import (
     _backtest_table,
     _component_chart,
     _component_display_label,
+    _candidate_label,
     _component_status_table,
     _current_status_html,
     _group_summary,
@@ -84,8 +85,8 @@ def test_chart_ranges_and_default_candidate_are_bound_to_payload_basis_date() ->
     fig = _main_chart(payload, DEFAULT_CANDIDATE, row["basis_date"], 5)
     assert fig is not None
     assert pd.Timestamp(fig.layout.xaxis.range[1]).normalize() == pd.Timestamp(row["basis_date"]).normalize()
-    assert "조합1 7개/K4/L3" in fig.layout.title.text
-    assert DEFAULT_CANDIDATE == "combo2_m7_k4_l3_58c1eaea19e6d371"
+    assert "조합1 5개/K3/L2" in fig.layout.title.text
+    assert DEFAULT_CANDIDATE == "combo2_m5_k3_l2_50e15ab10d6cba46"
 
 
 def test_all_period_charts_start_at_official_evaluation_boundary() -> None:
@@ -130,7 +131,7 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     assert "KOSDAQ 홀드" in table
     assert "전체 자산" in table
     assert "전체 자산 (18Y)" in table
-    assert "width:19.8%" in table
+    assert "width:17.82%" in table
     assert "전체 CAGR" in table
     assert "x)</span>" in table
 
@@ -150,6 +151,20 @@ def test_kosdaq_component_labels_and_status_remain_payload_driven() -> None:
     assert "오늘 전환" in status
     assert "상태 구간 수익률" in status
     assert "최신 날짜" in _component_status_table(payload, candidate_id)
+
+
+def test_kosdaq_main_labels_and_combo_family_separator_are_display_only() -> None:
+    payload = _payload()
+    rows = payload["final10"].set_index("candidate_id")
+
+    assert "Main1 안정적 균형형" in _candidate_label(rows.loc["combo2_m5_k3_l2_50e15ab10d6cba46"])
+    assert "Main2 성과 대표" in _candidate_label(rows.loc["combo2_m7_k4_l3_58c1eaea19e6d371"])
+    assert "Main1 최고 성과형" in _candidate_label(rows.loc["combo1_n10_k8_l5_7d675fa2173be942"])
+    assert "Main2 사이클·수익형" in _candidate_label(rows.loc["combo1_n9_k7_l5_ef47fc166183b7f0"])
+
+    source = (ROOT / "kosdaq_macro7_ui.py").read_text(encoding="utf-8")
+    assert "__macro7_kosdaq_combo1_separator__" in source
+    assert "──────── 조합1 ────────" in source
 
 
 def test_kosdaq_backtest_tables_render_before_main_chart() -> None:

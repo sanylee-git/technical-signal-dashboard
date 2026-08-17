@@ -9308,7 +9308,7 @@ def _macro6_preset_display_label(cfg: dict) -> str:
 
 _MACRO_BACKTEST_COLGROUP = (
     "<colgroup>"
-    '<col style="width:19.8%">'
+    '<col style="width:17.82%">'
     '<col style="width:7.6545%">'
     '<col style="width:7.6545%">'
     '<col style="width:6.561%">'
@@ -14024,7 +14024,7 @@ def _macro5_kospi_suffix(candidate_id: str) -> str:
 
 _MACRO5_KOSPI_DISPLAY_LABEL_OVERRIDES = {
     "m6::combo2_m6_k4_l2_2d90a80e824f7336": "[조합2] Main1 강건·안정 균형형 (조합1 6개/K4/L2)",
-    "m5::combo2_m5_k2_l1_2bc7e194fdecfd9e": "[조합2] Main2 MDD·Calmar 앵커 (조합1 5개/K2/L1)",
+    "m5::combo2_m5_k2_l1_2bc7e194fdecfd9e": "[조합2] Main2 MDD·Calmar (조합1 5개/K2/L1)",
     "combo1_n11_k9_l5_b984a8e53ad69a2d": "[조합1] Main1 강건·균형 코어형 (지표 11개/K9/L5)",
     "combo1_n11_k8_l5_93919287424179bd": "[조합1] Main2 방어·효율 코어형 (지표 11개/K8/L5)",
 }
@@ -15261,28 +15261,6 @@ def _macro5_kospi_apply_macro4_chart_layout(fig: go.Figure, title: str, height: 
     fig.update_yaxes(gridcolor="rgba(255,255,255,0.04)", title_text=None)
 
 
-def _macro5_kospi_add_latest_kospi_marker(fig: go.Figure, merged: pd.DataFrame, yaxis: str = "y") -> None:
-    if merged is None or merged.empty or "date" not in merged.columns or "kospi_close" not in merged.columns:
-        return
-    points = merged[["date", "kospi_close"]].copy()
-    points["date"] = pd.to_datetime(points["date"], errors="coerce")
-    points["kospi_close"] = pd.to_numeric(points["kospi_close"], errors="coerce")
-    points = points.dropna(subset=["date", "kospi_close"]).sort_values("date")
-    if points.empty:
-        return
-    latest = points.iloc[-1]
-    fig.add_trace(go.Scatter(
-        x=[latest["date"]],
-        y=[latest["kospi_close"]],
-        yaxis=yaxis,
-        mode="markers",
-        name="KOSPI 최신",
-        marker=dict(symbol="circle", color="rgba(230,230,230,0.96)", size=5),
-        hovertemplate="%{x|%Y-%m-%d}<br>KOSPI %{y:,.2f}<extra></extra>",
-        showlegend=False,
-    ))
-
-
 def _macro5_kospi_build_main_chart(candidate_signal: pd.DataFrame, benchmark: pd.DataFrame, label: str, years: int | str, show_raw: bool, basis_date=None, common_start=None) -> go.Figure | None:
     if candidate_signal is None or candidate_signal.empty or benchmark is None or benchmark.empty:
         return None
@@ -15312,7 +15290,6 @@ def _macro5_kospi_build_main_chart(candidate_signal: pd.DataFrame, benchmark: pd
         line=dict(color="rgba(182,182,182,0.88)", width=1.55),
         hovertemplate="%{x|%Y-%m-%d}<br>KOSPI %{y:,.2f}<extra></extra>",
     ))
-    _macro5_kospi_add_latest_kospi_marker(fig, merged, yaxis="y")
     if show_raw:
         position_y = merged["kospi_close"].where(merged["t1_position"].astype(int) == 1)
         fig.add_trace(go.Scatter(
@@ -15521,11 +15498,10 @@ def _macro5_kospi_build_component_chart(
         name="KOSPI",
         line=dict(color="rgba(182,182,182,0.88)", width=1.55),
     ))
-    _macro5_kospi_add_latest_kospi_marker(fig, merged, yaxis="y" if is_combo2_component else "y2")
     _macro5_kospi_add_price_markers(fig, merged, yaxis="y" if is_combo2_component else "y2")
     _macro5_kospi_apply_macro4_chart_layout(fig, chart_title, _MACRO5_KOSPI_CHART_HEIGHT, x_start, x_end)
     if is_combo2_component:
-        fig.update_layout(yaxis=dict(title=None, side="right", showgrid=True))
+        fig.update_layout(yaxis=dict(title=None, side="right", showgrid=True, showticklabels=False, showline=False))
     else:
         fig.update_layout(
             yaxis=dict(title=None, side="left", showgrid=True),
@@ -17173,7 +17149,7 @@ def main(page="signal"):
             if st.session_state.get("macro5_kospi_preset") not in _preset_order5k:
                 st.session_state["macro5_kospi_preset"] = _default_preset5k
 
-            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-divider macro2-divider-tight-top"></div>', unsafe_allow_html=True)
             st.markdown(
                 _macro5_kospi_group_summary_html(
                     _live5k.get("candidate_rows", []) if isinstance(_live5k, dict) else [],
@@ -17183,7 +17159,7 @@ def main(page="signal"):
                 unsafe_allow_html=True,
             )
 
-            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-divider macro2-divider-tight-top"></div>', unsafe_allow_html=True)
             _l51, _l52, _l53, _l54 = st.columns([1.8, 1.0, 2.2, 1.0], vertical_alignment="bottom")
             with _l51:
                 st.markdown('<div class="macro2-control-label">조합 프리셋</div>', unsafe_allow_html=True)
@@ -17259,7 +17235,7 @@ def main(page="signal"):
                 st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
                 _show_raw_macro5_kospi = st.checkbox("보조선 표시", value=False, key="macro5_kospi_show_raw", label_visibility="collapsed")
 
-            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-divider macro2-divider-tight-top"></div>', unsafe_allow_html=True)
             _l55, _l56 = st.columns([4.4, 1.6], vertical_alignment="bottom")
             with _l55:
                 st.markdown('<div class="macro2-control-label">조합 지표</div>', unsafe_allow_html=True)
@@ -17417,7 +17393,7 @@ def main(page="signal"):
                 else:
                     st.caption("선택 후보 구성요소 상태를 표시할 수 없습니다.")
 
-            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-divider macro2-divider-tight-top"></div>', unsafe_allow_html=True)
             if _live_history_ready5k:
                 _signals5k = _live_candidate_history_all5k.copy()
                 _components5k = _live_component_history_all5k.copy()

@@ -31,7 +31,17 @@ STAGE_SCORES = {
     "관망": 0, "매도준비": 1, "매도": 2, "매도심화": 3,
 }
 PERIOD_OPTIONS: list[int | str] = [2, 3, 5, 7, 10, 15, "all"]
-DEFAULT_CANDIDATE = "combo2_m7_k4_l3_58c1eaea19e6d371"
+KOSDAQ_COMBO2_MAIN1 = "combo2_m5_k3_l2_50e15ab10d6cba46"
+KOSDAQ_COMBO2_MAIN2 = "combo2_m7_k4_l3_58c1eaea19e6d371"
+KOSDAQ_COMBO1_MAIN1 = "combo1_n10_k8_l5_7d675fa2173be942"
+KOSDAQ_COMBO1_MAIN2 = "combo1_n9_k7_l5_ef47fc166183b7f0"
+DEFAULT_CANDIDATE = KOSDAQ_COMBO2_MAIN1
+KOSDAQ_DISPLAY_ROLE_OVERRIDES = {
+    KOSDAQ_COMBO2_MAIN1: "Main1 안정적 균형형",
+    KOSDAQ_COMBO2_MAIN2: "Main2 성과 대표",
+    KOSDAQ_COMBO1_MAIN1: "Main1 최고 성과형",
+    KOSDAQ_COMBO1_MAIN2: "Main2 사이클·수익형",
+}
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -99,7 +109,9 @@ def _candidate_label(row: pd.Series | dict[str, Any]) -> str:
     family = str(row.get("model_family", ""))
     prefix = "조합1" if family == "COMBO1" else "조합2"
     unit = "지표" if family == "COMBO1" else "조합1"
-    return f"[{prefix}] {row.get('display_role', '')} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
+    candidate_id = str(row.get("candidate_id") or (row.name if isinstance(row, pd.Series) else ""))
+    role = KOSDAQ_DISPLAY_ROLE_OVERRIDES.get(candidate_id, str(row.get("display_role", "")))
+    return f"[{prefix}] {role} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
 
 
 def _component_display_label(row: pd.Series | dict[str, Any]) -> str:
@@ -363,7 +375,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
     metrics = payload["frozen_display_metrics"]
     hold = payload["benchmark_display_metrics"].set_index("window")
     headers = ["역할 / 후보", "10Y 자산", _full_asset_header(payload["backtest_windows"]), "전체 CAGR", "10Y MDD", "전체 MDD", "전체 Risk-off", "전체 Cycle", "짧은 Cycle", "1주 전", "시장단계(1주 전)", "현재", "시장단계"]
-    colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in ["19.8%", "7.6545%", "7.6545%", "6.561%", "7.29%", "7.29%", "6.561%", "5.67%", "5.67%", "5%", "7%", "5%", "7% "]) + "</colgroup>"
+    colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in ["17.82%", "7.6545%", "7.6545%", "6.561%", "7.29%", "7.29%", "6.561%", "5.67%", "5.67%", "5%", "7%", "5%", "7% "]) + "</colgroup>"
     style = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
     rows = []
     ten_hold, full_hold = hold.loc["10Y"], hold.loc["FULL"]
@@ -479,7 +491,14 @@ def render_macro7_kosdaq_section(
         snapshot = payload["snapshot"].copy()
         final = payload["final10"].copy().sort_values(["model_family", "display_slot"])
         candidate_map = {str(row.candidate_id): row for row in final.itertuples(index=False)}
-        ordered = final.loc[final["model_family"].eq("COMBO2"), "candidate_id"].tolist() + final.loc[final["model_family"].eq("COMBO1"), "candidate_id"].tolist()
+        combo2_order = final.loc[final["model_family"].eq("COMBO2"), "candidate_id"].tolist()
+        combo1_order = final.loc[final["model_family"].eq("COMBO1"), "candidate_id"].tolist()
+        combo2_order = [candidate_id for candidate_id in (KOSDAQ_COMBO2_MAIN1, KOSDAQ_COMBO2_MAIN2) if candidate_id in combo2_order] + [candidate_id for candidate_id in combo2_order if candidate_id not in {KOSDAQ_COMBO2_MAIN1, KOSDAQ_COMBO2_MAIN2}]
+        combo1_order = [candidate_id for candidate_id in (KOSDAQ_COMBO1_MAIN1, KOSDAQ_COMBO1_MAIN2) if candidate_id in combo1_order] + [candidate_id for candidate_id in combo1_order if candidate_id not in {KOSDAQ_COMBO1_MAIN1, KOSDAQ_COMBO1_MAIN2}]
+        ordered = combo2_order + combo1_order
+        separator = "__macro7_kosdaq_combo1_separator__"
+        if st.session_state.get("macro7_kosdaq_preset") == separator:
+            st.session_state["macro7_kosdaq_preset"] = combo1_order[0] if combo1_order else DEFAULT_CANDIDATE
         if st.session_state.get("macro7_kosdaq_preset") not in ordered:
             st.session_state["macro7_kosdaq_preset"] = DEFAULT_CANDIDATE
         st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
@@ -492,8 +511,17 @@ def render_macro7_kosdaq_section(
                 st.markdown(f'<div class="macro2-control-label">{label}</div>', unsafe_allow_html=True)
         st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
         c1, c2, c3, c4 = st.columns([1.8, 1.0, 2.2, 1.0], vertical_alignment="bottom")
+        preset_options = combo2_order + [separator] + combo1_order
         with c1:
-            candidate_id = st.selectbox("조합 프리셋", ordered, format_func=lambda value: labels[value], key="macro7_kosdaq_preset", label_visibility="collapsed")
+            candidate_id = st.selectbox(
+                "조합 프리셋",
+                preset_options,
+                format_func=lambda value: "──────── 조합1 ────────" if value == separator else labels[value],
+                key="macro7_kosdaq_preset",
+                label_visibility="collapsed",
+            )
+        if candidate_id == separator:
+            candidate_id = combo1_order[0] if combo1_order else DEFAULT_CANDIDATE
         state = _snapshot_row(payload, candidate_id)
         component_history = _view(payload["component_history"], parent_id=candidate_id, end=state["basis_date"])
         options = [option for option in PERIOD_OPTIONS if option == "all" or (pd.Timestamp(state["basis_date"]) - component_history["date"].min()).days >= int(option) * 365]
