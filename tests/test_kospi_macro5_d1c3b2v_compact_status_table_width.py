@@ -175,6 +175,8 @@ def test_b2v_macro4_macro5_backtest_tables_share_fixed_width_contract() -> None:
         assert "table-layout:fixed" in html
         assert html.count("<col style=") == 13
         assert 'width:17.82%' in html
+        for width in ("5.103%", "4.5%", "6.3%"):
+            assert html.count(f'width:{width}') == 2
         assert dash._MACRO_BACKTEST_COLGROUP in html
 
     assert dash._MACRO_BACKTEST_COLGROUP in macro5_html
