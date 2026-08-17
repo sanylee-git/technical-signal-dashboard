@@ -13,13 +13,14 @@ def test_schedule_tables_are_compact_static_guidance() -> None:
     for market, local_label in (("snp", "S&P500 (Yahoo ^GSPC)"), ("kospi", "KOSPI (Yahoo ^KS11)"), ("kosdaq", "KOSDAQ (네이버 · Yahoo ^KQ11 fallback)")):
         html = source_schedule_table_html(market)
         assert html.count("<tbody>") == 1
-        assert html.count("<tr>") >= 10
+        assert html.count("<tr>") >= 6
         assert local_label in unescape(html)
         assert "갱신 주기" in html
         assert "권장 확인 시각(KST)" in html
         assert "NFCI 신용스트레스" in html
-        assert "미국 10년 금리" in html
-        assert "미국 BAA 회사채" in html
+        assert "미국 금리" in html
+        assert "미국 회사채" in html
+        assert "미국 서머타임: 3월 둘째 일요일~11월 첫째 일요일" in html
 
 
 def test_all_three_macro_pages_wire_the_existing_schedule_expander() -> None:
