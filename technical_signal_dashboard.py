@@ -11953,10 +11953,10 @@ def _render_macro_combo_common_css():
     <style>
     .macro2-divider {
         border-top: 1px solid rgba(255,255,255,0.08);
-        margin: 24px 0;
+        margin: 16px 0 24px;
     }
     .macro2-divider-tight-top {
-        margin: 12px 0 24px;
+        margin: 16px 0 24px;
     }
     .macro2-helper-text {
         font-size: 11.5px;
@@ -15501,7 +15501,7 @@ def _macro5_kospi_build_component_chart(
     _macro5_kospi_add_price_markers(fig, merged, yaxis="y" if is_combo2_component else "y2")
     _macro5_kospi_apply_macro4_chart_layout(fig, chart_title, _MACRO5_KOSPI_CHART_HEIGHT, x_start, x_end)
     if is_combo2_component:
-        fig.update_layout(yaxis=dict(title=None, side="right", showgrid=True, showticklabels=False, showline=False))
+        fig.update_layout(yaxis=dict(title=None, side="left", showgrid=True, showticklabels=True))
     else:
         fig.update_layout(
             yaxis=dict(title=None, side="left", showgrid=True),

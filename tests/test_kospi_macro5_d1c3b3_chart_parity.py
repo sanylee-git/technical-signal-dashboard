@@ -69,7 +69,8 @@ def test_macro5_combo2_component_chart_uses_kospi_events_and_no_binary_or_kl_dis
     assert fig.layout.height == 300
     assert pd.to_datetime(fig.layout.xaxis.range[1]).normalize() == pd.Timestamp("2026-07-31")
     assert fig.layout.yaxis.title.text in (None, "")
-    assert fig.layout.yaxis.showticklabels is False
+    assert fig.layout.yaxis.side == "left"
+    assert fig.layout.yaxis.showticklabels is True
     assert len(fig.layout.annotations or []) == 0
     names = {trace.name for trace in fig.data}
     assert {"KOSPI", "Risk 시작", "Risk 종료"}.issubset(names)

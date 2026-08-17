@@ -173,7 +173,7 @@ def test_macro5_b1_render_section_has_split_expanders_and_no_general_dataframe()
 
 def test_macro5_b1_chart_and_macro4_functions_are_unchanged() -> None:
     assert _function_hash("_macro5_kospi_build_main_chart") == "6f04019fc3b22922fcb7ba892003f0411fdf24b6d24ee436a9e890bb305f9034"
-    assert _function_hash("_macro5_kospi_build_component_chart") == "cb33f0ce232dd423cc4b7846aa361f10919bde9f5a8eed600da02c2c4b15881a"
+    assert _function_hash("_macro5_kospi_build_component_chart") == "b45e95a1ab04b261261446f4d3ff9d8dd05265e2ed0f181fd03aed8ce3e7b185"
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"
     assert _function_hash("_build_macro6_component_chart") == "019bc507b5093fae7ad0ef6bea27b36fd297020e2ab6f2bf562b5926d7d8d85d"
     assert _function_hash("_build_macro6_indicator_chart") == "7725e3712828ccbb1f2e2d22f06ef5c59492efc8a7ebf359f7cf30d33f4f2231"

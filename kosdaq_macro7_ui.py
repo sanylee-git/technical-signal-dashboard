@@ -114,6 +114,16 @@ def _candidate_label(row: pd.Series | dict[str, Any]) -> str:
     return f"[{prefix}] {role} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
 
 
+def _ordered_candidate_ids(final: pd.DataFrame, family: str) -> list[str]:
+    candidate_ids = final.loc[final["model_family"].eq(family), "candidate_id"].tolist()
+    preferred = (
+        (KOSDAQ_COMBO2_MAIN1, KOSDAQ_COMBO2_MAIN2)
+        if family == "COMBO2"
+        else (KOSDAQ_COMBO1_MAIN1, KOSDAQ_COMBO1_MAIN2)
+    )
+    return [candidate_id for candidate_id in preferred if candidate_id in candidate_ids] + [candidate_id for candidate_id in candidate_ids if candidate_id not in preferred]
+
+
 def _component_display_label(row: pd.Series | dict[str, Any]) -> str:
     """Return the frozen presentation label without inventing child roles."""
     return str(row.get("component_label", ""))
@@ -370,7 +380,9 @@ def _full_asset_header(backtest_windows: dict[str, Any]) -> str:
 
 
 def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> str:
-    final = payload["final10"].loc[payload["final10"]["model_family"].eq(family)].sort_values("display_slot")
+    all_final = payload["final10"].sort_values(["model_family", "display_slot"])
+    candidate_order = _ordered_candidate_ids(all_final, family)
+    final = all_final.set_index("candidate_id").loc[candidate_order].reset_index()
     snapshot = payload["snapshot"].set_index("candidate_id")
     metrics = payload["frozen_display_metrics"]
     hold = payload["benchmark_display_metrics"].set_index("window")
@@ -444,8 +456,8 @@ def _component_status_table(payload: dict[str, Any], candidate_id: str) -> str:
 def _render_css() -> None:
     st.markdown("""
     <style>
-    .macro2-divider {border-top:1px solid rgba(255,255,255,0.08);margin:24px 0}
-    .macro2-divider-tight-top {margin:12px 0 24px}
+    .macro2-divider {border-top:1px solid rgba(255,255,255,0.08);margin:16px 0 24px}
+    .macro2-divider-tight-top {margin:16px 0 24px}
     .macro2-helper-text {font-size:11.5px;line-height:1.45;color:rgba(255,255,255,0.56);margin:2px 0 14px 0}
     .macro2-control-label {font-size:11.5px;color:rgba(255,255,255,0.72);font-weight:600;line-height:1.2;margin-bottom:.7rem}
     .macro2-control-spacer {height:18px}
@@ -491,10 +503,8 @@ def render_macro7_kosdaq_section(
         snapshot = payload["snapshot"].copy()
         final = payload["final10"].copy().sort_values(["model_family", "display_slot"])
         candidate_map = {str(row.candidate_id): row for row in final.itertuples(index=False)}
-        combo2_order = final.loc[final["model_family"].eq("COMBO2"), "candidate_id"].tolist()
-        combo1_order = final.loc[final["model_family"].eq("COMBO1"), "candidate_id"].tolist()
-        combo2_order = [candidate_id for candidate_id in (KOSDAQ_COMBO2_MAIN1, KOSDAQ_COMBO2_MAIN2) if candidate_id in combo2_order] + [candidate_id for candidate_id in combo2_order if candidate_id not in {KOSDAQ_COMBO2_MAIN1, KOSDAQ_COMBO2_MAIN2}]
-        combo1_order = [candidate_id for candidate_id in (KOSDAQ_COMBO1_MAIN1, KOSDAQ_COMBO1_MAIN2) if candidate_id in combo1_order] + [candidate_id for candidate_id in combo1_order if candidate_id not in {KOSDAQ_COMBO1_MAIN1, KOSDAQ_COMBO1_MAIN2}]
+        combo2_order = _ordered_candidate_ids(final, "COMBO2")
+        combo1_order = _ordered_candidate_ids(final, "COMBO1")
         ordered = combo2_order + combo1_order
         separator = "__macro7_kosdaq_combo1_separator__"
         if st.session_state.get("macro7_kosdaq_preset") == separator:

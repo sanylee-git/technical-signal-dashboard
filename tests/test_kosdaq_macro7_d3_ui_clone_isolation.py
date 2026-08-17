@@ -134,6 +134,7 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     assert "width:17.82%" in table
     assert "전체 CAGR" in table
     assert "x)</span>" in table
+    assert table.index("KOSDAQ 홀드") < table.index("Main1 안정적 균형형") < table.index("Main2 성과 대표")
 
 
 def test_kosdaq_component_labels_and_status_remain_payload_driven() -> None:
@@ -174,7 +175,7 @@ def test_kosdaq_backtest_tables_render_before_main_chart() -> None:
 
 def test_kosdaq_ui_owns_macro5_visual_parity_styles_without_shared_runtime_import() -> None:
     source = (ROOT / "kosdaq_macro7_ui.py").read_text(encoding="utf-8")
-    assert ".macro2-divider {border-top:1px solid rgba(255,255,255,0.08);margin:24px 0}" in source
+    assert ".macro2-divider {border-top:1px solid rgba(255,255,255,0.08);margin:16px 0 24px}" in source
     assert ".macro2-helper-text {font-size:11.5px;line-height:1.45;color:rgba(255,255,255,0.56);margin:2px 0 14px 0}" in source
     assert "KOSDAQ 후보를 최신 데이터로 판단" not in source
     assert "kospi_macro5_runtime" not in source
