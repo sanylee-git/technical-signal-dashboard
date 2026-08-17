@@ -9308,7 +9308,7 @@ def _macro6_preset_display_label(cfg: dict) -> str:
 
 _MACRO_BACKTEST_COLGROUP = (
     "<colgroup>"
-    '<col style="width:22%">'
+    '<col style="width:19.8%">'
     '<col style="width:7.6545%">'
     '<col style="width:7.6545%">'
     '<col style="width:6.561%">'
@@ -11954,6 +11954,9 @@ def _render_macro_combo_common_css():
     .macro2-divider {
         border-top: 1px solid rgba(255,255,255,0.08);
         margin: 24px 0;
+    }
+    .macro2-divider-tight-top {
+        margin: 12px 0 24px;
     }
     .macro2-helper-text {
         font-size: 11.5px;
@@ -17286,7 +17289,7 @@ def main(page="signal"):
                     unsafe_allow_html=True,
                 )
 
-            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-divider macro2-divider-tight-top"></div>', unsafe_allow_html=True)
             _candidate_signal5k = _signals5k[_signals5k["candidate_id"] == _macro5_kospi_preset].copy()
             _candidate_signal5k = _macro5_kospi_with_events(_candidate_signal5k)
             _state_span5k = _macro5_kospi_current_state_span(
@@ -17340,7 +17343,7 @@ def main(page="signal"):
             if not _live_selected_ok5k:
                 st.warning(f"Live 상태를 계산할 수 없습니다: {(_live_error5k or 'Live history unavailable')[:180]}")
 
-            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-divider macro2-divider-tight-top"></div>', unsafe_allow_html=True)
 
             _bt_metrics5k = [
                 ("CAGR", _macro5_kospi_fmt_pct(_selected_row5k["cagr"])),
@@ -18078,7 +18081,7 @@ def main(page="signal"):
                         st.write(f"- {_reason}")
                 return
 
-            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-divider macro2-divider-tight-top"></div>', unsafe_allow_html=True)
             _macro6_selected_snapshot = _compute_macro6_operating_snapshot(_macro6_preset_cfg, sync_bucket=_macro6_sync_bucket)
             if _macro6_selected_snapshot is None:
                 st.warning("선택한 Proxy-only 후보 상세 스냅샷을 만들지 못했습니다.")
@@ -18149,7 +18152,7 @@ def main(page="signal"):
                     unsafe_allow_html=True,
                 )
 
-            st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-divider macro2-divider-tight-top"></div>', unsafe_allow_html=True)
 
             _macro6_bt_compare_combo2_html = _build_macro6_backtest_panel(
                 _macro6_preset,

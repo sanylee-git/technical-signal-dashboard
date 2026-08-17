@@ -363,7 +363,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
     metrics = payload["frozen_display_metrics"]
     hold = payload["benchmark_display_metrics"].set_index("window")
     headers = ["역할 / 후보", "10Y 자산", _full_asset_header(payload["backtest_windows"]), "전체 CAGR", "10Y MDD", "전체 MDD", "전체 Risk-off", "전체 Cycle", "짧은 Cycle", "1주 전", "시장단계(1주 전)", "현재", "시장단계"]
-    colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in ["22%", "7.6545%", "7.6545%", "6.561%", "7.29%", "7.29%", "6.561%", "5.67%", "5.67%", "5%", "7%", "5%", "7% "]) + "</colgroup>"
+    colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in ["19.8%", "7.6545%", "7.6545%", "6.561%", "7.29%", "7.29%", "6.561%", "5.67%", "5.67%", "5%", "7%", "5%", "7% "]) + "</colgroup>"
     style = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
     rows = []
     ten_hold, full_hold = hold.loc["10Y"], hold.loc["FULL"]
@@ -433,6 +433,7 @@ def _render_css() -> None:
     st.markdown("""
     <style>
     .macro2-divider {border-top:1px solid rgba(255,255,255,0.08);margin:24px 0}
+    .macro2-divider-tight-top {margin:12px 0 24px}
     .macro2-helper-text {font-size:11.5px;line-height:1.45;color:rgba(255,255,255,0.56);margin:2px 0 14px 0}
     .macro2-control-label {font-size:11.5px;color:rgba(255,255,255,0.72);font-weight:600;line-height:1.2;margin-bottom:.7rem}
     .macro2-control-spacer {height:18px}
@@ -521,10 +522,10 @@ def render_macro7_kosdaq_section(
                 f"<div style='padding-top:8px;font-size:11.5px;line-height:1.42;color:rgba(255,255,255,.84)'>시작 {int(state['K'])}개 이상 ON<br>종료 {int(state['L'])}개 이하 ON</div>",
                 unsafe_allow_html=True,
             )
-        st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="macro2-divider macro2-divider-tight-top"></div>', unsafe_allow_html=True)
         candidate_history = _view(payload["candidate_history"], candidate_id=candidate_id, end=state["basis_date"])
         st.markdown(_current_status_html(state, candidate_history), unsafe_allow_html=True)
-        st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="macro2-divider macro2-divider-tight-top"></div>', unsafe_allow_html=True)
         with st.expander("백테스트 비교 보기 · 조합2", expanded=False):
             st.markdown(_backtest_table(payload, "COMBO2", candidate_id), unsafe_allow_html=True)
         with st.expander("백테스트 비교 보기 · 조합1", expanded=False):
