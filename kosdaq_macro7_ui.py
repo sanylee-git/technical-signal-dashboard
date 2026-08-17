@@ -24,7 +24,11 @@ RISK_OFF = "#FF8C69"
 STAGE_COLORS = {
     "매수준비": RISK_ON, "매수": "#22C55E", "매수심화": "#15803D",
     "홀드": "#A18707", "관망": "#A18707", "매도준비": RISK_OFF,
-    "매도": "#F05A47", "매도심화": "#DC2626", "계산 불가": RISK_OFF,
+    "매도": "#F05A47", "매도심화": "#DC2626", "혼조": "#6B7280", "계산 불가": RISK_OFF,
+}
+STAGE_SCORES = {
+    "매수심화": -3, "매수": -2, "매수준비": -1, "홀드": 0,
+    "관망": 0, "매도준비": 1, "매도": 2, "매도심화": 3,
 }
 PERIOD_OPTIONS: list[int | str] = [2, 3, 5, 7, 10, 15, "all"]
 DEFAULT_CANDIDATE = "combo2_m7_k4_l3_58c1eaea19e6d371"
@@ -96,6 +100,17 @@ def _candidate_label(row: pd.Series | dict[str, Any]) -> str:
     prefix = "조합1" if family == "COMBO1" else "조합2"
     unit = "지표" if family == "COMBO1" else "조합1"
     return f"[{prefix}] {row.get('display_role', '')} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
+
+
+def _component_display_label(row: pd.Series | dict[str, Any]) -> str:
+    label = str(row.get("component_label", ""))
+    if str(row.get("component_kind", "")) != "CHILD_COMBO1_RAW_STATE":
+        return label
+    try:
+        order = int(row.get("component_order"))
+    except (TypeError, ValueError):
+        return label
+    return label.replace("구성 후보", f"구성 {order}", 1)
 
 
 def _view(frame: pd.DataFrame, *, candidate_id: str | None = None, parent_id: str | None = None, end: object = None, years: int | str = "all") -> pd.DataFrame:
@@ -195,31 +210,105 @@ def _component_chart(payload: dict[str, Any], parent_id: str, component_id: str,
                 fig.add_trace(go.Scatter(x=chart["date"], y=chart[column], name=label, line=dict(color=color, width=1, dash="dot")))
         fig.add_trace(go.Scatter(x=benchmark["date"], y=benchmark["kosdaq_close"], name="KOSDAQ", yaxis="y2", line=dict(color="#777777", width=1)))
         fig.update_layout(yaxis2=dict(overlaying="y", side="right", showgrid=False, color="#808080"))
-    return _layout(fig, str(component["component_label"].iloc[-1]), x_start, x_end)
+    return _layout(fig, _component_display_label(component.iloc[-1]), x_start, x_end)
 
 
 def _snapshot_row(payload: dict[str, Any], candidate_id: str) -> pd.Series:
     return payload["snapshot"].loc[payload["snapshot"]["candidate_id"].eq(candidate_id)].iloc[0]
 
 
+def _group_stage(labels: list[str]) -> str:
+    if not labels or any(label not in STAGE_SCORES for label in labels):
+        return "계산 불가"
+    scores = [STAGE_SCORES[label] for label in labels]
+    buy, sell, neutral = sum(score < 0 for score in scores), sum(score > 0 for score in scores), sum(score == 0 for score in scores)
+    neutral_label = "홀드" if labels.count("홀드") > labels.count("관망") else "관망" if labels.count("관망") > labels.count("홀드") else "혼조"
+    if neutral > max(buy, sell):
+        return neutral_label
+    if buy and sell and max(buy, sell) / (buy + sell) < (2 / 3):
+        return "혼조"
+    if sell == buy:
+        return "혼조"
+    direction, dominant = ("SELL", [score for score in scores if score > 0]) if sell > buy else ("BUY", [score for score in scores if score < 0])
+    strength = (sum(abs(score) for score in dominant) / len(dominant)) * (len(dominant) / len(scores))
+    if strength < 0.5:
+        return neutral_label
+    if strength < 1.5:
+        return "매도준비" if direction == "SELL" else "매수준비"
+    if strength < 2.5:
+        return "매도" if direction == "SELL" else "매수"
+    return "매도심화" if direction == "SELL" else "매수심화"
+
+
+def _combined_stage(combo1_stage: str, combo2_stage: str) -> str:
+    stages = [combo1_stage, combo2_stage]
+    if any(stage in {"계산 불가", "혼조"} for stage in stages):
+        return "계산 불가" if "계산 불가" in stages else "혼조"
+    scores = [STAGE_SCORES.get(stage) for stage in stages]
+    if any(score is None for score in scores) or scores[0] * scores[1] < 0:
+        return "혼조"
+    if scores[0] == scores[1] == 0:
+        return stages[0] if stages[0] == stages[1] else "혼조"
+    score = sum(scores) / 2
+    if abs(score) < 0.5:
+        return "혼조"
+    if abs(score) < 1.5:
+        return "매도준비" if score > 0 else "매수준비"
+    if abs(score) < 2.5:
+        return "매도" if score > 0 else "매수"
+    return "매도심화" if score > 0 else "매수심화"
+
+
+def _stage_change_html(previous: str, current: str) -> str:
+    arrow = "<span style='color:rgba(255,255,255,.36);padding:0 4px;'>→</span>"
+    return f"{_stage_html(previous)}{arrow}{_stage_html(current)}"
+
+
 def _group_summary(payload: dict[str, Any]) -> str:
     snapshot = payload["snapshot"]
-    chunks = []
+    summary: dict[str, dict[str, str]] = {}
     for family, name in (("COMBO2", "조합2"), ("COMBO1", "조합1")):
         rows = snapshot.loc[snapshot["model_family"].eq(family)]
         usable = rows.loc[rows["status"].eq("USABLE")]
         risk_off = int(usable["raw_risk_state"].astype(bool).sum())
         basis = max((_date(value) for value in usable["basis_date"]), default="계산 불가")
-        chunks.append(
-            f"<span style='color:{RISK_ON};font-weight:700'>{name} 계산 가능 {len(usable)} / {len(rows)}</span>"
-            f"<span style='color:rgba(255,255,255,.55)'> · 계산 불가 {len(rows)-len(usable)}</span><br>"
-            f"<span style='color:{RISK_OFF if risk_off else RISK_ON};font-weight:700'>{name} Risk-off(위험회피) {risk_off}/{len(rows)}</span>"
-            f"<span style='color:rgba(255,255,255,.55)'> · 기준일 {basis}</span>"
-        )
-    return "<div class='macro2-helper-text' style='line-height:1.55;'>" + "<span style='padding:0 10px;color:rgba(255,255,255,.36)'>|</span>".join(chunks) + "</div>"
+        stages = [_stage(row.active_count, row.K, row.L, row.raw_risk_state) for row in usable.itertuples(index=False)]
+        previous = [_stage(row.week_ago_active_count, row.K, row.L, row.week_ago_raw_risk_state) for row in usable.itertuples(index=False)]
+        summary[name] = {
+            "availability": f"<span style='color:{RISK_ON};font-weight:700'>{name} 계산 가능 {len(usable)} / {len(rows)}</span><span style='color:rgba(255,255,255,.55)'> · 계산 불가 {len(rows)-len(usable)}</span>",
+            "risk": f"<span style='color:{RISK_OFF if risk_off else RISK_ON};font-weight:700'>{name} Risk-off(위험회피) {risk_off}/{len(rows)}</span><span style='color:rgba(255,255,255,.55)'> · 기준일 {basis}</span>",
+            "stage": _group_stage(stages),
+            "previous": _group_stage(previous),
+        }
+    separator = "<span style='color:rgba(255,255,255,.36);padding:0 10px;'>|</span>"
+    combo2, combo1 = summary["조합2"], summary["조합1"]
+    combined = _combined_stage(combo1["stage"], combo2["stage"])
+    previous_combined = _combined_stage(combo1["previous"], combo2["previous"])
+    stage_line = (
+        f"<span><b>시장단계</b> · 조합1+2: {_stage_change_html(previous_combined, combined)}</span>{separator}"
+        f"<span>조합2: {_stage_change_html(combo2['previous'], combo2['stage'])}</span>{separator}"
+        f"<span>조합1: {_stage_change_html(combo1['previous'], combo1['stage'])}</span>"
+    )
+    return (
+        "<div class='macro2-helper-text' style='margin-top:6px;line-height:1.55;'>"
+        f"<div>{combo2['availability']}{separator}{combo1['availability']}</div>"
+        f"<div style='margin-top:2px;'>{combo2['risk']}{separator}{combo1['risk']}</div>"
+        f"<div style='margin-top:2px;'>{stage_line}</div></div>"
+    )
 
 
-def _current_status_html(row: pd.Series) -> str:
+def _today_transition_html(history: pd.DataFrame) -> str:
+    if history.empty:
+        return "오늘 전환 확인 불가"
+    latest = history.sort_values("date").iloc[-1]
+    if bool(latest.get("risk_start", False)):
+        return f"<span style='color:{RISK_OFF};font-weight:700;'>오늘 Risk-off 시작</span>"
+    if bool(latest.get("risk_end", False)):
+        return "<span style='color:#60A5FA;font-weight:700;'>오늘 Risk-off 종료</span>"
+    return "오늘 전환 없음"
+
+
+def _current_status_html(row: pd.Series, candidate_history: pd.DataFrame) -> str:
     if row["status"] != "USABLE":
         return "<div class='macro2-helper-text'>현재 상태를 계산할 수 없습니다.</div>"
     state = bool(row["raw_risk_state"])
@@ -235,8 +324,21 @@ def _current_status_html(row: pd.Series) -> str:
         f"상태 <span style='color:{color};font-weight:700'>{state_text}</span><br>"
         f"현재 상태 시작일 <span style='color:{color};font-weight:700'>{_date(row['current_risk_start_date'])}</span> <span style='color:rgba(255,255,255,.45)'>·</span> "
         f"지속 거래일 <span style='color:{color};font-weight:700'>{int(row['current_duration_trading_days'])}</span> <span style='color:rgba(255,255,255,.45)'>·</span> "
-        f"구간 수익률 {segment_html} <span style='color:rgba(255,255,255,.45)'>·</span> 실행 {execution}</div>"
+        f"구간 수익률 {segment_html} <span style='color:rgba(255,255,255,.45)'>·</span> 실행 {execution} <span style='color:rgba(255,255,255,.45)'>·</span> {_today_transition_html(candidate_history)}</div>"
     )
+
+
+def _metric_html(value: object, hold_value: object, formatter: Callable[[object], str], *, higher_is_better: bool) -> str:
+    text = formatter(value)
+    try:
+        ratio = abs(float(value) / float(hold_value))
+        if not np.isfinite(ratio):
+            return text
+    except (TypeError, ValueError, ZeroDivisionError):
+        return text
+    better = ratio > 1.0 if higher_is_better else ratio < 1.0
+    color, weight = (RISK_ON, "700") if better else ("#8F8F8F", "400")
+    return f"{text} <span style='color:{color};font-size:11px;font-weight:{weight};'>({ratio:.2f}x)</span>"
 
 
 def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> str:
@@ -248,6 +350,16 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
     colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in ["22%", "7.6545%", "7.6545%", "6.561%", "7.29%", "7.29%", "6.561%", "5.67%", "5.67%", "5%", "7%", "5%", "7% "]) + "</colgroup>"
     style = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
     rows = []
+    ten_hold, full_hold = hold.loc["10Y"], hold.loc["FULL"]
+    hold_cells = [
+        "<td style='padding:7px 8px;color:#EDEDED;font-weight:700;text-align:left;white-space:nowrap'>KOSDAQ 홀드</td>",
+        f"<td style='{style}'>{_fmt_asset(ten_hold.asset)}</td>", f"<td style='{style}'>{_fmt_asset(full_hold.asset)}</td>", f"<td style='{style}'>{_fmt_pct(full_hold.cagr)}</td>",
+        f"<td style='{style}'>{_fmt_pct(ten_hold.mdd)}</td>", f"<td style='{style}'>{_fmt_pct(full_hold.mdd)}</td>", f"<td style='{style}'>{_fmt_pct(full_hold.risk_off_ratio)}</td>",
+        "<td style='padding:7px 8px;text-align:center'>-</td>", "<td style='padding:7px 8px;text-align:center'>-</td>",
+        "<td style='padding:7px 8px;text-align:center'>-</td>", "<td style='padding:7px 8px;text-align:center'>-</td>",
+        "<td style='padding:7px 8px;text-align:center'>-</td>", "<td style='padding:7px 8px;text-align:center'>-</td>",
+    ]
+    rows.append("<tr>" + "".join(hold_cells) + "</tr>")
     for _, candidate in final.iterrows():
         cid = str(candidate["candidate_id"])
         state = snapshot.loc[cid]
@@ -258,8 +370,8 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
         selected_style = "background:rgba(120,126,231,.16);border-top:1px solid rgba(120,126,231,.34);border-bottom:1px solid rgba(120,126,231,.34);" if cid == selected_id else ""
         cells = [
             f"<td title='{escape(_candidate_label(candidate))}' style='padding:7px 8px;color:#EDEDED;font-weight:700;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{escape(_candidate_label(candidate))}</td>",
-            f"<td style='{style}'>{_fmt_asset(ten.asset)}</td>", f"<td style='{style}'>{_fmt_asset(full.asset)}</td>", f"<td style='{style}'>{_fmt_pct(full.cagr)}</td>",
-            f"<td style='{style}'>{_fmt_pct(ten.mdd)}</td>", f"<td style='{style}'>{_fmt_pct(full.mdd)}</td>", f"<td style='{style}'>{_fmt_pct(full.risk_off_ratio)}</td>",
+            f"<td style='{style}'>{_metric_html(ten.asset, ten_hold.asset, _fmt_asset, higher_is_better=True)}</td>", f"<td style='{style}'>{_metric_html(full.asset, full_hold.asset, _fmt_asset, higher_is_better=True)}</td>", f"<td style='{style}'>{_metric_html(full.cagr, full_hold.cagr, _fmt_pct, higher_is_better=True)}</td>",
+            f"<td style='{style}'>{_metric_html(ten.mdd, ten_hold.mdd, _fmt_pct, higher_is_better=False)}</td>", f"<td style='{style}'>{_metric_html(full.mdd, full_hold.mdd, _fmt_pct, higher_is_better=False)}</td>", f"<td style='{style}'>{_fmt_pct(full.risk_off_ratio)}</td>",
             f"<td style='{style}'>{int(full.cycle)}</td>", f"<td style='{style}'>{int(full.short_cycle)}</td>",
             f"<td style='padding:7px 8px;text-align:center'>{_on_k_html(state.week_ago_active_count, state.K, state.week_ago_raw_risk_state)}</td>",
             f"<td style='padding:7px 8px;text-align:center'>{_stage_html(week_stage)}</td>",
@@ -283,7 +395,7 @@ def _component_status_table(payload: dict[str, Any], candidate_id: str) -> str:
         valid = bool(row.get("component_valid"))
         state = bool(row.get("component_risk_state")) if valid else False
         flag = f"<span style='color:{RISK_OFF if state else 'rgba(255,255,255,.18)'};font-weight:700'>●</span>"
-        entries.append((escape(str(row["component_label"])), flag, _date(row["date"])))
+        entries.append((escape(_component_display_label(row)), flag, _date(row["date"])))
     midpoint = int(np.ceil(len(entries) / 2))
     left, right = entries[:midpoint], entries[midpoint:]
     body = []
@@ -291,12 +403,13 @@ def _component_status_table(payload: dict[str, Any], candidate_id: str) -> str:
         cells = []
         for entry in (left[index] if index < len(left) else None, right[index] if index < len(right) else None):
             if entry is None:
-                cells.append("<td></td><td></td><td></td><td style='width:12px'></td>")
+                cells.append("<td></td><td></td><td></td><td></td><td></td>")
             else:
-                cells.append(f"<td style='padding:5px 8px;color:#D6D6D6'>{entry[0]}</td><td style='padding:5px 8px;text-align:center;color:#7C7CF7'>●</td><td style='padding:5px 8px;text-align:center'>{entry[1]}</td><td style='padding:5px 8px;color:#AFAFAF'>{entry[2]}</td><td style='width:12px'></td>")
+                cells.append(f"<td style='padding:5px 8px;color:#D6D6D6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{entry[0]}</td><td style='padding:5px 8px;text-align:center;color:#7C7CF7'>●</td><td style='padding:5px 8px;text-align:center'>{entry[1]}</td><td style='padding:5px 8px;color:#AFAFAF;white-space:nowrap'>{entry[2]}</td><td></td>")
         body.append("<tr>" + "".join(cells) + "</tr>")
-    header = "<th style='text-align:left;padding:6px 8px;color:#8F8F8F'>지표</th><th style='padding:6px 8px;color:#8F8F8F'>선택</th><th style='padding:6px 8px;color:#8F8F8F'>플래그</th><th style='text-align:left;padding:6px 8px;color:#8F8F8F'>최신 사용값</th><th style='width:12px'></th>"
-    return f"<table style='width:100%;border-collapse:collapse;font-size:11px'><thead><tr>{header}{header}</tr></thead><tbody>{''.join(body)}</tbody></table>"
+    header = "<th style='text-align:left;padding:6px 8px;color:#8F8F8F'>지표</th><th style='padding:6px 8px;color:#8F8F8F'>선택</th><th style='padding:6px 8px;color:#8F8F8F'>플래그</th><th style='text-align:left;padding:6px 8px;color:#8F8F8F;white-space:nowrap'>최신 날짜</th><th></th>"
+    colgroup = "<colgroup><col style='width:27%'><col style='width:5%'><col style='width:5%'><col style='width:11%'><col style='width:2%'><col style='width:27%'><col style='width:5%'><col style='width:5%'><col style='width:11%'><col style='width:2%'></colgroup>"
+    return f"<table style='width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px'>{colgroup}<thead><tr>{header}{header}</tr></thead><tbody>{''.join(body)}</tbody></table>"
 
 
 def _render_css() -> None:
@@ -305,7 +418,11 @@ def _render_css() -> None:
     .st-key-macro7_kosdaq_preset div[data-baseweb="select"] > div,
     .st-key-macro7_kosdaq_benchmark div[data-baseweb="select"] > div,
     .st-key-macro7_kosdaq_selected_components div[data-baseweb="select"] > div {min-height:2.55rem;border-color:rgba(95,86,214,.72)!important;background:rgba(52,44,112,.22)!important}
-    .st-key-macro7_kosdaq_selected_components [data-baseweb="tag"] {background:rgba(92,79,214,.96)!important;color:#F6F4FF!important}
+    .st-key-macro7_kosdaq_selected_components [data-baseweb="tag"] {background:rgba(92,79,214,.96)!important;color:#F6F4FF!important;min-height:24px!important;height:24px!important;padding:2px 8px!important;border-radius:6px!important;line-height:1.2!important;gap:4px!important;align-items:center!important}
+    .st-key-macro7_kosdaq_selected_components [data-baseweb="tag"] span {font-size:11.5px!important;line-height:1.2!important}
+    .st-key-macro7_kosdaq_selected_components [data-baseweb="tag"] svg {width:12px!important;height:12px!important}
+    .st-key-macro7_kosdaq_show_raw [data-baseweb="checkbox"] > div {border-color:rgba(95,86,214,.78)!important}
+    .st-key-macro7_kosdaq_preset,.st-key-macro7_kosdaq_benchmark,.st-key-macro7_kosdaq_years,.st-key-macro7_kosdaq_show_raw,.st-key-macro7_kosdaq_selected_components {margin-top:0!important}
     </style>
     """, unsafe_allow_html=True)
 
@@ -342,41 +459,44 @@ def render_macro7_kosdaq_section(
         st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
         labels = {cid: _candidate_label(candidate_map[cid]._asdict()) for cid in ordered}
         c1, c2, c3, c4 = st.columns([1.8, 1.0, 2.2, 1.0], vertical_alignment="bottom")
+        for column, label in zip((c1, c2, c3, c4), ("조합 프리셋", "기준지수", "기간", "보조선 표시"), strict=True):
+            with column:
+                st.markdown(f'<div class="macro2-control-label">{label}</div>', unsafe_allow_html=True)
+        st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
+        c1, c2, c3, c4 = st.columns([1.8, 1.0, 2.2, 1.0], vertical_alignment="bottom")
         with c1:
-            st.markdown('<div class="macro2-control-label">조합 프리셋</div>', unsafe_allow_html=True)
             candidate_id = st.selectbox("조합 프리셋", ordered, format_func=lambda value: labels[value], key="macro7_kosdaq_preset", label_visibility="collapsed")
-        with c2:
-            st.markdown('<div class="macro2-control-label">기준지수</div>', unsafe_allow_html=True)
-            st.selectbox("기준지수", ["KOSDAQ"], key="macro7_kosdaq_benchmark", disabled=True, label_visibility="collapsed")
         state = _snapshot_row(payload, candidate_id)
         component_history = _view(payload["component_history"], parent_id=candidate_id, end=state["basis_date"])
         options = [option for option in PERIOD_OPTIONS if option == "all" or (pd.Timestamp(state["basis_date"]) - component_history["date"].min()).days >= int(option) * 365]
         if not options:
             options = ["all"]
+        with c2:
+            st.selectbox("기준지수", ["KOSDAQ"], key="macro7_kosdaq_benchmark", disabled=True, label_visibility="collapsed")
         with c3:
-            st.markdown('<div class="macro2-control-label">기간</div>', unsafe_allow_html=True)
-            period = st.select_slider("기간", options=options, value=5 if 5 in options else options[0], key="macro7_kosdaq_years", label_visibility="collapsed", format_func=lambda v: "전체" if v == "all" else f"{v}년")
+            period = st.select_slider("기간", options=options, value=5 if 5 in options else options[0], key="macro7_kosdaq_years", label_visibility="collapsed", format_func=lambda value: "전체" if value == "all" else f"{value}년")
         with c4:
-            st.markdown('<div class="macro2-control-label">보조선 표시</div>', unsafe_allow_html=True)
+            st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
             st.checkbox("보조선 표시", value=False, key="macro7_kosdaq_show_raw", label_visibility="collapsed")
         components = component_history.sort_values("component_order")["component_id"].drop_duplicates().tolist()
-        st.markdown('<div class="macro2-control-label" style="margin-top:14px">조합 지표</div>', unsafe_allow_html=True)
+        st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
         controls, criteria = st.columns([4.4, 1.6], vertical_alignment="bottom")
         with controls:
-            st.multiselect("조합 지표", components, default=components, disabled=True, key="macro7_kosdaq_selected_components", label_visibility="collapsed", format_func=lambda cid: str(component_history.loc[component_history["component_id"].eq(cid), "component_label"].iloc[0]))
+            st.markdown('<div class="macro2-control-label">조합 지표</div>', unsafe_allow_html=True)
+        with criteria:
+            st.markdown('<div class="macro2-control-label">리스크 기준</div>', unsafe_allow_html=True)
+        st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
+        controls, criteria = st.columns([4.4, 1.6], vertical_alignment="bottom")
+        with controls:
+            st.multiselect("조합 지표", components, default=components, disabled=True, key="macro7_kosdaq_selected_components", label_visibility="collapsed", format_func=lambda cid: _component_display_label(component_history.loc[component_history["component_id"].eq(cid)].iloc[0]))
         with criteria:
             st.markdown(
                 f"<div style='padding-top:8px;font-size:11.5px;line-height:1.42;color:rgba(255,255,255,.84)'>시작 {int(state['K'])}개 이상 ON<br>종료 {int(state['L'])}개 이하 ON</div>",
                 unsafe_allow_html=True,
             )
         st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
-        st.markdown(_current_status_html(state), unsafe_allow_html=True)
-        st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
-        main = _main_chart(payload, candidate_id, state["basis_date"], period)
-        if main is None:
-            st.warning("대표 차트 데이터를 준비하지 못했습니다.")
-        else:
-            st.plotly_chart(main, width="stretch", config={"displayModeBar": False}, key=f"macro7_kosdaq_main_chart_{candidate_id}_{period}")
+        candidate_history = _view(payload["candidate_history"], candidate_id=candidate_id, end=state["basis_date"])
+        st.markdown(_current_status_html(state, candidate_history), unsafe_allow_html=True)
         st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
         with st.expander("백테스트 비교 보기 · 조합2", expanded=False):
             st.markdown(_backtest_table(payload, "COMBO2", candidate_id), unsafe_allow_html=True)
@@ -385,9 +505,15 @@ def render_macro7_kosdaq_section(
         with st.expander("지표별 상태 보기", expanded=False):
             st.markdown(_component_status_table(payload, candidate_id), unsafe_allow_html=True)
         st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
+        main = _main_chart(payload, candidate_id, state["basis_date"], period)
+        if main is None:
+            st.warning("대표 차트 데이터를 준비하지 못했습니다.")
+        else:
+            st.plotly_chart(main, width="stretch", config={"displayModeBar": False}, key=f"macro7_kosdaq_main_chart_{candidate_id}_{period}")
+        st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
         for index, component_id in enumerate(components):
             row = component_history.loc[component_history["component_id"].eq(component_id)].iloc[-1]
-            with st.expander(f"{index + 1}. {row['component_label']}", expanded=True):
+            with st.expander(f"{index + 1}. {_component_display_label(row)}", expanded=True):
                 fig = _component_chart(payload, candidate_id, component_id, str(row["component_kind"]), state["basis_date"], period, show_aux=bool(st.session_state["macro7_kosdaq_show_raw"]))
                 if fig is None:
                     st.warning("상세 차트 필수 표시 필드가 없습니다.")

@@ -16,7 +16,12 @@ from kosdaq_macro7_runtime.live_runtime import run_live_runtime
 from kosdaq_macro7_runtime.presentation_payload import build_presentation_payload
 from kosdaq_macro7_ui import (
     DEFAULT_CANDIDATE,
+    _backtest_table,
     _component_chart,
+    _component_display_label,
+    _component_status_table,
+    _current_status_html,
+    _group_summary,
     _main_chart,
     _snapshot_row,
     _stage,
@@ -94,3 +99,37 @@ def test_ui_contract_declares_no_presentation_state_refetch() -> None:
     assert cache["presentation_only_ui_change_causing_runtime_refetch"] == 0
     assert cache["payload_acquisition_per_page_render"] == 1
     assert cache["actual_run_live_runtime_cache_miss_max"] == 1
+
+
+def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_elements() -> None:
+    payload = _payload()
+
+    summary = _group_summary(payload)
+    table = _backtest_table(payload, "COMBO2", DEFAULT_CANDIDATE)
+
+    assert "조합1+2" in summary
+    assert "시장단계" in summary
+    assert "KOSDAQ 홀드" in table
+    assert "전체 자산" in table
+    assert "전체 CAGR" in table
+    assert "x)</span>" in table
+
+
+def test_kosdaq_component_labels_and_status_remain_payload_driven() -> None:
+    payload = _payload()
+    candidate_id = DEFAULT_CANDIDATE
+    history = payload["candidate_history"].loc[
+        payload["candidate_history"]["candidate_id"].eq(candidate_id)
+    ]
+    component = payload["component_history"].loc[
+        payload["component_history"]["parent_candidate_id"].eq(candidate_id)
+    ].sort_values("component_order").iloc[0]
+
+    assert "구성 1" in _component_display_label(component)
+    assert "오늘 전환" in _current_status_html(_snapshot_row(payload, candidate_id), history)
+    assert "최신 날짜" in _component_status_table(payload, candidate_id)
+
+
+def test_kosdaq_backtest_tables_render_before_main_chart() -> None:
+    source = (ROOT / "kosdaq_macro7_ui.py").read_text(encoding="utf-8")
+    assert source.index('with st.expander("백테스트 비교 보기 · 조합2"') < source.index("main = _main_chart(")
