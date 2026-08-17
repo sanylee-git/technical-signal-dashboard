@@ -28,6 +28,7 @@ import warnings
 import traceback
 from zoneinfo import ZoneInfo
 from kosdaq_macro7_ui import render_macro7_kosdaq_section
+from macro_source_schedule import source_schedule_table_html
 warnings.filterwarnings('ignore')
 
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -16988,6 +16989,8 @@ def main(page="signal"):
                             _macro4_whipsaw_caption = _macro4_whipsaw_caption_map.get(_macro4_preset)
                             if _macro4_whipsaw_caption:
                                 st.caption(_macro4_whipsaw_caption)
+                    with st.expander("지표별 최신 소스 확인 스케줄", expanded=False):
+                        st.markdown(source_schedule_table_html("snp"), unsafe_allow_html=True)
                     st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
                     st.plotly_chart(_macro4_combo_fig, width="stretch", config={"displayModeBar": False}, key=f"macro4_combo_{_macro4_preset}_{_benchmark_name4}_{_macro4_years}_{'_'.join(_selected_codes4)}_{_combo_k4}_{_macro_dynamic_cfg_signature(_macro4_cfgs, _selected_codes4)}")
                     if _macro4_is_meta:
@@ -17392,6 +17395,8 @@ def main(page="signal"):
                     st.markdown(_component_status_html5k, unsafe_allow_html=True)
                 else:
                     st.caption("선택 후보 구성요소 상태를 표시할 수 없습니다.")
+            with st.expander("지표별 최신 소스 확인 스케줄", expanded=False):
+                st.markdown(source_schedule_table_html("kospi"), unsafe_allow_html=True)
 
             st.markdown('<div class="macro2-divider macro2-divider-tight-top"></div>', unsafe_allow_html=True)
             if _live_history_ready5k:

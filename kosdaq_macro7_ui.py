@@ -17,6 +17,7 @@ import streamlit as st
 
 from kosdaq_macro7_runtime.live_runtime import run_live_runtime
 from kosdaq_macro7_runtime.presentation_payload import build_presentation_payload
+from macro_source_schedule import source_schedule_table_html
 
 
 RISK_ON = "#54F2A3"
@@ -570,6 +571,8 @@ def render_macro7_kosdaq_section(
             st.markdown(_backtest_table(payload, "COMBO1", candidate_id), unsafe_allow_html=True)
         with st.expander("지표별 상태 보기", expanded=False):
             st.markdown(_component_status_table(payload, candidate_id), unsafe_allow_html=True)
+        with st.expander("지표별 최신 소스 확인 스케줄", expanded=False):
+            st.markdown(source_schedule_table_html("kosdaq"), unsafe_allow_html=True)
         st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
         main = _main_chart(payload, candidate_id, state["basis_date"], period)
         if main is None:
