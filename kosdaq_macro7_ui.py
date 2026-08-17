@@ -421,7 +421,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
         rows.append(f"<tr style='{selected_style}'>" + "".join(cells) + "</tr>")
     alignments = ["left"] + ["right"] * 8 + ["center"] * 4
     return (
-        "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:100%;min-width:1406px;table-layout:fixed;border-collapse:collapse;font-size:11px'>"
+        "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:100%;min-width:1280px;table-layout:fixed;border-collapse:collapse;font-size:11px'>"
         + colgroup + "<thead><tr>" + "".join(f"<th style='text-align:{alignment};padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>{header}</th>" for header, alignment in zip(headers, alignments, strict=True)) + "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>"
     )
 

@@ -9323,7 +9323,7 @@ _MACRO_BACKTEST_COLGROUP = (
     '<col style="width:4.6%">'
     "</colgroup>"
 )
-_MACRO_BACKTEST_TABLE_STYLE = "width:100%;min-width:1406px;table-layout:fixed;border-collapse:collapse;font-size:11px;"
+_MACRO_BACKTEST_TABLE_STYLE = "width:100%;min-width:1280px;table-layout:fixed;border-collapse:collapse;font-size:11px;"
 _MACRO_BACKTEST_TABLE_WRAP_OPEN = "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto;'>"
 _MACRO_BACKTEST_CELL_LEFT = "padding:7px 8px;color:#EDEDED;font-weight:700;line-height:1.28;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
 _MACRO_BACKTEST_CELL_NUM = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"

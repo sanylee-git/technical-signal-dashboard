@@ -170,7 +170,7 @@ def test_b2v_macro4_macro5_backtest_tables_share_fixed_width_contract() -> None:
 
     for html in (macro5_html, macro6_html):
         assert "macro-backtest-table-wrap" in html
-        assert "min-width:1406px" in html
+        assert "min-width:1280px" in html
         assert "font-size:11px" in html
         assert "table-layout:fixed" in html
         assert html.count("<col style=") == 13
