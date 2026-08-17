@@ -17243,7 +17243,7 @@ def main(page="signal"):
                 st.markdown('<div class="macro2-control-label">리스크 기준</div>', unsafe_allow_html=True)
             st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
 
-            _m55, _m56 = st.columns([4.4, 1.6], vertical_alignment="bottom")
+            _m55, _m56 = st.columns([4.4, 1.6], vertical_alignment="top")
             with _m55:
                 st.multiselect(
                     "조합 지표",
@@ -18023,7 +18023,7 @@ def main(page="signal"):
                 st.markdown('<div class="macro2-control-label">리스크 기준</div>', unsafe_allow_html=True)
             st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
 
-            _m65, _m66 = st.columns([4.4, 1.6], vertical_alignment="bottom")
+            _m65, _m66 = st.columns([4.4, 1.6], vertical_alignment="top")
             with _m65:
                 _macro6_options = _macro6_preset_cfg.get("components", []) if _macro6_is_combo2 else _MACRO3_INDICATOR_ORDER
                 _macro6_default = _macro6_preset_cfg.get("components", []) if _macro6_is_combo2 else _macro6_preset_cfg.get("selected_indicators", [])

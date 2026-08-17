@@ -148,4 +148,4 @@ def test_b2r_chart_and_macro4_functions_are_unchanged() -> None:
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "5b28ab7bee6b85bd8967e11a288329499ad60f9ac0d3badb0a2657a82b758d83"
     assert _function_hash("_build_macro6_component_chart") == "019bc507b5093fae7ad0ef6bea27b36fd297020e2ab6f2bf562b5926d7d8d85d"
     assert _function_hash("_build_macro6_indicator_chart") == "7725e3712828ccbb1f2e2d22f06ef5c59492efc8a7ebf359f7cf30d33f4f2231"
-    assert _function_hash("render_macro6_proxy_final_section") == "bcf878c25774243e125137fbb698b927fb3fc5d01e579963782b2f3a8dc4d021"
+    assert _function_hash("render_macro6_proxy_final_section") == "88cf84c8847528c71a9569f761750d79ab5c37ea377eb3422559ad96faeb42fa"

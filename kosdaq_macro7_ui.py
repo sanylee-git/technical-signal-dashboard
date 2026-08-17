@@ -552,7 +552,7 @@ def render_macro7_kosdaq_section(
         with criteria:
             st.markdown('<div class="macro2-control-label">리스크 기준</div>', unsafe_allow_html=True)
         st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
-        controls, criteria = st.columns([4.4, 1.6], vertical_alignment="bottom")
+        controls, criteria = st.columns([4.4, 1.6], vertical_alignment="top")
         with controls:
             st.multiselect("조합 지표", components, default=components, disabled=True, key="macro7_kosdaq_selected_components", label_visibility="collapsed", format_func=lambda cid: _component_display_label(component_history.loc[component_history["component_id"].eq(cid)].iloc[0]))
         with criteria:
