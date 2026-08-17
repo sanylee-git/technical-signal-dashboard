@@ -103,14 +103,8 @@ def _candidate_label(row: pd.Series | dict[str, Any]) -> str:
 
 
 def _component_display_label(row: pd.Series | dict[str, Any]) -> str:
-    label = str(row.get("component_label", ""))
-    if str(row.get("component_kind", "")) != "CHILD_COMBO1_RAW_STATE":
-        return label
-    try:
-        order = int(row.get("component_order"))
-    except (TypeError, ValueError):
-        return label
-    return label.replace("구성 후보", f"구성 {order}", 1)
+    """Return the frozen presentation label without inventing child roles."""
+    return str(row.get("component_label", ""))
 
 
 def _view(frame: pd.DataFrame, *, candidate_id: str | None = None, parent_id: str | None = None, end: object = None, years: int | str = "all") -> pd.DataFrame:
@@ -175,7 +169,8 @@ def _main_chart(payload: dict[str, Any], candidate_id: str, basis: object, years
         if not event.empty:
             points = benchmark.merge(event[["date"]], on="date", how="inner")
             fig.add_trace(go.Scatter(x=points["date"], y=points["kosdaq_close"], name=name, mode="markers", marker=dict(color=color, size=10, symbol=symbol)))
-    return _layout(fig, _candidate_label(_snapshot_row(payload, candidate_id)), x_start, x_end)
+    candidate = payload["final10"].loc[payload["final10"]["candidate_id"].eq(candidate_id)].iloc[0]
+    return _layout(fig, _candidate_label(candidate), x_start, x_end)
 
 
 def _component_chart(payload: dict[str, Any], parent_id: str, component_id: str, component_kind: str, basis: object, years: int | str, *, show_aux: bool = False) -> go.Figure | None:
@@ -316,7 +311,7 @@ def _current_status_html(row: pd.Series, candidate_history: pd.DataFrame) -> str
     state_text = "리스크 사이클 ON" if state else "리스크 사이클 OFF"
     execution = "비투자" if int(row["invest_position"]) == 0 else "투자"
     segment = row.get("current_segment_return")
-    segment_html = "확인 불가" if pd.isna(segment) else f"<span style='color:{RISK_ON if float(segment) >= 0 else RISK_OFF};font-weight:700'>{float(segment)*100:.2f}%</span>"
+    segment_html = "확인 불가" if pd.isna(segment) else f"<span style='color:{RISK_ON if float(segment) >= 0 else RISK_OFF};font-weight:700'>{float(segment)*100:.1f}%</span>"
     return (
         "<div class='macro2-helper-text' style='line-height:1.75;'>"
         f"기준일 {_date(row['basis_date'])} <span style='color:rgba(255,255,255,.45)'>·</span> "
@@ -324,7 +319,7 @@ def _current_status_html(row: pd.Series, candidate_history: pd.DataFrame) -> str
         f"상태 <span style='color:{color};font-weight:700'>{state_text}</span><br>"
         f"현재 상태 시작일 <span style='color:{color};font-weight:700'>{_date(row['current_risk_start_date'])}</span> <span style='color:rgba(255,255,255,.45)'>·</span> "
         f"지속 거래일 <span style='color:{color};font-weight:700'>{int(row['current_duration_trading_days'])}</span> <span style='color:rgba(255,255,255,.45)'>·</span> "
-        f"구간 수익률 {segment_html} <span style='color:rgba(255,255,255,.45)'>·</span> 실행 {execution} <span style='color:rgba(255,255,255,.45)'>·</span> {_today_transition_html(candidate_history)}</div>"
+        f"상태 구간 수익률 {segment_html} <span style='color:rgba(255,255,255,.45)'>·</span> 실행 {execution} <span style='color:rgba(255,255,255,.45)'>·</span> {_today_transition_html(candidate_history)}</div>"
     )
 
 
@@ -379,9 +374,10 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
             f"<td style='padding:7px 8px;text-align:center'>{_stage_html(now_stage)}</td>",
         ]
         rows.append(f"<tr style='{selected_style}'>" + "".join(cells) + "</tr>")
+    alignments = ["left"] + ["right"] * 8 + ["center"] * 4
     return (
         "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:100%;min-width:1480px;table-layout:fixed;border-collapse:collapse;font-size:12px'>"
-        + colgroup + "<thead><tr>" + "".join(f"<th style='text-align:{'left' if i == 0 else 'right'};padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>{header}</th>" for i, header in enumerate(headers)) + "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>"
+        + colgroup + "<thead><tr>" + "".join(f"<th style='text-align:{alignment};padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>{header}</th>" for header, alignment in zip(headers, alignments, strict=True)) + "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>"
     )
 
 
@@ -407,7 +403,7 @@ def _component_status_table(payload: dict[str, Any], candidate_id: str) -> str:
             else:
                 cells.append(f"<td style='padding:5px 8px;color:#D6D6D6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{entry[0]}</td><td style='padding:5px 8px;text-align:center;color:#7C7CF7'>●</td><td style='padding:5px 8px;text-align:center'>{entry[1]}</td><td style='padding:5px 8px;color:#AFAFAF;white-space:nowrap'>{entry[2]}</td><td></td>")
         body.append("<tr>" + "".join(cells) + "</tr>")
-    header = "<th style='text-align:left;padding:6px 8px;color:#8F8F8F'>지표</th><th style='padding:6px 8px;color:#8F8F8F'>선택</th><th style='padding:6px 8px;color:#8F8F8F'>플래그</th><th style='text-align:left;padding:6px 8px;color:#8F8F8F;white-space:nowrap'>최신 날짜</th><th></th>"
+    header = "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>지표</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>선택</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>플래그</th><th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>최신 날짜</th><th style='border-bottom:1px solid rgba(255,255,255,.08)'></th>"
     colgroup = "<colgroup><col style='width:27%'><col style='width:5%'><col style='width:5%'><col style='width:11%'><col style='width:2%'><col style='width:27%'><col style='width:5%'><col style='width:5%'><col style='width:11%'><col style='width:2%'></colgroup>"
     return f"<table style='width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px'>{colgroup}<thead><tr>{header}{header}</tr></thead><tbody>{''.join(body)}</tbody></table>"
 
@@ -415,9 +411,20 @@ def _component_status_table(payload: dict[str, Any], candidate_id: str) -> str:
 def _render_css() -> None:
     st.markdown("""
     <style>
+    .macro2-divider {border-top:1px solid rgba(255,255,255,0.08);margin:24px 0}
+    .macro2-helper-text {font-size:11.5px;line-height:1.45;color:rgba(255,255,255,0.56);margin:2px 0 14px 0}
+    .macro2-control-label {font-size:11.5px;color:rgba(255,255,255,0.72);font-weight:600;line-height:1.2;margin-bottom:.7rem}
+    .macro2-control-spacer {height:18px}
     .st-key-macro7_kosdaq_preset div[data-baseweb="select"] > div,
     .st-key-macro7_kosdaq_benchmark div[data-baseweb="select"] > div,
     .st-key-macro7_kosdaq_selected_components div[data-baseweb="select"] > div {min-height:2.55rem;border-color:rgba(95,86,214,.72)!important;background:rgba(52,44,112,.22)!important}
+    .st-key-macro7_kosdaq_preset div[data-baseweb="select"] > div,
+    .st-key-macro7_kosdaq_benchmark div[data-baseweb="select"] > div,
+    .st-key-macro7_kosdaq_selected_components div[data-baseweb="select"] > div,
+    .st-key-macro7_kosdaq_years div[data-baseweb="slider"] + div,
+    .st-key-macro7_kosdaq_show_raw label,
+    .st-key-macro7_kosdaq_show_raw span,
+    .st-key-macro7_kosdaq_show_raw p {font-size:13.5px!important;color:rgba(255,255,255,.92)!important}
     .st-key-macro7_kosdaq_selected_components [data-baseweb="tag"] {background:rgba(92,79,214,.96)!important;color:#F6F4FF!important;min-height:24px!important;height:24px!important;padding:2px 8px!important;border-radius:6px!important;line-height:1.2!important;gap:4px!important;align-items:center!important}
     .st-key-macro7_kosdaq_selected_components [data-baseweb="tag"] span {font-size:11.5px!important;line-height:1.2!important}
     .st-key-macro7_kosdaq_selected_components [data-baseweb="tag"] svg {width:12px!important;height:12px!important}
@@ -437,7 +444,7 @@ def render_macro7_kosdaq_section(
     """Render Macro7 using one already-computed presentation payload."""
     with container:
         _render_css()
-        st.markdown('<div class="macro2-helper-text">KOSDAQ Final10을 최신 데이터로 판단하고 공식 백테스트 결과와 비교합니다.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="macro2-helper-text">KOSDAQ 후보를 최신 데이터로 판단하고 공식 백테스트 결과와 비교합니다.</div>', unsafe_allow_html=True)
         if payload is None:
             bucket = sync_bucket or pd.Timestamp.now(tz="UTC").strftime("%Y%m%d%H%M")
             try:

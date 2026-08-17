@@ -84,6 +84,7 @@ def test_chart_ranges_and_default_candidate_are_bound_to_payload_basis_date() ->
     fig = _main_chart(payload, DEFAULT_CANDIDATE, row["basis_date"], 5)
     assert fig is not None
     assert pd.Timestamp(fig.layout.xaxis.range[1]).normalize() == pd.Timestamp(row["basis_date"]).normalize()
+    assert "조합1 7개/K4/L3" in fig.layout.title.text
     assert DEFAULT_CANDIDATE == "combo2_m7_k4_l3_58c1eaea19e6d371"
 
 
@@ -125,11 +126,31 @@ def test_kosdaq_component_labels_and_status_remain_payload_driven() -> None:
         payload["component_history"]["parent_candidate_id"].eq(candidate_id)
     ].sort_values("component_order").iloc[0]
 
-    assert "구성 1" in _component_display_label(component)
-    assert "오늘 전환" in _current_status_html(_snapshot_row(payload, candidate_id), history)
+    assert "구성 후보" in _component_display_label(component)
+    status = _current_status_html(_snapshot_row(payload, candidate_id), history)
+    assert "오늘 전환" in status
+    assert "상태 구간 수익률" in status
     assert "최신 날짜" in _component_status_table(payload, candidate_id)
 
 
 def test_kosdaq_backtest_tables_render_before_main_chart() -> None:
     source = (ROOT / "kosdaq_macro7_ui.py").read_text(encoding="utf-8")
     assert source.index('with st.expander("백테스트 비교 보기 · 조합2"') < source.index("main = _main_chart(")
+
+
+def test_kosdaq_ui_owns_macro5_visual_parity_styles_without_shared_runtime_import() -> None:
+    source = (ROOT / "kosdaq_macro7_ui.py").read_text(encoding="utf-8")
+    assert ".macro2-divider {border-top:1px solid rgba(255,255,255,0.08);margin:24px 0}" in source
+    assert ".macro2-helper-text {font-size:11.5px;line-height:1.45;color:rgba(255,255,255,0.56);margin:2px 0 14px 0}" in source
+    assert "KOSDAQ 후보를 최신 데이터로 판단" in source
+    assert "kospi_macro5_runtime" not in source
+
+
+def test_kosdaq_table_headers_follow_macro5_alignment_contract() -> None:
+    payload = _payload()
+    backtest = _backtest_table(payload, "COMBO2", DEFAULT_CANDIDATE)
+    status = _component_status_table(payload, DEFAULT_CANDIDATE)
+
+    assert "text-align:center;padding:6px 8px" in backtest
+    assert "시장단계(1주 전)" in backtest
+    assert "text-align:center;padding:6px 8px" in status
