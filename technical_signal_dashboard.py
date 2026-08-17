@@ -9308,19 +9308,19 @@ def _macro6_preset_display_label(cfg: dict) -> str:
 
 _MACRO_BACKTEST_COLGROUP = (
     "<colgroup>"
-    '<col style="width:15.2361%">'
-    '<col style="width:6.5445975%">'
-    '<col style="width:6.5445975%">'
-    '<col style="width:5.609655%">'
-    '<col style="width:6.23295%">'
-    '<col style="width:6.23295%">'
-    '<col style="width:5.609655%">'
-    '<col style="width:4.5927%">'
-    '<col style="width:4.5927%">'
-    '<col style="width:4.05%">'
-    '<col style="width:5.67%">'
-    '<col style="width:4.05%">'
-    '<col style="width:5.67%">'
+    '<col style="width:13.7%">'
+    '<col style="width:5.9%">'
+    '<col style="width:5.9%">'
+    '<col style="width:5.0%">'
+    '<col style="width:5.6%">'
+    '<col style="width:5.6%">'
+    '<col style="width:5.0%">'
+    '<col style="width:4.1%">'
+    '<col style="width:4.1%">'
+    '<col style="width:3.6%">'
+    '<col style="width:5.1%">'
+    '<col style="width:3.6%">'
+    '<col style="width:5.1%">'
     "</colgroup>"
 )
 _MACRO_BACKTEST_TABLE_STYLE = "width:100%;min-width:1406px;table-layout:fixed;border-collapse:collapse;font-size:11px;"
