@@ -217,7 +217,13 @@ def _snapshot_row(payload: dict[str, Any], candidate_id: str) -> pd.Series:
 
 
 def _group_stage(labels: list[str]) -> str:
-    if not labels or any(label not in STAGE_SCORES for label in labels):
+    if not labels or "계산 불가" in labels:
+        return "계산 불가"
+    # 혼조 is a valid aggregate result, not an unavailable calculation.
+    # Combining a mixed group with another group must remain mixed.
+    if "혼조" in labels:
+        return "혼조"
+    if any(label not in STAGE_SCORES for label in labels):
         return "계산 불가"
     scores = [STAGE_SCORES[label] for label in labels]
     buy, sell = sum(score < 0 for score in scores), sum(score > 0 for score in scores)

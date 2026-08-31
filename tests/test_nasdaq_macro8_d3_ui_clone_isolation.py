@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 
 from nasdaq_macro8_runtime.frozen_runtime import run_frozen_runtime
 from nasdaq_macro8_runtime.presentation_payload import build_presentation_payload
-from nasdaq_macro8_ui import _backtest_table, _component_chart, _main_chart, _snapshot_row
+from nasdaq_macro8_ui import _backtest_table, _component_chart, _group_stage, _group_summary, _main_chart, _snapshot_row
 
 
 def _macro8_smoke_app() -> None:
@@ -110,6 +110,15 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     assert contract["gate"] == "PASS_NASDAQ_MACRO8_D3_UI_CLONE_ISOLATION_READY"
     assert contract["presentation_payload_cache"]["candidate_selection_causing_runtime_refetch"] == 0
     assert contract["chart_contract"]["combo2"] == "CHILD_COMBO1_RAW_STATE plus NASDAQ 100 benchmark only"
+
+
+def test_mixed_group_stage_is_valid_and_not_unavailable(payload: dict) -> None:
+    assert _group_stage(["혼조", "혼조"]) == "혼조"
+    assert _group_stage(["혼조", "매수"]) == "혼조"
+    assert _group_stage(["계산 불가", "혼조"]) == "계산 불가"
+    summary = _group_summary(payload)
+    assert "조합1+2:" in summary
+    assert "조합1+2: <span style='color:#FF8C69;font-weight:700'>계산 불가" not in summary
 
 
 def test_nasdaq_default_page_smoke_renders_without_exception() -> None:
