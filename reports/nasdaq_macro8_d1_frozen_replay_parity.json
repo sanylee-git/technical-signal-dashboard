@@ -1,0 +1,47 @@
+{
+  "gate": "PASS_NASDAQ_MACRO8_D1_FROZEN_REPLAY_PARITY_READY",
+  "asset_manifest": {
+    "path": "nasdaq_macro8_assets/frozen/nasdaq_macro8_frozen_asset_manifest.json",
+    "sha256": "7fbda1880bc140262680d9b3d5ef6ca2e74baba59525cef00708ef9bbf65c331"
+  },
+  "validation": {
+    "status": "PASS",
+    "network_access": false,
+    "research_runtime_imported": false,
+    "core15_required_definition_count": 48,
+    "core15_family_count": 15,
+    "core_state_parity_mismatch": 0,
+    "core_validity_parity_mismatch": 0,
+    "invalid_component_as_risk_on_count": 0,
+    "final20_metric_parity": {
+      "rows": 20,
+      "max_abs_diff": {
+        "cagr_abs_diff": 8.326672684688674e-17,
+        "mdd_abs_diff": 6.938893903907228e-17,
+        "calmar_abs_diff": 4.440892098500626e-16
+      },
+      "mismatch_count": 0
+    },
+    "t1_contract": {
+      "core_state": "NQ4R_CANONICAL_T1_DIRECT_NO_SECOND_SHIFT",
+      "combo_hysteresis": "source-exact; initial_risk_off_state=false; continuous all-component valid history required",
+      "combo2_input_semantics": "CHILD_COMBO1_RAW_RISK_STATE",
+      "final_t1_application_count": 1,
+      "missing_state_policy": "FAIL_CLOSE_NO_RISK_ON_OR_RISK_OFF_SUBSTITUTION",
+      "reporting_metrics_state": "raw evaluation-slice risk_state",
+      "execution_position": "directly uses final canonical T+1 state; no extra shift"
+    },
+    "proxy_contract": {
+      "hy_proxy": "DBAA - DGS10",
+      "ig_proxy": "DAAA - DGS10",
+      "direct_oas_used": false,
+      "credit_stress": "frozen zscore(HY Proxy), zscore(NFCI), zscore(VIXCLS) existing combination only"
+    }
+  },
+  "scope": {
+    "network_access": false,
+    "existing_tabs_modified": false,
+    "ui_modified": false,
+    "live_runtime_added": false
+  }
+}

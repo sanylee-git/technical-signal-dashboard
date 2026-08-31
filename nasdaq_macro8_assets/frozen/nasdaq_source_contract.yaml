@@ -1,0 +1,156 @@
+project: NASDAQ
+stage: NQ-1
+status: source_audit_pass
+source_audit_observed_date: '2026-08-23'
+reference_only:
+  kospi_kosdaq_code_imported: false
+  nasdaq_frozen_must_be_created_independently_in_nq_2: true
+  common_macro_static_lineage:
+    - ../macro_dashboard_kospi/pipeline/stage_02_data_snapshot.py
+    - ../macro_dashboard_kospi/pipeline/stage_03a_core15_contract.py
+    - ../macro_dashboard_kosdaq/configs/stage_03a_core15_contract.yaml
+
+market_contract:
+  signal_market: ^NDX
+  performance_market: ^NDX
+  benchmark_market: ^NDX
+  qqq_allowed: false
+  trade_date_timezone: America/New_York
+  daily_date_normalization: provider_daily_session_date_to_naive_YYYY_MM_DD
+
+index_sources:
+  ndx:
+    official_index_name: Nasdaq-100 Index
+    official_identity_provider: Nasdaq Global Indexes
+    official_identity_url: https://indexes.nasdaqomx.com/Index/Overview/NDX
+    retrieval_provider: Yahoo Finance via yfinance
+    identifier: ^NDX
+    price_semantics: price_return_index_close; adjusted_close_equal_to_close_observed
+    required_fields: [Open, High, Low, Close]
+    observed_history_start: '2000-01-03'
+    observed_history_end: '2026-08-21'
+    observed_rows: 6699
+    duplicate_dates: 0
+    ohlc_nonfinite_values: 0
+    ohlc_relationship_invalid_rows: 0
+    availability_rule: same_daily_session_close; no_lookahead
+    status: PASS
+  ndxe:
+    official_index_name: Nasdaq-100 Equal Weighted Index
+    official_identity_provider: Nasdaq Global Indexes
+    official_identity_url: https://indexes.nasdaqomx.com/Index/Overview/NDXE
+    retrieval_provider: Yahoo Finance via yfinance
+    identifier: ^NDXE
+    price_semantics: price_return_index_close; adjusted_close_equal_to_close_observed
+    required_fields: [Open, High, Low, Close]
+    official_index_inception: '2005-06-20'
+    observed_history_start: '2006-05-02'
+    observed_history_end: '2026-08-21'
+    observed_rows: 5102
+    duplicate_dates: 0
+    ohlc_nonfinite_values: 0
+    ohlc_relationship_invalid_rows: 0
+    availability_rule: same_daily_session_close; no_lookahead
+    proxy_substitution_allowed: false
+    status: PASS
+
+breadth:
+  formula: log(NDXE_close / NDX_close)
+  required_native_inputs: [^NDXE.Close, ^NDX.Close]
+  common_valid_dates_observed: 5102
+  common_valid_start: '2006-05-02'
+  common_valid_end: '2026-08-21'
+  nonfinite_values_observed: 0
+  observed_min: -1.1238477277060166
+  observed_max: -0.3581636597223304
+  date_alignment_status: PASS
+  status: PASS
+
+common_macro_native_sources:
+  hy:
+    provider: FRED
+    components: [DBAA, DGS10]
+    native_frequency: daily
+    formula: DBAA - DGS10
+    availability_rule: each_component_lagged_1_business_day
+    observed_valid_start: '2000-01-03'
+    observed_valid_end: '2026-08-20'
+  ig:
+    provider: FRED
+    components: [DAAA, DGS10]
+    native_frequency: daily
+    formula: DAAA - DGS10
+    availability_rule: each_component_lagged_1_business_day
+    observed_valid_start: '2000-01-03'
+    observed_valid_end: '2026-08-20'
+  credit_stress:
+    provider: FRED
+    components: [DBAA, DGS10, NFCI, VIXCLS]
+    native_frequency: mixed_daily_and_weekly
+    formula: mean(rolling_zscore(DBAA - DGS10), rolling_zscore(NFCI), rolling_zscore(VIXCLS))
+    availability_rule: max_component_availability_lag; NFCI_lagged_3_business_days
+    observed_valid_start: '2000-01-07'
+    observed_valid_end: '2026-08-14'
+  vix:
+    provider: FRED
+    components: [VIXCLS]
+    native_frequency: daily
+    formula: VIXCLS
+    availability_rule: lagged_1_business_day
+    observed_valid_start: '2000-01-03'
+    observed_valid_end: '2026-08-20'
+  vix_spread:
+    provider: FRED
+    components: [VIXCLS, VXVCLS]
+    native_frequency: daily
+    formula: VIXCLS - VXVCLS
+    availability_rule: each_component_lagged_1_business_day
+    observed_valid_start: '2007-12-04'
+    observed_valid_end: '2026-08-20'
+  real_yield_10y:
+    provider: FRED
+    components: [DFII10]
+    native_frequency: daily
+    formula: DFII10
+    availability_rule: lagged_1_business_day
+    observed_valid_start: '2003-01-02'
+    observed_valid_end: '2026-08-20'
+  yield_spread_10y_2y:
+    provider: FRED
+    components: [DGS10, DGS2]
+    native_frequency: daily
+    formula: DGS10 - DGS2
+    availability_rule: each_component_lagged_1_business_day
+    observed_valid_start: '2000-01-03'
+    observed_valid_end: '2026-08-20'
+  yield_spread_10y_3m:
+    provider: FRED
+    components: [DGS10, DGS3MO]
+    native_frequency: daily
+    formula: DGS10 - DGS3MO
+    availability_rule: each_component_lagged_1_business_day
+    observed_valid_start: '2000-01-03'
+    observed_valid_end: '2026-08-20'
+  yield_slope_10y:
+    provider: FRED
+    components: [DGS10]
+    native_frequency: daily
+    formula: rolling_linear_regression_slope(DGS10, slope_window)
+    availability_rule: lagged_1_business_day
+    observed_valid_start: '2000-01-03'
+    observed_valid_end: '2026-08-20'
+
+common_history:
+  latest_common_required_start: '2007-12-04'
+  latest_common_required_end: '2026-08-14'
+  limiting_start_source: VXVCLS
+  limiting_end_source: NFCI
+  final_evaluation_window: UNRESOLVED_IN_NQ_1
+  warmup_window: UNRESOLVED_IN_NQ_1
+
+nq_1_scope:
+  frozen_dataset_created: false
+  signal_calculation: false
+  threshold_or_grid_generation: false
+  backtest: false
+  candidate_selection: false

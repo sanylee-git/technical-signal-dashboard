@@ -1,0 +1,110 @@
+{
+  "inventory_version": 1,
+  "created_at_utc": "2026-08-31T11:32:37.594385+00:00",
+  "research_repo_read_only": true,
+  "entries": {
+    "excel_primary_selection": {
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/_candidate_20260831/NASDAQ_최종후보40_정리_20260830.xlsx",
+      "sha256": "4b0fa5b17fad2b1d48999610e5fe13042106402a43d1a9839847b1dc0f05fb9c",
+      "size_bytes": 72021,
+      "rows": 40
+    },
+    "combo1_performance_review20_cards": {
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_nasdaq/outputs/nq6h_r2_review20/run_20260829T123000Z_nq6h_r2_review20_v1/09_review20_candidate_cards.csv",
+      "sha256": "cc4ce8268d873f1e5eade25dc3be705a277af970fa0f9e148a9b6f11b6af7b3f",
+      "size_bytes": 33189,
+      "rows": 20
+    },
+    "combo1_practical_review26": {
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_nasdaq/outputs/nq_c1_practical_review26/run_20260830T083000Z_nq_c1_practical_review26_v1/02_review_pool_detail.csv",
+      "sha256": "eef74ef4e678c7794a7c2fe71376c775267f09864e0899fd326afa5c6901ebed",
+      "size_bytes": 21196,
+      "rows": 26
+    },
+    "combo1_robustness_master": {
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_nasdaq/outputs/nq6r1_parent_union_robustness/run_20260825T165000Z_nq6r1_parent_union_robustness_v5/01_parent_robustness_master.parquet",
+      "sha256": "c12b27c3626446ef84f29b68fefb16cb582b1e3ee13a383face4f43b77d0be27",
+      "size_bytes": 14588968,
+      "rows": 23917
+    },
+    "combo2_performance_review41": {
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_nasdaq/outputs/nasdaq_combo2/c2_26r_short40_performance_review/run_20260830T061000Z_nq_c2_26r_short40_performance_review_v1/07_pareto_review_base_detail.csv",
+      "sha256": "19d6fec96f53db7a526a4c205446890da7be080350685868896f8e6bc014e050",
+      "size_bytes": 75650,
+      "rows": 41
+    },
+    "combo2_practical_review76": {
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_nasdaq/outputs/nasdaq_combo2/c2_25_practical_final_human_review_pack/run_20260830T044037Z_nq_c2_25_practical_final_human_review_pack_v2/final_human_review76.csv",
+      "sha256": "7c21ae312507c33f3461fbcf245611c8330aee6a251f3da3fd0b20d5635c2e42",
+      "size_bytes": 179287,
+      "rows": 76
+    },
+    "core15_candidate_registry": {
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_nasdaq/outputs/nq3_core15_signal_bank/run_20260823T090300Z_nq3_core15_signal_bank_v1/candidate_registry.parquet",
+      "sha256": "300799ecbc40f7c330a51e31097259903fbc59d8c1594df80a8ce8e8d69c9b37",
+      "size_bytes": 1316479,
+      "rows": 11740
+    },
+    "corrected_t1_eligible_registry": {
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_nasdaq/outputs/nq4r_single_backtest/run_20260823T052844Z_nq4r_t1_readiness_single_rebacktest_v1/corrected_eligible_registry.parquet",
+      "sha256": "e13ea6e91378638d01c0e442f8061b88c1888ce8552306bd3150071deb44ec71",
+      "size_bytes": 1294188,
+      "rows": 11530
+    },
+    "core15_contract": {
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_nasdaq/config/nasdaq_core15_contract.yaml",
+      "sha256": "7b46f2acdf23600ecc68453cbc8c1f8546a94f3b3a5c1abae3db7ac87393db18",
+      "size_bytes": 6591
+    },
+    "source_contract": {
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_nasdaq/config/nasdaq_source_contract.yaml",
+      "sha256": "f27daa30ae0e0126ea8ac064223769c203668722817798c5a2953d9d264a9055",
+      "size_bytes": 5271
+    },
+    "frozen_manifest": {
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_nasdaq/manifests/nq2_frozen_manifest.json",
+      "sha256": "211919b706e310aa550f240dbe49068ad9169608f6df48a479a76cd301d0321b",
+      "size_bytes": 3027
+    },
+    "signal_bank_manifest": {
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_nasdaq/manifests/nq3_latest_core15_signal_bank.json",
+      "sha256": "6667d44543589d84f68696c8c7e517873646ac51948b47efbce1261882a69dd7",
+      "size_bytes": 14438
+    },
+    "t1_contract": {
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_nasdaq/manifests/nq4r_t1_readiness_contract.json",
+      "sha256": "9662d53d25ba72326f4d34efdcad782a2c1a890d1abef5cdf75b0bef651c368d",
+      "size_bytes": 2086
+    },
+    "combo1_execution_source": {
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_nasdaq/src/nq5_combo1_n2_n4_exhaustive.py",
+      "sha256": "e0935485c797488251b75cde76d11e1271d4107cdc656632382137a259831a5b",
+      "size_bytes": 33957
+    },
+    "combo2_raw_state_source": {
+      "absolute_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_nasdaq/src/nasdaq_combo2_c2_1_m2_m4_exhaustive.py",
+      "sha256": "3fb8308c28c6fad828850de403eb711e53b5ad9c0ff5aea4bbcfd11961b1ddde",
+      "size_bytes": 46045
+    }
+  },
+  "resolution": {
+    "final20_primary_rows": 20,
+    "excel_primary_only": true,
+    "reserve_rows_used": 0,
+    "source_match_counts": {
+      "Combo1_Performance": 5,
+      "Combo1_Practical": 5,
+      "Combo2_Performance": 5,
+      "Combo2_Practical": 5
+    },
+    "combo1_definition_count": 10,
+    "combo2_definition_count": 10,
+    "combo2_child_mapping_rows": 84,
+    "unique_combo2_child_definitions": 30,
+    "unique_core_candidate_definitions": 48,
+    "core_registry_match_count": 48,
+    "corrected_t1_eligible_match_count": 48,
+    "unresolved_definition_count": 0,
+    "ambiguous_definition_count": 0
+  }
+}

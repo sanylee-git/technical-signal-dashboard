@@ -1,0 +1,106 @@
+{
+  "contract_version": "nasdaq_macro8_final20_operating_contract_v1",
+  "created_at_utc": "2026-08-31T11:32:37.642914+00:00",
+  "research_repo": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_nasdaq",
+  "dashboard_git_baseline": {
+    "head": "095eeef12b72eb4a331fb7d79aabfa118f79f979",
+    "origin_main": "095eeef12b72eb4a331fb7d79aabfa118f79f979",
+    "head_equals_origin_main": true
+  },
+  "selection_contract": {
+    "excel_selection_filter": "tier == Primary",
+    "final_total_count": 20,
+    "groups": {
+      "combo1_performance": 5,
+      "combo1_practical": 5,
+      "combo2_performance": 5,
+      "combo2_practical": 5
+    },
+    "reserve_candidates_included": false,
+    "candidate_reselection_allowed": false,
+    "candidate_reoptimization_allowed": false
+  },
+  "contracts": {
+    "market": {
+      "benchmark_identifier": "Nasdaq-100 Index",
+      "ticker": "^NDX",
+      "timezone": "America/New_York",
+      "qqq_allowed": false
+    },
+    "evaluation": {
+      "start": "2008-04-01",
+      "end": "2026-08-21",
+      "trading_days": 4628
+    },
+    "availability": {
+      "alignment": "source_observation_date_plus_frozen_business_day_lag",
+      "generic_forward_fill": false,
+      "source_contract": "config/nasdaq_source_contract.yaml"
+    },
+    "state_and_execution": {
+      "core_state": "NQ4R_CANONICAL_T1_DIRECT_NO_SECOND_SHIFT",
+      "combo_hysteresis": "source-exact; initial_risk_off_state=false; continuous all-component valid history required",
+      "combo2_input_semantics": "CHILD_COMBO1_RAW_RISK_STATE",
+      "final_t1_application_count": 1,
+      "missing_state_policy": "FAIL_CLOSE_NO_RISK_ON_OR_RISK_OFF_SUBSTITUTION",
+      "reporting_metrics_state": "raw evaluation-slice risk_state",
+      "execution_position": "directly uses final canonical T+1 state; no extra shift"
+    },
+    "cost": {
+      "transaction_cost_bps": 10,
+      "application": "final position changes only"
+    },
+    "frozen": {
+      "cutoff": "2026-08-21",
+      "panel": {
+        "path": "data/frozen/nasdaq/snapshot_nq2_20260823T025820Z/frozen_nasdaq_core15_input.parquet",
+        "bytes": 1258588,
+        "sha256": "82335392fcc36d34bc6ca853ec9c7ffba47ade28472659c8ccdbcd813a1d3ecd"
+      }
+    }
+  },
+  "source_resolution": {
+    "final20_primary_rows": 20,
+    "excel_primary_only": true,
+    "reserve_rows_used": 0,
+    "source_match_counts": {
+      "Combo1_Performance": 5,
+      "Combo1_Practical": 5,
+      "Combo2_Performance": 5,
+      "Combo2_Practical": 5
+    },
+    "combo1_definition_count": 10,
+    "combo2_definition_count": 10,
+    "combo2_child_mapping_rows": 84,
+    "unique_combo2_child_definitions": 30,
+    "unique_core_candidate_definitions": 48,
+    "core_registry_match_count": 48,
+    "corrected_t1_eligible_match_count": 48,
+    "unresolved_definition_count": 0,
+    "ambiguous_definition_count": 0
+  },
+  "artifacts": {
+    "final20_registry": {
+      "path": "nasdaq_macro8_assets/nasdaq_macro8_final20.csv",
+      "sha256": "03331cc72463d5b7c0d5b07c9e4c3f9aeceb5f29ecca949ca1ee8e997b4d05de",
+      "rows": 20
+    },
+    "combo2_child_mapping": {
+      "path": "nasdaq_macro8_assets/nasdaq_macro8_combo2_child_mapping.csv",
+      "sha256": "418332b9b1c77f3dc244c1c00118f93a57eadcf4923c4b88a0f0a9fd2577fa2d",
+      "rows": 84
+    },
+    "source_inventory": {
+      "path": "reports/nasdaq_macro8_d0_source_inventory.json",
+      "sha256": "35cb63a95a904e295d53e1da0303d2fd15e687df1a42fbacff93702466e9b919"
+    }
+  },
+  "stage_scope": {
+    "dashboard_runtime_modified": false,
+    "dashboard_ui_modified": false,
+    "existing_tabs_modified": false,
+    "frozen_assets_copied": false,
+    "commit_push_deploy": false
+  },
+  "gate": "PASS_NASDAQ_MACRO8_D0_OPERATING_CONTRACT_FREEZE_READY"
+}

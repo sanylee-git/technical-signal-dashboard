@@ -1,0 +1,30 @@
+{
+  "gate": "PASS_NASDAQ_MACRO8_D3_UI_CLONE_ISOLATION_READY",
+  "runtime_mode": "FROZEN_ONLY",
+  "network_access": false,
+  "selection_semantics": "UI_INITIAL_DISPLAY_ONLY",
+  "default_selected_candidate": "first Combo2 Final20 candidate by frozen display_order",
+  "candidate_selection_changes_model": false,
+  "presentation_payload_cache": {
+    "namespace": "macro8_nasdaq",
+    "key": "immutable Frozen asset contract only",
+    "candidate_selection_causing_runtime_refetch": 0,
+    "chart_period_causing_runtime_refetch": 0,
+    "component_display_causing_runtime_refetch": 0
+  },
+  "chart_contract": {
+    "combo1": "CORE_INDICATOR chart-ready Frozen fields only",
+    "combo2": "CHILD_COMBO1_RAW_STATE plus NASDAQ 100 benchmark only",
+    "ui_side_indicator_calculation": 0,
+    "all_period_start": "2008-04-01",
+    "x_end": "candidate basis_date"
+  },
+  "isolation": {
+    "runtime_namespace": "nasdaq_macro8_runtime",
+    "widget_namespace": "macro8_nasdaq",
+    "kospi_runtime_dependency": false,
+    "kosdaq_runtime_dependency": false,
+    "direct_oas_used": false,
+    "proxy_only": true
+  }
+}

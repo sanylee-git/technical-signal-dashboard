@@ -1,0 +1,44 @@
+{
+  "stage": "NQ-4R",
+  "evaluation_start": "2008-04-01",
+  "previous_trading_day": "2008-03-31",
+  "old_eligible_count": 11545,
+  "t1_not_ready_count": 15,
+  "corrected_eligible_count": 11530,
+  "excluded_candidate_ids": [
+    "nasdaq__vix_spread__EMA40_W120_S20_E10__cfe264242721",
+    "nasdaq__vix_spread__EMA40_W120_S35_E10__7488a2e62764",
+    "nasdaq__vix_spread__EMA40_W120_S35_E25__6c5077281e95",
+    "nasdaq__vix_spread__EMA40_W120_S50_E10__fd3d76461c90",
+    "nasdaq__vix_spread__EMA40_W120_S50_E25__37cb3e9ba001",
+    "nasdaq__vix_spread__EMA40_W120_S50_E40__05587bc5c2f9",
+    "nasdaq__vix_spread__EMA40_W120_S75_E10__76bd2dad158f",
+    "nasdaq__vix_spread__EMA40_W120_S75_E25__8a169ad1661a",
+    "nasdaq__vix_spread__EMA40_W120_S75_E40__d185fbfbfc92",
+    "nasdaq__vix_spread__EMA40_W120_S75_E65__7c80296b13f4",
+    "nasdaq__vix_spread__EMA40_W120_S90_E10__95a3009eab01",
+    "nasdaq__vix_spread__EMA40_W120_S90_E25__22d997a59a73",
+    "nasdaq__vix_spread__EMA40_W120_S90_E40__86bca905bb8b",
+    "nasdaq__vix_spread__EMA40_W120_S90_E65__65056b791927",
+    "nasdaq__vix_spread__EMA40_W120_S90_E80__cdcd1d8ae9ff"
+  ],
+  "excluded_family_counts": {
+    "vix_spread": 15
+  },
+  "source_nq3_manifest": {
+    "path": "manifests/nq3_latest_core15_signal_bank.json",
+    "sha256": "6667d44543589d84f68696c8c7e517873646ac51948b47efbce1261882a69dd7"
+  },
+  "source_nq2a_contract": {
+    "path": "manifests/nq2a_evaluation_contract.json",
+    "sha256": "083fd131b4a6382f7a785ab5f778c5ee0230081c1017609260afd62a8304b091"
+  },
+  "source_nq4_manifest": {
+    "path": "manifests/nq4_latest_single_backtest.json",
+    "sha256": "77bd708052cfaadeab696a14c74d55f058d0e51bed9b8aaef4f1d65c8d2711fb"
+  },
+  "canonical_t1_definition": "canonical_t1_risk_off_state[t] = raw_risk_state[previous NDX performance trading day]",
+  "reporting_metric_state": "risk_off_ratio/cycle_count/short_cycle_20d_ratio use raw evaluation-slice risk_state",
+  "t1_na_policy": "FAIL_CLOSE_NO_RISK_ON_OR_RISK_OFF_SUBSTITUTION",
+  "contract_hash": "1fcbe73e49ce3eaa73c65c136272bff52d356e3a850636676c57de19169273ff"
+}

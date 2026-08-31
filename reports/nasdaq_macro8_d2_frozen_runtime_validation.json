@@ -1,0 +1,34 @@
+{
+  "gate": "PASS_NASDAQ_MACRO8_D2_FROZEN_RUNTIME_READY",
+  "runtime_mode": "FROZEN_ONLY",
+  "network_access": false,
+  "live_provider_fetch_added": false,
+  "basis_date": "2026-08-21",
+  "final20_total": 20,
+  "combo1_total": 10,
+  "combo2_total": 10,
+  "calculable_total": 20,
+  "candidate_basis_date_mismatch": 0,
+  "proxy_only": true,
+  "direct_oas_used": false,
+  "t1_contract": {
+    "combo1": "CORE_CANONICAL_T1_DIRECT_NO_SECOND_SHIFT",
+    "combo2": "CHILD_COMBO1_RAW_RISK_STATE_THEN_FINAL_T1_ONCE",
+    "missing_state_policy": "FAIL_CLOSE_NO_RISK_ON_OR_RISK_OFF_SUBSTITUTION"
+  },
+  "scope": {
+    "existing_tabs_modified": false,
+    "ui_modified": false,
+    "cache_or_session_added": false,
+    "external_api_added": false
+  },
+  "self_review": {
+    "outcome": "PASS",
+    "caught_before_use": [
+      "Core replay transform-column access error; corrected by Frozen oracle parity before runtime use.",
+      "Frozen cutoff Series-to-Timestamp conversion error; corrected by compile/test before runtime use."
+    ],
+    "no_manual_state_or_proxy_substitution": true,
+    "live_runtime_intentionally_not_implemented": true
+  }
+}

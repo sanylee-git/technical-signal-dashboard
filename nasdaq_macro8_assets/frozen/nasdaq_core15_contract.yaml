@@ -1,0 +1,181 @@
+project: NASDAQ
+stage: NQ-0
+status: core15_contract_frozen
+purpose: >-
+  Establish the minimum NASDAQ-100 Core15 method contract for future
+  single-indicator and Combo1/Combo2 research. No data, signals, grids,
+  backtests, rankings, or selection results are created by this contract.
+
+market_contract:
+  signal_market: ^NDX
+  performance_market: ^NDX
+  benchmark_market: ^NDX
+  performance_return_source: ^NDX daily close price return
+  qqq_allowed: false
+  qqq_usage: excluded_from_signal_frozen_backtest_benchmark_and_selection
+  transaction_cost_bps: 10
+  transaction_cost_source_reference: >-
+    macro_dashboard_kosdaq/configs/stage_03a_core15_contract.yaml
+    policy_parameters.transaction_cost_bps
+
+core15_contract:
+  core15_count: 15
+  breadth_formula: log(NDXE_close / NDX_close)
+  breadth_source_identifier: NDXE_SOURCE_TO_BE_RESOLVED_IN_NQ_1
+  generic_signal_count: 13
+  special_signal_count: 2
+  indicators:
+    - indicator_id: us_hy_oas_level
+      indicator_name: US HY Proxy Signal
+      category: common_macro
+      source_market: us_common_macro
+      formula: safe = -HY_credit_spread_proxy
+      direction: higher_is_safer
+      signal_rule_type: dynamic_quantile_downcross
+      special_rule: false
+    - indicator_id: us_ig_oas_level
+      indicator_name: US IG Proxy Signal
+      category: common_macro
+      source_market: us_common_macro
+      formula: safe = -IG_credit_spread_proxy
+      direction: higher_is_safer
+      signal_rule_type: dynamic_quantile_downcross
+      special_rule: false
+    - indicator_id: global_credit_stress
+      indicator_name: Global Credit Stress Signal
+      category: common_macro
+      source_market: us_common_macro
+      formula: safe = -credit_stress
+      direction: higher_is_safer
+      signal_rule_type: dynamic_quantile_downcross
+      special_rule: false
+    - indicator_id: vix_level
+      indicator_name: VIX Signal
+      category: common_macro
+      source_market: us_common_macro
+      formula: safe = -VIX
+      direction: higher_is_safer
+      signal_rule_type: dynamic_quantile_downcross
+      special_rule: false
+    - indicator_id: vix_spread
+      indicator_name: VIX Spread Signal
+      category: common_macro
+      source_market: us_common_macro
+      formula: safe = -(VIX - VIX3M)
+      direction: higher_is_safer
+      signal_rule_type: dynamic_quantile_downcross
+      special_rule: false
+    - indicator_id: us_10y_real_yield_level
+      indicator_name: US 10Y Real Yield Signal
+      category: common_macro
+      source_market: us_common_macro
+      formula: safe = -US_10Y_real_yield
+      direction: higher_is_safer
+      signal_rule_type: dynamic_quantile_downcross
+      special_rule: false
+    - indicator_id: us_10y_2y_spread
+      indicator_name: US 10Y-2Y Spread Signal
+      category: common_macro
+      source_market: us_common_macro
+      formula: safe = DGS10 - DGS2
+      direction: higher_is_safer
+      signal_rule_type: dynamic_quantile_downcross
+      special_rule: false
+    - indicator_id: us_10y_3m_spread
+      indicator_name: US 10Y-3M Spread Signal
+      category: common_macro
+      source_market: us_common_macro
+      formula: safe = DGS10 - DGS3MO
+      direction: higher_is_safer
+      signal_rule_type: dynamic_quantile_downcross
+      special_rule: false
+    - indicator_id: us_10y_slope
+      indicator_name: US 10Y Nominal Yield Slope Signal
+      category: common_macro
+      source_market: us_common_macro
+      formula: safe = -rolling_linear_regression_slope(DGS10)
+      direction: higher_is_safer
+      signal_rule_type: dynamic_quantile_downcross
+      special_rule: false
+    - indicator_id: ndx_index_level
+      indicator_name: NDX Index Level Signal
+      category: ndx_price
+      source_market: nasdaq_100
+      formula: safe = NDX_close
+      direction: higher_is_safer
+      signal_rule_type: dynamic_quantile_downcross
+      special_rule: false
+    - indicator_id: ndx_rsi
+      indicator_name: NDX RSI Signal
+      category: ndx_price
+      source_market: nasdaq_100
+      formula: RSI(NDX_close) with dynamic lower and upper quantiles
+      direction: rsi_upper_entry_is_risk_off_lower_entry_is_risk_on
+      signal_rule_type: rsi_special
+      special_rule: true
+    - indicator_id: ndx_bollinger
+      indicator_name: NDX Bollinger Band Signal
+      category: ndx_price
+      source_market: nasdaq_100
+      formula: bands_from_NDX_close_touch_and_reentry_from_NDX_high_low
+      direction: upper_reentry_is_risk_start_lower_reentry_is_risk_end
+      signal_rule_type: bollinger_special
+      special_rule: true
+    - indicator_id: ndx_natr
+      indicator_name: NDX NATR Signal
+      category: ndx_price
+      source_market: nasdaq_100
+      formula: safe = -(100 * Wilder_ATR(NDX_high, NDX_low, NDX_close) / NDX_close)
+      direction: higher_is_safer
+      signal_rule_type: dynamic_quantile_downcross
+      special_rule: false
+    - indicator_id: ndx_hv
+      indicator_name: NDX Historical Volatility Signal
+      category: ndx_price
+      source_market: nasdaq_100
+      formula: safe = -(rolling_std(log(NDX_close / NDX_close_lag_1), N, ddof=1) * sqrt(252))
+      direction: higher_is_safer
+      signal_rule_type: dynamic_quantile_downcross
+      special_rule: false
+    - indicator_id: ndx_equal_weight_breadth
+      indicator_name: NDX Equal Weight Breadth Signal
+      category: nasdaq_breadth
+      source_market: nasdaq_100_and_equal_weight
+      formula: safe = log(NDXE_close / NDX_close)
+      direction: higher_is_safer
+      signal_rule_type: dynamic_quantile_downcross
+      special_rule: false
+
+signal_state_contract:
+  risk_state_1: risk_off_non_invested
+  risk_state_0: risk_on_investable
+  generic_risk_start: previous_ema_at_or_above_previous_start_line_and_current_ema_below_current_start_line
+  generic_risk_end: previous_ema_at_or_below_previous_end_line_and_current_ema_above_current_end_line
+  t_plus_one_count: 1
+  t_plus_one_rule: apply_once_to_final_investment_position_after_final_combo_raw_state
+
+data_handling_contract:
+  performance_calendar_eligible: distinct_from_ohlc_signal_eligible
+  ohlc_signal_eligible: required_for_ohlc_dependent_indicators
+  raw_ffill_allowed: false
+  derived_ffill_allowed: false
+  prohibited_ffill_inputs:
+    - raw_indicator
+    - ema
+    - rolling_statistics
+    - rsi_input
+    - bollinger_input
+    - natr
+    - hv
+    - breadth_input
+  final_risk_state_persistence_allowed: true
+
+nq_0_scope:
+  data_download: false
+  source_audit: false
+  frozen_build: false
+  signal_calculation: false
+  grid_generation: false
+  backtest: false
+  combo_search: false
+  candidate_selection: false
