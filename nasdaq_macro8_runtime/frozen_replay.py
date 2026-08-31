@@ -232,7 +232,9 @@ def performance_calendar(panel: pd.DataFrame) -> tuple[pd.DatetimeIndex, np.ndar
     end = np.flatnonzero(dates == EVALUATION_END)
     if len(start) != 1 or len(end) != 1 or start[0] == 0:
         raise RuntimeError("Frozen NDX evaluation calendar contract unresolved")
-    returns = pd.to_numeric(frame.loc[mask, "ndx_performance_return"], errors="coerce").to_numpy(dtype=float)
+    # Streamlit cache can restore this Pandas-backed view as read-only.
+    # Normalize the initial return on a private working copy.
+    returns = pd.to_numeric(frame.loc[mask, "ndx_performance_return"], errors="coerce").to_numpy(dtype=float, copy=True)
     returns[0] = 0.0
     return dates, mask, int(start[0]), int(end[0]), returns
 

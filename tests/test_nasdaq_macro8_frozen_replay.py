@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from nasdaq_macro8_runtime.frozen_replay import replay_core, replay_final20
+from nasdaq_macro8_runtime.frozen_replay import performance_calendar, replay_core, replay_final20
 
 
 FROZEN = ROOT / "nasdaq_macro8_assets" / "frozen"
@@ -36,3 +36,15 @@ def test_frozen_core15_and_final20_parity() -> None:
         assert abs(row.cagr - float(expected_row.cagr)) <= 1e-12
         assert abs(row.mdd - float(expected_row.mdd)) <= 1e-12
         assert abs(row.calmar - float(expected_row.calmar)) <= 1e-12
+
+
+def test_performance_calendar_owns_a_writable_return_copy_under_copy_on_write() -> None:
+    panel = pd.read_parquet(FROZEN / "frozen_nasdaq_core15_input.parquet")
+    previous = pd.options.mode.copy_on_write
+    pd.options.mode.copy_on_write = True
+    try:
+        _dates, _mask, _start, _end, returns = performance_calendar(panel)
+    finally:
+        pd.options.mode.copy_on_write = previous
+    assert returns.flags.writeable
+    assert returns[0] == 0.0
