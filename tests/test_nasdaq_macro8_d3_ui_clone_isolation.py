@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 
 from nasdaq_macro8_runtime.frozen_runtime import run_frozen_runtime
 from nasdaq_macro8_runtime.presentation_payload import build_presentation_payload
-from nasdaq_macro8_ui import _backtest_table, _component_chart, _group_stage, _group_summary, _main_chart, _snapshot_row
+from nasdaq_macro8_ui import _backtest_table, _component_chart, _group_stage, _group_summary, _main_chart, _practical_final, _snapshot_row
 
 
 def _macro8_smoke_app() -> None:
@@ -39,7 +39,7 @@ def payload() -> dict:
 
 def _default_candidate(payload: dict) -> str:
     return str(
-        payload["final20"].loc[payload["final20"]["model_family"].eq("COMBO2")]
+        _practical_final(payload["final20"]).loc[lambda frame: frame["model_family"].eq("COMBO2")]
         .sort_values("display_order")
         .iloc[0]["candidate_id"]
     )
@@ -59,6 +59,18 @@ def test_payload_is_frozen_only_and_preserves_final20_runtime_state(payload: dic
     full = payload["frozen_display_metrics"].loc[payload["frozen_display_metrics"]["window"].eq("FULL")].set_index("candidate_id")
     assert (live.loc[full.index, "cagr"] - full["cagr"]).abs().max() < 1e-12
     assert (live.loc[full.index, "mdd"] - full["mdd"]).abs().max() < 1e-12
+
+
+def test_practical10_is_the_fixed_operational_view(payload: dict) -> None:
+    practical = _practical_final(payload["final20"])
+    assert len(payload["final20"]) == 20
+    assert len(practical) == 10
+    assert practical["selection_type"].eq("Practical").all()
+    assert practical["model_family"].value_counts().to_dict() == {"COMBO1": 5, "COMBO2": 5}
+    summary = _group_summary(payload, practical)
+    assert "조합2 계산 가능 5 / 5" in summary
+    assert "조합1 계산 가능 5 / 5" in summary
+    assert "/ 10" not in summary
 
 
 def test_ui_isolated_from_other_market_runtimes_and_network() -> None:
@@ -103,6 +115,10 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     assert "전체 자산 (18Y)" in table
     assert "min-width:1280px" in table
     assert "시장단계(1주 전)" in table
+    assert table.count("<tbody><tr") == 1
+    assert table.count("<tr style=") == 5
+    assert "Return / Calmar" not in table
+    assert "Whipsaw 최소화" in table
     dashboard = (ROOT / "technical_signal_dashboard.py").read_text(encoding="utf-8")
     assert '"macro8_nasdaq": ("NASDAQ MACRO INDICATORS", "🇺🇸 나스닥지표")' in dashboard
     assert "render_macro8_nasdaq_section(_macro8_nasdaq_container)" in dashboard

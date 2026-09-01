@@ -104,6 +104,15 @@ def _ordered_candidate_ids(final: pd.DataFrame, family: str) -> list[str]:
     return final.loc[final["model_family"].eq(family)].sort_values("display_order")["candidate_id"].astype(str).tolist()
 
 
+def _practical_final(final: pd.DataFrame) -> pd.DataFrame:
+    """Return the fixed operational view without changing the Final20 contract."""
+    out = final.loc[final["selection_type"].eq("Practical")].copy()
+    counts = out["model_family"].value_counts()
+    if len(out) != 10 or counts.get("COMBO1", 0) != 5 or counts.get("COMBO2", 0) != 5:
+        raise RuntimeError("NASDAQ Macro8 Practical10 display contract failed")
+    return out.sort_values("display_order", kind="mergesort").reset_index(drop=True)
+
+
 def _view(frame: pd.DataFrame, *, candidate_id: str | None = None, parent_id: str | None = None, start: object = None, end: object = None, years: int | str = "all") -> pd.DataFrame:
     if frame is None or frame.empty:
         return pd.DataFrame()
@@ -243,11 +252,13 @@ def _stage_change_html(previous: str, current: str) -> str:
     return f"{_stage_html(previous)}<span style='color:rgba(255,255,255,.36);padding:0 4px'>→</span>{_stage_html(current)}"
 
 
-def _group_summary(payload: dict[str, Any]) -> str:
+def _group_summary(payload: dict[str, Any], final: pd.DataFrame | None = None) -> str:
     summary: dict[str, dict[str, str]] = {}
     snapshot = payload["snapshot"]
+    final = _practical_final(payload["final20"]) if final is None else final
     for family, label in (("COMBO2", "조합2"), ("COMBO1", "조합1")):
-        rows = snapshot.loc[snapshot["model_family"].eq(family)]
+        candidate_ids = final.loc[final["model_family"].eq(family), "candidate_id"]
+        rows = snapshot.loc[snapshot["candidate_id"].isin(candidate_ids)]
         usable = rows.loc[rows["status"].eq("USABLE")]
         risk_off = int(usable["raw_risk_state"].astype(bool).sum())
         stage = [_stage(row.active_count, row.K, row.L, row.raw_risk_state) for row in usable.itertuples(index=False)]
@@ -300,8 +311,9 @@ def _full_asset_header(windows: dict[str, Any]) -> str:
     return f"전체 자산 ({max(1, years)}Y)"
 
 
-def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> str:
-    final = payload["final20"].loc[payload["final20"]["model_family"].eq(family)].sort_values("display_order")
+def _backtest_table(payload: dict[str, Any], family: str, selected_id: str, final: pd.DataFrame | None = None) -> str:
+    final = _practical_final(payload["final20"]) if final is None else final
+    final = final.loc[final["model_family"].eq(family)].sort_values("display_order")
     snapshot = payload["snapshot"].set_index("candidate_id")
     metrics = payload["frozen_display_metrics"]
     hold = payload["benchmark_display_metrics"].set_index("window")
@@ -377,7 +389,7 @@ def _render_css() -> None:
 
 
 def render_macro8_nasdaq_section(container: Any, *, payload: dict[str, Any] | None = None, payload_loader: Callable[[str], dict[str, Any]] = _load_macro8_nasdaq_presentation_payload) -> None:
-    """Render Final20 with no UI-side model calculation or provider access."""
+    """Render the fixed Practical10 operational view without provider access."""
     with container:
         _render_css()
         if payload is None:
@@ -389,7 +401,7 @@ def render_macro8_nasdaq_section(container: Any, *, payload: dict[str, Any] | No
         if not isinstance(payload, dict) or payload.get("ui_side_model_calculation_count") != 0:
             st.error("NASDAQ Macro8 presentation contract 검증 실패")
             return
-        final = payload["final20"].copy().sort_values("display_order")
+        final = _practical_final(payload["final20"])
         combo2, combo1 = _ordered_candidate_ids(final, "COMBO2"), _ordered_candidate_ids(final, "COMBO1")
         ordered, separator = combo2 + combo1, "__macro8_nasdaq_combo1_separator__"
         default = combo2[0]
@@ -397,7 +409,7 @@ def render_macro8_nasdaq_section(container: Any, *, payload: dict[str, Any] | No
             st.session_state["macro8_nasdaq_preset"] = default
         labels = {str(row.candidate_id): _candidate_label(row._asdict()) for row in final.itertuples(index=False)}
         st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
-        st.markdown(_group_summary(payload), unsafe_allow_html=True)
+        st.markdown(_group_summary(payload, final), unsafe_allow_html=True)
         st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
         c1, c2, c3, c4 = st.columns([1.8, 1.0, 2.2, 1.0], vertical_alignment="bottom")
         for column, label in zip((c1, c2, c3, c4), ("조합 프리셋", "기준지수", "기간", "보조선 표시"), strict=True):
@@ -437,9 +449,9 @@ def render_macro8_nasdaq_section(container: Any, *, payload: dict[str, Any] | No
         st.markdown(_current_status_html(state, candidate_history), unsafe_allow_html=True)
         st.markdown('<div class="macro2-divider macro2-divider-tight-top"></div>', unsafe_allow_html=True)
         with st.expander("백테스트 비교 보기 · 조합2", expanded=False):
-            st.markdown(_backtest_table(payload, "COMBO2", candidate_id), unsafe_allow_html=True)
+            st.markdown(_backtest_table(payload, "COMBO2", candidate_id, final), unsafe_allow_html=True)
         with st.expander("백테스트 비교 보기 · 조합1", expanded=False):
-            st.markdown(_backtest_table(payload, "COMBO1", candidate_id), unsafe_allow_html=True)
+            st.markdown(_backtest_table(payload, "COMBO1", candidate_id, final), unsafe_allow_html=True)
         with st.expander("지표별 상태 보기", expanded=False):
             st.markdown(_component_status_table(payload, candidate_id), unsafe_allow_html=True)
         with st.expander("Frozen 데이터·Proxy 계약", expanded=False):
@@ -464,4 +476,4 @@ def render_macro8_nasdaq_section(container: Any, *, payload: dict[str, Any] | No
             st.write(f"candidate_id: `{candidate_id}`")
             st.write(f"공식 Frozen 백테스트: `2008-04-01 ~ {payload['backtest_windows']['frozen_cutoff']} · T+1 · 10bp · 현금수익 미적용`")
             st.write(f"CAGR: `{_fmt_pct(live.cagr)}` · MDD: `{_fmt_pct(live.mdd)}` · Calmar: `{float(live.calmar):.3f}`")
-            st.write("Final20은 재선별하지 않습니다. HY/IG는 전 기간 Proxy Only입니다.")
+            st.write("Final20은 재선별하지 않으며, 화면에는 실전 후보 10개만 표시합니다. HY/IG는 전 기간 Proxy Only입니다.")
