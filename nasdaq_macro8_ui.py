@@ -21,8 +21,8 @@ from nasdaq_macro8_runtime.presentation_payload import build_presentation_payloa
 RISK_ON = "#54F2A3"
 RISK_OFF = "#FF8C69"
 STAGE_COLORS = {
-    "매수준비": RISK_ON, "매수": "#22C55E", "매수심화": "#15803D",
-    "홀드": "#A18707", "관망": "#A18707", "매도준비": RISK_OFF,
+    "매수준비": RISK_OFF, "매수": "#22C55E", "매수심화": "#15803D",
+    "홀드": RISK_ON, "관망": "#EA580C", "매도준비": "#A18707",
     "매도": "#F05A47", "매도심화": "#DC2626", "혼조": "#6B7280", "계산 불가": RISK_OFF,
 }
 STAGE_SCORES = {"매수심화": -3, "매수": -2, "매수준비": -1, "홀드": 0, "관망": 0, "매도준비": 1, "매도": 2, "매도심화": 3}

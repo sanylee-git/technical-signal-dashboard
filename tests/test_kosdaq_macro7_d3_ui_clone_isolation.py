@@ -16,6 +16,7 @@ from kosdaq_macro7_runtime.live_runtime import run_live_runtime
 from kosdaq_macro7_runtime.presentation_payload import build_presentation_payload
 from kosdaq_macro7_ui import (
     DEFAULT_CANDIDATE,
+    STAGE_COLORS,
     _backtest_table,
     _component_chart,
     _component_display_label,
@@ -110,6 +111,15 @@ def test_stage_display_is_only_a_label_projection() -> None:
     assert _stage(4, 4, 2, True) == "매도"
     assert _stage(1, 4, 2, False) == "매수심화"
     assert _stage(None, 4, 2, False) == "계산 불가"
+
+
+def test_stage_palette_separates_investment_and_noninvestment_sides() -> None:
+    assert {label: STAGE_COLORS[label] for label in ("매수심화", "매수", "홀드", "매도준비")} == {
+        "매수심화": "#15803D", "매수": "#22C55E", "홀드": "#54F2A3", "매도준비": "#A18707",
+    }
+    assert {label: STAGE_COLORS[label] for label in ("매수준비", "관망", "매도", "매도심화")} == {
+        "매수준비": "#FF8C69", "관망": "#EA580C", "매도": "#F05A47", "매도심화": "#DC2626",
+    }
 
 
 def test_ui_contract_declares_no_presentation_state_refetch() -> None:

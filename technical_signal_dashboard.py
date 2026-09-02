@@ -6021,12 +6021,12 @@ def _macro_market_stage_label(on_count, start_k, end_l, is_on) -> str:
 
 
 _MACRO_MARKET_STAGE_COLORS = {
-    "홀드": "#A18707",
-    "매수준비": _MACRO_STATUS_RISK_ON_COLOR,
+    "홀드": _MACRO_STATUS_RISK_ON_COLOR,
     "매수": "#22C55E",
     "매수심화": "#15803D",
-    "관망": "#A18707",
-    "매도준비": _MACRO_STATUS_RISK_OFF_COLOR,
+    "매도준비": "#A18707",
+    "매수준비": _MACRO_STATUS_RISK_OFF_COLOR,
+    "관망": "#EA580C",
     "매도": "#F05A47",
     "매도심화": "#DC2626",
     "혼조": "#6B7280",

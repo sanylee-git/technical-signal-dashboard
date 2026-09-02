@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 
 from nasdaq_macro8_runtime.frozen_runtime import run_frozen_runtime
 from nasdaq_macro8_runtime.presentation_payload import build_presentation_payload
-from nasdaq_macro8_ui import _backtest_table, _component_chart, _group_stage, _group_summary, _main_chart, _practical_final, _snapshot_row
+from nasdaq_macro8_ui import STAGE_COLORS, _backtest_table, _component_chart, _group_stage, _group_summary, _main_chart, _practical_final, _snapshot_row
 
 
 def _macro8_smoke_app() -> None:
@@ -83,6 +83,15 @@ def test_ui_isolated_from_other_market_runtimes_and_network() -> None:
     assert "build_presentation_payload" in ui
     assert "FROZEN_ONLY" in payload
     assert "Proxy Only" in ui
+
+
+def test_stage_palette_separates_investment_and_noninvestment_sides() -> None:
+    assert {label: STAGE_COLORS[label] for label in ("매수심화", "매수", "홀드", "매도준비")} == {
+        "매수심화": "#15803D", "매수": "#22C55E", "홀드": "#54F2A3", "매도준비": "#A18707",
+    }
+    assert {label: STAGE_COLORS[label] for label in ("매수준비", "관망", "매도", "매도심화")} == {
+        "매수준비": "#FF8C69", "관망": "#EA580C", "매도": "#F05A47", "매도심화": "#DC2626",
+    }
 
 
 def test_combo_chart_contracts_and_ranges(payload: dict) -> None:

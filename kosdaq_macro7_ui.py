@@ -23,8 +23,8 @@ from macro_source_schedule import source_schedule_table_html
 RISK_ON = "#54F2A3"
 RISK_OFF = "#FF8C69"
 STAGE_COLORS = {
-    "매수준비": RISK_ON, "매수": "#22C55E", "매수심화": "#15803D",
-    "홀드": "#A18707", "관망": "#A18707", "매도준비": RISK_OFF,
+    "매수준비": RISK_OFF, "매수": "#22C55E", "매수심화": "#15803D",
+    "홀드": RISK_ON, "관망": "#EA580C", "매도준비": "#A18707",
     "매도": "#F05A47", "매도심화": "#DC2626", "혼조": "#6B7280", "계산 불가": RISK_OFF,
 }
 STAGE_SCORES = {
