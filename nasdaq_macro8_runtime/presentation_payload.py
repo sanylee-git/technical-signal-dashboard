@@ -52,7 +52,7 @@ def _component_history(runtime: dict[str, Any], final: pd.DataFrame) -> tuple[pd
     children = runtime["children"]
     core_chart = replay_core_chart_history(panel, runtime["registry"])
     core_states = core_chart[["component_id", "date", "risk_state", "risk_start", "risk_end", "valid_signal"]].copy()
-    child_history = replay_combo1_raw_history(panel, children, core)
+    child_history = replay_combo1_raw_history(panel, children, core, evaluation_end=pd.Timestamp(runtime["basis_date"]))
     parts: list[pd.DataFrame] = []
 
     for parent in final.itertuples(index=False):
@@ -82,9 +82,9 @@ def _component_history(runtime: dict[str, Any], final: pd.DataFrame) -> tuple[pd
     return (pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()), core_chart
 
 
-def _benchmark_history(panel: pd.DataFrame, final: pd.DataFrame) -> pd.DataFrame:
+def _benchmark_history(panel: pd.DataFrame, final: pd.DataFrame, basis_date: object) -> pd.DataFrame:
     base = _normalized(panel[["date", "ndx_close"]])
-    base = base.loc[base["date"].between(EVALUATION_START, EVALUATION_END)]
+    base = base.loc[base["date"].between(EVALUATION_START, pd.Timestamp(basis_date).normalize())]
     parts = []
     for candidate_id in final["candidate_id"].astype(str):
         part = base.copy()
@@ -94,11 +94,14 @@ def _benchmark_history(panel: pd.DataFrame, final: pd.DataFrame) -> pd.DataFrame
 
 
 def _display_metrics(runtime: dict[str, Any], final: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, str]]:
-    dates, _mask, evaluation_start, evaluation_end, returns = performance_calendar(runtime["panel"])
+    # Official comparison values stay anchored to the verified Frozen evaluation window.
+    panel = runtime.get("frozen_panel", runtime["panel"])
+    history_source = runtime.get("frozen_history", runtime["history"])
+    dates, _mask, evaluation_start, evaluation_end, returns = performance_calendar(panel)
     cutoff = dates[evaluation_end]
     ten_start = int(np.flatnonzero(dates >= cutoff - pd.DateOffset(years=10))[0])
     windows = {"10Y": ten_start, "FULL": evaluation_start}
-    history = _candidate_history(runtime)
+    history = _candidate_history({"history": history_source})
     rows: list[dict[str, object]] = []
     hold_rows: list[dict[str, object]] = []
     for window, start in windows.items():
@@ -134,9 +137,9 @@ def _display_metrics(runtime: dict[str, Any], final: pd.DataFrame) -> tuple[pd.D
 
 
 def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
-    """Build chart/table payload from exactly one verified Frozen runtime result."""
-    if runtime.get("runtime_mode") != "FROZEN_ONLY" or runtime.get("network_access"):
-        raise RuntimeError("NASDAQ Macro8 presentation requires a Frozen-only runtime payload")
+    """Build chart/table payload from one NASDAQ-owned Frozen or Live runtime."""
+    if runtime.get("runtime_mode") not in {"FROZEN_ONLY", "LIVE_TAIL"}:
+        raise RuntimeError("NASDAQ Macro8 presentation runtime contract failed")
     final = _final20(runtime["final20"])
     snapshot = runtime["snapshot"].copy().set_index("candidate_id").reindex(final["candidate_id"]).reset_index()
     snapshot["model_family"] = final["model_family"].to_numpy()
@@ -151,16 +154,16 @@ def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
     component_history, component_chart_history = _component_history(runtime, final)
     metrics, hold, windows = _display_metrics(runtime, final)
     return {
-        "presentation_contract": "nasdaq_macro8_frozen_presentation_payload_v1",
-        "runtime_mode": "FROZEN_ONLY",
-        "network_access": False,
+        "presentation_contract": "nasdaq_macro8_live_presentation_payload_v1" if runtime.get("runtime_mode") == "LIVE_TAIL" else "nasdaq_macro8_frozen_presentation_payload_v1",
+        "runtime_mode": runtime["runtime_mode"],
+        "network_access": bool(runtime.get("network_access")),
         "proxy_only": True,
         "direct_oas_used": False,
         "snapshot": snapshot,
         "candidate_history": candidate_history,
         "component_history": component_history,
         "component_chart_history": component_chart_history,
-        "benchmark_history": _benchmark_history(runtime["panel"], final),
+        "benchmark_history": _benchmark_history(runtime["panel"], final, runtime["basis_date"]),
         "frozen_display_metrics": metrics,
         "benchmark_display_metrics": hold,
         "backtest_windows": windows,

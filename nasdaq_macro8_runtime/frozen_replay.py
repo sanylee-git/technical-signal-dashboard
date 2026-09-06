@@ -222,14 +222,19 @@ def replay_core_chart_history(panel: pd.DataFrame, registry: pd.DataFrame) -> pd
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
 
-def performance_calendar(panel: pd.DataFrame) -> tuple[pd.DatetimeIndex, np.ndarray, int, int, np.ndarray]:
+def performance_calendar(
+    panel: pd.DataFrame,
+    *,
+    evaluation_end: pd.Timestamp | None = None,
+) -> tuple[pd.DatetimeIndex, np.ndarray, int, int, np.ndarray]:
     frame = panel.copy()
     frame["date"] = pd.to_datetime(frame["date"]).dt.normalize()
     frame = frame.sort_values("date", kind="mergesort").reset_index(drop=True)
     mask = frame["performance_calendar_eligible"].astype(bool).to_numpy()
     dates = pd.DatetimeIndex(frame.loc[mask, "date"])
     start = np.flatnonzero(dates == EVALUATION_START)
-    end = np.flatnonzero(dates == EVALUATION_END)
+    target_end = pd.Timestamp(EVALUATION_END if evaluation_end is None else evaluation_end).normalize()
+    end = np.flatnonzero(dates == target_end)
     if len(start) != 1 or len(end) != 1 or start[0] == 0:
         raise RuntimeError("Frozen NDX evaluation calendar contract unresolved")
     # Streamlit cache can restore this Pandas-backed view as read-only.
@@ -342,9 +347,11 @@ def replay_combo1_raw_history(
     panel: pd.DataFrame,
     children: pd.DataFrame,
     core: dict[str, dict[str, np.ndarray]],
+    *,
+    evaluation_end: pd.Timestamp | None = None,
 ) -> pd.DataFrame:
     """Return the pinned Combo1 raw-state histories used as Combo2 inputs."""
-    dates, mask, _eval_start, eval_end, _returns = performance_calendar(panel)
+    dates, mask, _eval_start, eval_end, _returns = performance_calendar(panel, evaluation_end=evaluation_end)
     raw = {candidate_id: value["raw"][mask] for candidate_id, value in core.items()}
     valid = {candidate_id: value["valid"][mask] & (value["raw"][mask] >= 0) for candidate_id, value in core.items()}
     seen: set[str] = set()
@@ -370,8 +377,15 @@ def replay_combo1_raw_history(
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
 
-def _replay_final20(panel: pd.DataFrame, final20: pd.DataFrame, children: pd.DataFrame, core: dict[str, dict[str, np.ndarray]]) -> tuple[pd.DataFrame, pd.DataFrame]:
-    dates, mask, eval_start, eval_end, returns = performance_calendar(panel)
+def _replay_final20(
+    panel: pd.DataFrame,
+    final20: pd.DataFrame,
+    children: pd.DataFrame,
+    core: dict[str, dict[str, np.ndarray]],
+    *,
+    evaluation_end: pd.Timestamp | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    dates, mask, eval_start, eval_end, returns = performance_calendar(panel, evaluation_end=evaluation_end)
     raw_performance = {candidate_id: value["raw"][mask] for candidate_id, value in core.items()}
     valid_performance = {candidate_id: value["valid"][mask] & (value["raw"][mask] >= 0) for candidate_id, value in core.items()}
     canonical, canonical_valid = _performance_core(core, mask)
@@ -439,13 +453,27 @@ def _replay_final20(panel: pd.DataFrame, final20: pd.DataFrame, children: pd.Dat
     return metrics, history
 
 
-def replay_final20(panel: pd.DataFrame, final20: pd.DataFrame, children: pd.DataFrame, core: dict[str, dict[str, np.ndarray]]) -> pd.DataFrame:
-    return _replay_final20(panel, final20, children, core)[0]
+def replay_final20(
+    panel: pd.DataFrame,
+    final20: pd.DataFrame,
+    children: pd.DataFrame,
+    core: dict[str, dict[str, np.ndarray]],
+    *,
+    evaluation_end: pd.Timestamp | None = None,
+) -> pd.DataFrame:
+    return _replay_final20(panel, final20, children, core, evaluation_end=evaluation_end)[0]
 
 
-def replay_final20_history(panel: pd.DataFrame, final20: pd.DataFrame, children: pd.DataFrame, core: dict[str, dict[str, np.ndarray]]) -> pd.DataFrame:
+def replay_final20_history(
+    panel: pd.DataFrame,
+    final20: pd.DataFrame,
+    children: pd.DataFrame,
+    core: dict[str, dict[str, np.ndarray]],
+    *,
+    evaluation_end: pd.Timestamp | None = None,
+) -> pd.DataFrame:
     """Return Final20 strategy-state history from the exact Frozen replay."""
-    return _replay_final20(panel, final20, children, core)[1]
+    return _replay_final20(panel, final20, children, core, evaluation_end=evaluation_end)[1]
 
 
 def asset_sha256(path: Path) -> str:

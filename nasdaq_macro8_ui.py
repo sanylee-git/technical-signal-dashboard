@@ -1,8 +1,4 @@
-"""NASDAQ Macro8 Frozen-only presentation renderer.
-
-The module owns the Macro8 UI namespace and only renders the verified
-presentation payload.  It never fetches sources or recalculates signals.
-"""
+"""NASDAQ Macro8 presentation renderer backed by its independent Live runtime."""
 
 from __future__ import annotations
 
@@ -14,7 +10,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from nasdaq_macro8_runtime.frozen_runtime import run_frozen_runtime
+from nasdaq_macro8_runtime.live_runtime import run_live_runtime
 from nasdaq_macro8_runtime.presentation_payload import build_presentation_payload
 
 
@@ -29,15 +25,15 @@ STAGE_SCORES = {"매수심화": -3, "매수": -2, "매수준비": -1, "홀드": 
 PERIOD_OPTIONS: list[int | str] = [2, 3, 5, 7, 10, 15, "all"]
 
 
-@st.cache_data(show_spinner=False)
-def _load_macro8_nasdaq_presentation_payload(asset_contract: str) -> dict[str, Any]:
-    """One Frozen runtime acquisition per cache miss; UI state is not a key."""
-    del asset_contract
-    return build_presentation_payload(run_frozen_runtime())
+@st.cache_data(ttl=3600, show_spinner=False)
+def _load_macro8_nasdaq_presentation_payload(live_sync_bucket: str) -> dict[str, Any]:
+    """One NASDAQ-only Live acquisition per sync bucket; UI state is not a key."""
+    del live_sync_bucket
+    return build_presentation_payload(run_live_runtime())
 
 
-def _asset_contract_key() -> str:
-    return "nasdaq_macro8_frozen_2026-08-21_final20_v1"
+def _live_sync_bucket(minutes: int = 60) -> str:
+    return pd.Timestamp.now(tz="UTC").floor(f"{max(5, int(minutes))}min").strftime("%Y%m%d%H%M")
 
 
 def _date(value: object) -> str:
@@ -389,14 +385,14 @@ def _render_css() -> None:
 
 
 def render_macro8_nasdaq_section(container: Any, *, payload: dict[str, Any] | None = None, payload_loader: Callable[[str], dict[str, Any]] = _load_macro8_nasdaq_presentation_payload) -> None:
-    """Render the fixed Practical10 operational view without provider access."""
+    """Render the fixed Practical10 view from one NASDAQ-only runtime payload."""
     with container:
         _render_css()
         if payload is None:
             try:
-                payload = payload_loader(_asset_contract_key())
+                payload = payload_loader(_live_sync_bucket())
             except Exception as exc:
-                st.error(f"NASDAQ Macro8 Frozen 데이터를 준비하지 못했습니다: {exc}")
+                st.error(f"NASDAQ Macro8 Live 데이터를 준비하지 못했습니다: {exc}")
                 return
         if not isinstance(payload, dict) or payload.get("ui_side_model_calculation_count") != 0:
             st.error("NASDAQ Macro8 presentation contract 검증 실패")
@@ -454,8 +450,8 @@ def render_macro8_nasdaq_section(container: Any, *, payload: dict[str, Any] | No
             st.markdown(_backtest_table(payload, "COMBO1", candidate_id, final), unsafe_allow_html=True)
         with st.expander("지표별 상태 보기", expanded=False):
             st.markdown(_component_status_table(payload, candidate_id), unsafe_allow_html=True)
-        with st.expander("Frozen 데이터·Proxy 계약", expanded=False):
-            st.markdown("<div class='macro2-helper-text'>Frozen Core15 · FRED DBAA/DAAA/DGS10/DGS2/DGS3MO/DFII10/VIXCLS/VXVCLS/NFCI · ^NDX OHLC · ^NDXE Close<br><b>Proxy Only</b> · HY Proxy = DBAA − DGS10 · IG Proxy = DAAA − DGS10 · 직접 OAS 미사용 · 외부 조회 없음</div>", unsafe_allow_html=True)
+        with st.expander("데이터·Proxy 계약", expanded=False):
+            st.markdown("<div class='macro2-helper-text'>Frozen Core15 기준선 + 최신 FRED/ Yahoo tail · FRED DBAA/DAAA/DGS10/DGS2/DGS3MO/DFII10/VIXCLS/VXVCLS/NFCI · ^NDX OHLC · ^NDXE Close<br><b>Proxy Only</b> · HY Proxy = DBAA − DGS10 · IG Proxy = DAAA − DGS10 · 직접 OAS 미사용</div>", unsafe_allow_html=True)
         st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
         main = _main_chart(payload, candidate_id, state.basis_date, period)
         if main is None:
