@@ -12,6 +12,10 @@ presentation payload only.
 
 - Final10 display set: Combo1 5개 + Combo2 5개, exact candidate IDs from the
   Stage 1 contract; no reselection or ranking.
+- Operational display roles: Combo1 `ff766a24...` / `7b12636f...` as Main1 /
+  Main2, and Combo2 `8ed8c962...` / `95cff355...` as Main1 / Main2. This is a
+  display-order/role mapping only; candidate definitions and metrics remain
+  frozen.
 - Benchmark: `^GSPC` / S&P 500.
 - Proxy-only: `HY = DBAA - DGS10`, `IG = DAAA - DGS10`; direct OAS and source
   stitching are not used.

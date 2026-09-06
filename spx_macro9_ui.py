@@ -24,6 +24,31 @@ STAGE_COLORS = {
 STAGE_SCORES = {"매수심화": -3, "매수": -2, "매수준비": -1, "홀드": 0, "관망": 0, "매도준비": 1, "매도": 2, "매도심화": 3}
 PERIOD_OPTIONS: list[int | str] = [2, 3, 5, 7, 10, 15, "all"]
 
+SPX_OPERATIONAL_ROLE_OVERRIDES = {
+    # Operational display roles are intentionally separate from the frozen
+    # research metrics and candidate definitions.
+    "ff766a2413cf24620dae5ba4": "Main1 MDD 방어·Calmar형",
+    "7b12636f7551ff2040b9c8ed": "Main2 안정적 메인",
+    "8ed8c962d98d1ee2504c6ae0": "Main1 초저-Short 중형조합형",
+    "95cff35563d9d4316b84daa8": "Main2 고성과 Robust형",
+    "61b4f8da571569e1eb0c324c": "초저-Short 메인",
+    "0e715f71f7e73cd2d9f8af55": "Robust·기간안정",
+}
+SPX_OPERATIONAL_DISPLAY_ORDER = {
+    # Main1/Main2 are first within each family; the remaining frozen Final10
+    # candidates retain their fixed membership and only fill the later slots.
+    "ff766a2413cf24620dae5ba4": 1,
+    "7b12636f7551ff2040b9c8ed": 2,
+    "939788293cd86b8488a45f38": 3,
+    "f79be460c762828a3a07d8d6": 4,
+    "1315bcf6403020b0353ca32b": 5,
+    "8ed8c962d98d1ee2504c6ae0": 1,
+    "95cff35563d9d4316b84daa8": 2,
+    "61b4f8da571569e1eb0c324c": 3,
+    "0e715f71f7e73cd2d9f8af55": 4,
+    "acaaf10f62992f86ad7dbe3a": 5,
+}
+
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _load_macro9_spx_presentation_payload(live_sync_bucket: str) -> dict[str, Any]:
@@ -103,6 +128,8 @@ def _ordered_candidate_ids(final: pd.DataFrame, family: str) -> list[str]:
 def _display_final(final: pd.DataFrame) -> pd.DataFrame:
     """Return the fixed S&P Final10 display set without reselection."""
     out = final.copy()
+    out["display_role"] = out["candidate_id"].map(SPX_OPERATIONAL_ROLE_OVERRIDES).fillna(out["display_role"])
+    out["display_order"] = out["candidate_id"].map(SPX_OPERATIONAL_DISPLAY_ORDER).fillna(out["display_order"])
     counts = out["model_family"].value_counts()
     if len(out) != 10 or counts.get("COMBO1", 0) != 5 or counts.get("COMBO2", 0) != 5:
         raise RuntimeError("S&P Macro9 Final10 display contract failed")

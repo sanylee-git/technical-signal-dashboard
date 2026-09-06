@@ -6,6 +6,7 @@ import pandas as pd
 
 from spx_macro9_runtime.frozen_runtime import run_frozen_runtime
 from spx_macro9_runtime.presentation_payload import build_presentation_payload
+from spx_macro9_ui import _display_final
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,3 +48,18 @@ def test_spx_component_payload_preserves_combo_chart_semantics() -> None:
     }
     assert not payload["component_chart_history"].empty
     assert pd.to_datetime(payload["component_chart_history"]["date"]).max() == pd.Timestamp("2026-08-21")
+
+
+def test_spx_operational_main_roles_are_display_only() -> None:
+    payload = build_presentation_payload(run_frozen_runtime())
+    final = _display_final(payload["final10"])
+    assert final.loc[final["model_family"].eq("COMBO1"), "candidate_id"].tolist()[:2] == [
+        "ff766a2413cf24620dae5ba4",
+        "7b12636f7551ff2040b9c8ed",
+    ]
+    assert final.loc[final["model_family"].eq("COMBO2"), "candidate_id"].tolist()[:2] == [
+        "8ed8c962d98d1ee2504c6ae0",
+        "95cff35563d9d4316b84daa8",
+    ]
+    assert final.loc[final["candidate_id"].eq("ff766a2413cf24620dae5ba4"), "display_role"].item() == "Main1 MDD 방어·Calmar형"
+    assert final.loc[final["candidate_id"].eq("8ed8c962d98d1ee2504c6ae0"), "display_role"].item() == "Main1 초저-Short 중형조합형"
