@@ -1,0 +1,124 @@
+{
+  "status": "PASS_SPX_MACRO9_STAGE3_LIVE_INPUT_ASSETS_READY",
+  "runtime_dependency": "DASHBOARD_OWNED_ASSETS_ONLY",
+  "source_contract": {
+    "proxy_only": true,
+    "direct_oas_or_stitching": "FORBIDDEN",
+    "spread_series": [
+      "T10Y2Y",
+      "T10Y3M"
+    ],
+    "vix3m_recent_source": "CBOE_VIX3M_NATIVE"
+  },
+  "provenance": {
+    "legacy_non_credit_panel": {
+      "path": "data/frozen/snp/snapshot_sp2_20260823T040000Z/snp_core15_inputs.parquet",
+      "sha256": "cb1622d41c74c7667dca418cd57f2a6ed19794e11393fd7e13bd1e81b74f12ef"
+    },
+    "proxy_credit_panel": {
+      "path": "data/processed/credit_proxy_only_impact/credit_proxy_only_phase1_20260902T001000Z/proxy_only_credit_inputs.parquet",
+      "sha256": "9279feb6288f52a49ce67f56e6ab088e271f90f4811607b7546b96f4159c8074"
+    },
+    "candidate_metadata": {
+      "path": "data/processed/signal_bank/sp3_core15_signal_bank_20260823T041000Z/sp3_candidate_metadata.parquet",
+      "sha256": "5ecb0857e552051f3aa8cfd5ae759015775dd3114c3ab43e1254f11e43d2df9b"
+    },
+    "material_children": {
+      "path": "outputs/snp/combo2/material_input/proxy_only_combo1_material_band_balanced_20260904T043000Z/combo2_material_input.parquet",
+      "sha256": "c99faa884064845366f75eef51959769380c0224cde3dd647549b73c2a3f25a1"
+    }
+  },
+  "outputs": {
+    "frozen/frozen_spx_proxy_only_core15_input.parquet": {
+      "sha256": "92da6633fc12dea2aa0d02726e4910b527ab72b82c17156e857d96eadbb5863c",
+      "rows": 6699,
+      "columns": [
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "performance_calendar_eligible",
+        "ohlc_signal_eligible",
+        "real_yield_10y",
+        "real_yield_10y_source_observation_date",
+        "spread_10y2y",
+        "spread_10y2y_source_observation_date",
+        "spread_10y3m",
+        "spread_10y3m_source_observation_date",
+        "dgs10",
+        "dgs10_source_observation_date",
+        "vix3m",
+        "vix_spread_safe",
+        "vix_spread_source_date",
+        "equal_weight_price",
+        "breadth_raw",
+        "breadth_source_date",
+        "hy_raw_proxy",
+        "hy_source_observation_date",
+        "hy_oas_safe",
+        "ig_raw_proxy",
+        "ig_source_observation_date",
+        "ig_oas_safe",
+        "nfci",
+        "nfci_source_observation_date",
+        "vix",
+        "vix_source_observation_date",
+        "global_credit_stress_safe",
+        "spx_performance_return",
+        "breadth_input_eligible",
+        "core15_input_eligible"
+      ]
+    },
+    "frozen/core15_selected_candidate_registry.parquet": {
+      "sha256": "fe0628e5cc76c769bfeb181525cade4ba0eeab388823a8f5e94b198de5556738",
+      "rows": 52,
+      "columns": [
+        "candidate_id",
+        "indicator_id",
+        "indicator_family",
+        "params_json",
+        "engine",
+        "direction",
+        "candidate_valid_start_date",
+        "official_period_fully_valid",
+        "source_column",
+        "transform"
+      ]
+    },
+    "spx_macro9_final10_runtime.csv": {
+      "sha256": "a25dac639d9ffd38e523391e94528949e302de7497ddd7157c86605a3b3cfc37",
+      "rows": 10,
+      "columns": [
+        "candidate_id",
+        "display_role",
+        "research_lane",
+        "n",
+        "K",
+        "L",
+        "component_ids",
+        "family",
+        "selection_type",
+        "component_ids_key",
+        "display_order",
+        "n_or_m",
+        "m",
+        "material_indices",
+        "child_combo1_ids"
+      ]
+    },
+    "spx_macro9_combo2_child_mapping.csv": {
+      "sha256": "f12d1b22234f0952efd347e9792b08c42636eeb31c2b9ff4225a9af065ff160a",
+      "rows": 51,
+      "columns": [
+        "parent_candidate_id",
+        "child_order",
+        "child_canonical_parent_id",
+        "child_n",
+        "child_K",
+        "child_L",
+        "child_component_ids_key"
+      ]
+    }
+  }
+}

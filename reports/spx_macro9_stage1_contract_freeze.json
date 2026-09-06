@@ -1,0 +1,273 @@
+{
+  "version": "spx_macro9_stage1_contract_freeze_v1",
+  "status": "PASS_SPX_MACRO9_STAGE1_CONTRACT_FROZEN",
+  "purpose": "S&P 지표2 Dashboard의 Proxy-only Final10 운영 계약. 후보 재선별이나 계산 계약 변경은 허용하지 않는다.",
+  "research_root": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_snp",
+  "dashboard_scope": {
+    "new_tab": "S&P지표2",
+    "runtime_mode": "FROZEN_PREFIX_LIVE_TAIL",
+    "existing_tab_changes_allowed": false,
+    "selection_semantics": "HUMAN_FROZEN_FINAL5_PLUS_FINAL5"
+  },
+  "authoritative_final10": {
+    "path": "reports/SNP_ProxyOnly_Final_Combo1_5_Combo2_5_20260906.xlsx",
+    "sha256": "cf936bedc129b9d5c05a93f5d40a772742fafdea8e9483087646a9bc082f7204",
+    "sheets": {
+      "final10": "00_Final10",
+      "combo1_detail": "01_Combo1_Detail",
+      "combo2_detail": "02_Combo2_Detail"
+    },
+    "note": "Workbook verification sheet calls this an analytical final before a research freeze manifest; the user has explicitly designated this exact workbook and SHA as the Dashboard Human Freeze source."
+  },
+  "market_and_evaluation": {
+    "signal_market": "^GSPC",
+    "benchmark_market": "^GSPC",
+    "strategy_return": "^GSPC close-to-close price return",
+    "official_evaluation_start": "2008-04-01",
+    "official_evaluation_end": "2026-08-21",
+    "official_trading_days": 4628,
+    "development_start": "2013-10-03",
+    "development_trading_days": 3240,
+    "metric_semantics": "Final10 official display metrics use their frozen full-period rows. Development-only candidate-selection metrics must not be mixed into official display fields."
+  },
+  "execution_contract": {
+    "risk_off_value": 1,
+    "risk_on_value": 0,
+    "pipeline_order": [
+      "component_raw_state",
+      "combo_raw_state",
+      "K_L_hysteresis",
+      "official_T_plus_1_once",
+      "strategy_return"
+    ],
+    "combo2_input": "CHILD_COMBO1_RAW_RISK_STATE",
+    "combo2_must_not_use": "child official T+1 state",
+    "final_t1_application_count": 1,
+    "transition_cost_bps": 0,
+    "risk_off_cash_return": 0.0,
+    "candidate_K_L": "Frozen exact representative K/L only; no reoptimization"
+  },
+  "proxy_only_source_contract": {
+    "hy": "DBAA - DGS10; same-date inner join only",
+    "ig": "DAAA - DGS10; same-date inner join only",
+    "direct_ice_oas_used": false,
+    "ice_oas_stitch": "FORBIDDEN",
+    "median_level_shift": "FORBIDDEN",
+    "raw_interpolation": "FORBIDDEN",
+    "raw_ffill_bfill": "FORBIDDEN",
+    "global_credit_stress": "-mean(clip(Z252(HY_raw_proxy), -3, 3), clip(Z252(NFCI), -3, 3), clip(Z252(VIX), -3, 3)); all components required",
+    "availability": {
+      "hy_ig": "one eligible market day after source observation, then as-of alignment",
+      "nfci": "three eligible market days after source observation, then as-of alignment",
+      "vix": "source-date availability, then as-of alignment"
+    },
+    "canonical_signal_bank": {
+      "path": "data/processed/signal_bank/proxy_only_research_launch_20260902T030000Z/proxy_only_core15_canonical_signal_bank_index.json",
+      "sha256": "09e6a60bc00f172ee3cc54dcdaa7a73ed4251bd62138fae9bb2052abb44bba4a",
+      "usage": "The only Core15 state source for future Proxy-only Single/Combo evaluation."
+    },
+    "proxy_phase1_manifest": {
+      "path": "manifests/credit_proxy_only_phase1_20260902T001000Z_manifest.json",
+      "sha256": "50cd5da2199946584c4ade16345a5c5dec37707e85bcf01299fead0148e6eaa8"
+    },
+    "legacy_stitched_oas_sources": {
+      "paths": [
+        "configs/sp0_contract_freeze.json",
+        "manifests/sp1_source_manifest.json",
+        "src/macro_dashboard_snp/sp2_frozen_build.py"
+      ],
+      "status": "EXCLUDED_FROM_SPX_MACRO9",
+      "reason": "They describe direct ICE OAS/stitching or level-shift lineage and are incompatible with this Proxy-only Final10 contract."
+    }
+  },
+  "missing_and_live_tail_contract": {
+    "state_and_validity": "Risk state and validity are independent. Invalid must never be interpreted as Risk-on/inactive.",
+    "frozen_prefix": "Immutable. Frozen rows, official metrics, and historical states cannot be overwritten.",
+    "live_tail": "Append only post-cutoff, continuous dates for which every required source is valid and fresh under this contract.",
+    "gap_policy": "Do not fill, cross, silently restart hysteresis, or fabricate a newer state across an invalid/stale gap.",
+    "basis_date": "Last continuous valid S&P calculation date, not merely the latest provider observation date.",
+    "official_metric_policy": "Live current state/history must not overwrite Frozen official display metrics."
+  },
+  "display_order": {
+    "combo1": [
+      "7b12636f7551ff2040b9c8ed",
+      "939788293cd86b8488a45f38",
+      "ff766a2413cf24620dae5ba4",
+      "f79be460c762828a3a07d8d6",
+      "1315bcf6403020b0353ca32b"
+    ],
+    "combo2": [
+      "61b4f8da571569e1eb0c324c",
+      "0e715f71f7e73cd2d9f8af55",
+      "8ed8c962d98d1ee2504c6ae0",
+      "acaaf10f62992f86ad7dbe3a",
+      "95cff35563d9d4316b84daa8"
+    ],
+    "main_assignment": "Display only; it is neither a reranking nor a change to the Human Freeze membership."
+  },
+  "final_combo1": [
+    {
+      "candidate_id": "7b12636f7551ff2040b9c8ed",
+      "display_role": "Main1 안정적 메인",
+      "research_lane": "Practical",
+      "n": 9,
+      "K": 5,
+      "L": 4,
+      "component_ids": [
+        "snp__global_credit_stress__EMA10_W120_S35_E10",
+        "snp__snp_bollinger__BBW80_STD2p5",
+        "snp__snp_breadth__EMA80_W120_S35_E25",
+        "snp__snp_natr__NATR20_EMA1_W480_S20_E10",
+        "snp__snp_rsi__RSI56_LB160_Q10_90",
+        "snp__us_10y_3m_spread__EMA20_W60_S90_E65",
+        "snp__us_10y_nominal_yield_slope__SW80_EMA5_W120_S90_E65",
+        "snp__us_10y_real_yield__EMA1_W240_S75_E25",
+        "snp__us_hy_oas__EMA10_W480_S50_E10"
+      ]
+    },
+    {
+      "candidate_id": "939788293cd86b8488a45f38",
+      "display_role": "Main2 고성과·저 Risk-off",
+      "research_lane": "Practical",
+      "n": 11,
+      "K": 6,
+      "L": 5,
+      "component_ids": [
+        "snp__global_credit_stress__EMA10_W120_S35_E10",
+        "snp__snp_breadth__EMA1_W480_S75_E40",
+        "snp__snp_hv__HV40_EMA80_W240_S90_E40",
+        "snp__snp_natr__NATR40_EMA10_W120_S20_E10",
+        "snp__snp_rsi__RSI56_LB160_Q10_90",
+        "snp__us_10y_2y_spread__EMA40_W30_S90_E65",
+        "snp__us_10y_3m_spread__EMA20_W60_S90_E65",
+        "snp__us_10y_nominal_yield_slope__SW80_EMA5_W120_S90_E65",
+        "snp__us_10y_real_yield__EMA1_W240_S75_E25",
+        "snp__us_hy_oas__EMA10_W480_S50_E10",
+        "snp__vix_level__EMA80_W480_S90_E25"
+      ]
+    },
+    {
+      "candidate_id": "ff766a2413cf24620dae5ba4",
+      "display_role": "MDD 방어·Calmar형",
+      "research_lane": "Performance",
+      "n": 11,
+      "K": 7,
+      "L": 5,
+      "component_ids": [
+        "snp__snp_bollinger__BBW40_STD2p0",
+        "snp__snp_hv__HV40_EMA20_W30_S75_E65",
+        "snp__snp_natr__NATR10_EMA40_W30_S75_E65",
+        "snp__snp_rsi__RSI56_LB320_Q30_90",
+        "snp__us_10y_3m_spread__EMA20_W60_S90_E65",
+        "snp__us_10y_nominal_yield_slope__SW80_EMA5_W120_S90_E65",
+        "snp__us_10y_real_yield__EMA20_W30_S75_E25",
+        "snp__us_hy_oas__EMA10_W480_S50_E10",
+        "snp__us_ig_oas__EMA80_W120_S90_E80",
+        "snp__vix_level__EMA10_W120_S50_E25",
+        "snp__vix_spread__EMA40_W60_S75_E10"
+      ]
+    },
+    {
+      "candidate_id": "f79be460c762828a3a07d8d6",
+      "display_role": "기간 안정형",
+      "research_lane": "Practical",
+      "n": 11,
+      "K": 7,
+      "L": 5,
+      "component_ids": [
+        "snp__global_credit_stress__EMA40_W60_S50_E10",
+        "snp__snp_bollinger__BBW160_STD2p0",
+        "snp__snp_breadth__EMA80_W120_S35_E25",
+        "snp__snp_natr__NATR10_EMA40_W30_S75_E65",
+        "snp__snp_rsi__RSI56_LB320_Q30_90",
+        "snp__us_10y_2y_spread__EMA40_W30_S90_E65",
+        "snp__us_10y_3m_spread__EMA20_W60_S90_E65",
+        "snp__us_10y_nominal_yield_slope__SW80_EMA5_W120_S90_E65",
+        "snp__us_10y_real_yield__EMA20_W30_S75_E25",
+        "snp__us_hy_oas__EMA10_W480_S50_E10",
+        "snp__vix_spread__EMA40_W60_S90_E10"
+      ]
+    },
+    {
+      "candidate_id": "1315bcf6403020b0353ca32b",
+      "display_role": "고성과·고효율형",
+      "research_lane": "Practical",
+      "n": 9,
+      "K": 5,
+      "L": 4,
+      "component_ids": [
+        "snp__global_credit_stress__EMA10_W120_S35_E10",
+        "snp__snp_bollinger__BBW80_STD2p5",
+        "snp__snp_hv__HV40_EMA10_W480_S20_E10",
+        "snp__snp_natr__NATR40_EMA10_W120_S20_E10",
+        "snp__snp_rsi__RSI56_LB160_Q10_90",
+        "snp__us_10y_3m_spread__EMA20_W60_S90_E65",
+        "snp__us_10y_nominal_yield_slope__SW80_EMA5_W120_S90_E65",
+        "snp__us_10y_real_yield__EMA1_W240_S75_E25",
+        "snp__us_hy_oas__EMA10_W480_S50_E10"
+      ]
+    }
+  ],
+  "final_combo2": [
+    {
+      "candidate_id": "61b4f8da571569e1eb0c324c",
+      "display_role": "Main1 초저-Short 메인",
+      "research_lane": "Practical",
+      "m": 13,
+      "K": 9,
+      "L": 5,
+      "material_indices": [3, 8, 27, 36, 37, 44, 51, 58, 60, 71, 76, 79, 84],
+      "child_combo1_ids": ["n10:101d716b6d3279f487d96d5b", "n10:1fa8873f3d3a0bc92ce82569", "n10:f6e5de99b692761369ce511b", "n11:773aedf0a0101aee65b6fc07", "n11:77409eac089451e0206e0a7b", "n11:b31bcde16712902cfba883c5", "n11:f52ba1bb9150c58fc88cd853", "n7:290b78c1ad09503ec1a29436", "n7:7ba92890bdfe767f9ad68b84", "n9:01b536f69810dbf8c0b1b8d3", "n9:3996cb40fe87142f8d38a765", "n9:544b0ea40f99fd83885608a0", "n9:7aa3be83ad36d69771044d62"]
+    },
+    {
+      "candidate_id": "0e715f71f7e73cd2d9f8af55",
+      "display_role": "Main2 Robust·기간안정",
+      "research_lane": "Performance",
+      "m": 7,
+      "K": 6,
+      "L": 3,
+      "material_indices": [0, 36, 37, 67, 71, 76, 84],
+      "child_combo1_ids": ["n10:0039e545f90b33cd35d6efe8", "n11:773aedf0a0101aee65b6fc07", "n11:77409eac089451e0206e0a7b", "n8:58bca681d276acaca993cd2c", "n9:01b536f69810dbf8c0b1b8d3", "n9:3996cb40fe87142f8d38a765", "n9:7aa3be83ad36d69771044d62"]
+    },
+    {
+      "candidate_id": "8ed8c962d98d1ee2504c6ae0",
+      "display_role": "초저-Short 중형조합형",
+      "research_lane": "Practical",
+      "m": 11,
+      "K": 7,
+      "L": 3,
+      "material_indices": [0, 3, 10, 18, 37, 51, 53, 60, 75, 76, 97],
+      "child_combo1_ids": ["n10:0039e545f90b33cd35d6efe8", "n10:101d716b6d3279f487d96d5b", "n10:27a191855007d75a4b36289b", "n10:8cc748d635b8650b87a7458c", "n11:77409eac089451e0206e0a7b", "n11:f52ba1bb9150c58fc88cd853", "n5:b588939ec6a8c3a5634e03ff", "n7:7ba92890bdfe767f9ad68b84", "n9:31b6627bad4dc2903618dfd7", "n9:3996cb40fe87142f8d38a765", "n9:e3ac47024b32252169dff937"]
+    },
+    {
+      "candidate_id": "acaaf10f62992f86ad7dbe3a",
+      "display_role": "단순·저 Risk-off형",
+      "research_lane": "Practical",
+      "m": 7,
+      "K": 5,
+      "L": 2,
+      "material_indices": [1, 3, 19, 37, 47, 59, 60],
+      "child_combo1_ids": ["n10:0a5ede9f15901b609980c7d5", "n10:101d716b6d3279f487d96d5b", "n10:965548fbccb479c3942d6149", "n11:77409eac089451e0206e0a7b", "n11:c78a6e5b38a4c3beabc7d99c", "n7:6b837327f729d0fd574cd8ee", "n7:7ba92890bdfe767f9ad68b84"]
+    },
+    {
+      "candidate_id": "95cff35563d9d4316b84daa8",
+      "display_role": "고성과 Robust형",
+      "research_lane": "Performance",
+      "m": 13,
+      "K": 8,
+      "L": 4,
+      "material_indices": [0, 3, 27, 36, 37, 45, 47, 51, 60, 63, 76, 84, 86],
+      "child_combo1_ids": ["n10:0039e545f90b33cd35d6efe8", "n10:101d716b6d3279f487d96d5b", "n10:f6e5de99b692761369ce511b", "n11:773aedf0a0101aee65b6fc07", "n11:77409eac089451e0206e0a7b", "n11:c33523f8827a7d114f5671e8", "n11:c78a6e5b38a4c3beabc7d99c", "n11:f52ba1bb9150c58fc88cd853", "n7:7ba92890bdfe767f9ad68b84", "n7:ca461c8bd5bcfc888517dfeb", "n9:3996cb40fe87142f8d38a765", "n9:7aa3be83ad36d69771044d62", "n9:7bd8b8bb7e4baec99ac9ee4f"]
+    }
+  ],
+  "stage1_gates": {
+    "combo1_final_count": 5,
+    "combo2_final_count": 5,
+    "final_candidate_id_duplicates": 0,
+    "combo1_component_count_matches_n": true,
+    "combo2_child_count_matches_m": true,
+    "direct_oas_allowed": false,
+    "t_plus_one_count": 1,
+    "candidate_reselection": false
+  }
+}

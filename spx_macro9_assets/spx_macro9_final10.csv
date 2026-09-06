@@ -1,0 +1,11 @@
+candidate_id,family,display_order,display_role,K,L,n_or_m
+7b12636f7551ff2040b9c8ed,Combo1,1,Main1 안정적 메인,5,4,9
+939788293cd86b8488a45f38,Combo1,2,Main2 고성과·저 Risk-off,6,5,11
+ff766a2413cf24620dae5ba4,Combo1,3,MDD 방어·Calmar형,7,5,11
+f79be460c762828a3a07d8d6,Combo1,4,기간 안정형,7,5,11
+1315bcf6403020b0353ca32b,Combo1,5,고성과·고효율형,5,4,9
+61b4f8da571569e1eb0c324c,Combo2,1,Main1 초저-Short 메인,9,5,13
+0e715f71f7e73cd2d9f8af55,Combo2,2,Main2 Robust·기간안정,6,3,7
+8ed8c962d98d1ee2504c6ae0,Combo2,3,초저-Short 중형조합형,7,3,11
+acaaf10f62992f86ad7dbe3a,Combo2,4,단순·저 Risk-off형,5,2,7
+95cff35563d9d4316b84daa8,Combo2,5,고성과 Robust형,8,4,13

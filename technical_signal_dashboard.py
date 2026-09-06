@@ -29,6 +29,7 @@ import traceback
 from zoneinfo import ZoneInfo
 from kosdaq_macro7_ui import render_macro7_kosdaq_section
 from nasdaq_macro8_ui import render_macro8_nasdaq_section
+from spx_macro9_ui import render_macro9_spx_section
 from macro_source_schedule import source_schedule_table_html
 warnings.filterwarnings('ignore')
 
@@ -96,7 +97,7 @@ _IS_MARKET_MACRO_APP = any(
 )
 
 def _configure_streamlit_page(page="signal"):
-    is_market_macro_app = page in ("market_macro", "market", "macro", "macro2", "macro3", "macro4", "macro5", "macro6", "macro5_kospi", "macro7_kosdaq", "macro8_nasdaq") or _IS_MARKET_MACRO_APP
+    is_market_macro_app = page in ("market_macro", "market", "macro", "macro2", "macro3", "macro4", "macro5", "macro6", "macro5_kospi", "macro7_kosdaq", "macro8_nasdaq", "macro9_spx") or _IS_MARKET_MACRO_APP
     st.set_page_config(
         page_title="시장/매크로 지표" if is_market_macro_app else "기술적 신호 스캐너",
         page_icon="🏔️" if is_market_macro_app else "🎯",
@@ -16031,6 +16032,7 @@ def main(page="signal"):
         "macro5_kospi": ("KOSPI MACRO INDICATORS", "🇰🇷 코스피지표"),
         "macro7_kosdaq": ("KOSDAQ MACRO INDICATORS", "🇰🇷 코스닥지표"),
         "macro8_nasdaq": ("NASDAQ MACRO INDICATORS", "🇺🇸 나스닥지표"),
+        "macro9_spx": ("S&P INDICATORS 2", "🇺🇸 S&P지표2"),
         "all": ("TECHNICAL SIGNAL SCANNER", "🎯 기술적 신호 스캐너"),
     }
     _eyebrow, _title = _page_titles.get(page, _page_titles["signal"])
@@ -16052,6 +16054,7 @@ def main(page="signal"):
     tab7 = None
     tab8 = None
     tab9 = None
+    tab10 = None
     _market_macro_section = None
     if page == "all":
         tab1, tab2, tab3 = st.tabs(["📊 신호 스캐너", "🌐 시장 내부지표", "🌍 매크로 지표"])
@@ -16074,6 +16077,7 @@ def main(page="signal"):
             ("macro5_kospi", "🇰🇷 코스피지표"),
             ("macro7_kosdaq", "🇰🇷 코스닥지표"),
             ("macro8_nasdaq", "🇺🇸 나스닥지표"),
+            ("macro9_spx", "🇺🇸 S&P지표2"),
             ("market", "🌐 시장 내부지표"),
         ]
         if st.session_state.get("market_macro_section") not in {k for k, _ in _market_macro_sections}:
@@ -16094,6 +16098,7 @@ def main(page="signal"):
         tab7 = st.container()
         tab8 = st.container()
         tab9 = st.container()
+        tab10 = st.container()
         tab1 = None
     elif page == "macro2":
         tab1, tab2, tab3 = None, None, st.container()
@@ -16110,6 +16115,8 @@ def main(page="signal"):
     elif page == "macro7_kosdaq":
         tab1, tab2, tab3 = None, None, st.container()
     elif page == "macro8_nasdaq":
+        tab1, tab2, tab3 = None, None, st.container()
+    elif page == "macro9_spx":
         tab1, tab2, tab3 = None, None, st.container()
     else:
         st.error(f"알 수 없는 페이지입니다: {page}")
@@ -18885,6 +18892,11 @@ def main(page="signal"):
     if page == "macro8_nasdaq" or (page == "market_macro" and _market_macro_section == "macro8_nasdaq"):
         _macro8_nasdaq_container = tab9 if page == "market_macro" else tab3
         render_macro8_nasdaq_section(_macro8_nasdaq_container)
+
+    # TAB 3I — S&P 매크로 지표 2 (Proxy-only Final10)
+    if page == "macro9_spx" or (page == "market_macro" and _market_macro_section == "macro9_spx"):
+        _macro9_spx_container = tab10 if page == "market_macro" else tab3
+        render_macro9_spx_section(_macro9_spx_container)
 
         # ═══════════════════════════════════════════════════════════
         # TAB 3 — 매크로 지표
