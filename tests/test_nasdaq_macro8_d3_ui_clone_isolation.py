@@ -73,6 +73,21 @@ def test_practical10_is_the_fixed_operational_view(payload: dict) -> None:
     assert "/ 10" not in summary
 
 
+def test_operational_main_roles_are_display_only(payload: dict) -> None:
+    practical = _practical_final(payload["final20"])
+    combo1 = practical.loc[practical["model_family"].eq("COMBO1")]
+    combo2 = practical.loc[practical["model_family"].eq("COMBO2")]
+    assert combo1.iloc[0]["candidate_id"] == "n8|nq5e8_a6feb39063ce3ac4"
+    assert combo1.iloc[0]["display_role"] == "Main1 시대 안정성"
+    assert combo1.iloc[1]["candidate_id"] == "n8|nq5e8_6f60d9e268c12ef1"
+    assert combo1.iloc[1]["display_role"] == "Main2 Whipsaw / 방어"
+    assert combo2.iloc[0]["candidate_id"].startswith("m5|")
+    assert combo2.iloc[0]["display_role"] == "Main1 균형형"
+    assert combo2.iloc[1]["candidate_id"].startswith("m6|")
+    assert combo2.iloc[1]["display_role"] == "Main2 K/L 강건성"
+    assert set(practical["candidate_id"]) == set(payload["final20"].loc[payload["final20"]["selection_type"].eq("Practical"), "candidate_id"])
+
+
 def test_ui_isolated_from_other_market_runtimes_and_network() -> None:
     ui = (ROOT / "nasdaq_macro8_ui.py").read_text(encoding="utf-8")
     payload = (ROOT / "nasdaq_macro8_runtime/presentation_payload.py").read_text(encoding="utf-8")

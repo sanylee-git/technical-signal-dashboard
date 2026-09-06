@@ -24,6 +24,27 @@ STAGE_COLORS = {
 STAGE_SCORES = {"매수심화": -3, "매수": -2, "매수준비": -1, "홀드": 0, "관망": 0, "매도준비": 1, "매도": 2, "매도심화": 3}
 PERIOD_OPTIONS: list[int | str] = [2, 3, 5, 7, 10, 15, "all"]
 
+# Operational labels/order are presentation-only. The frozen Final20 candidate
+# definitions, component membership, and metrics remain unchanged.
+NASDAQ_OPERATIONAL_ROLE_OVERRIDES = {
+    "m5|n6|nq5e6_2c78a53ac6e928f8|n7|nq5e7_934189464a0ef2f2|n8|nq5e8_be766ae57cfa9042|n8|nq5e8_d2cd70973210bf4d|n8|nq5e8_f2b2eadb0bc3f323|K3|L1": "Main1 균형형",
+    "m6|n5|nq5e5_cb6d451a1c972e70|n6|nq5e6_8b7fdbbd5d8db54a|n7|nq5e7_07dba2edc2d519a1|n8|nq5e8_be766ae57cfa9042|n8|nq5e8_f2b2eadb0bc3f323|n9|nq5e9_c796e1a7980688d2|K4|L1": "Main2 K/L 강건성",
+    "n8|nq5e8_a6feb39063ce3ac4": "Main1 시대 안정성",
+    "n8|nq5e8_6f60d9e268c12ef1": "Main2 Whipsaw / 방어",
+}
+NASDAQ_OPERATIONAL_DISPLAY_ORDER = {
+    "m5|n6|nq5e6_2c78a53ac6e928f8|n7|nq5e7_934189464a0ef2f2|n8|nq5e8_be766ae57cfa9042|n8|nq5e8_d2cd70973210bf4d|n8|nq5e8_f2b2eadb0bc3f323|K3|L1": 1,
+    "m6|n5|nq5e5_cb6d451a1c972e70|n6|nq5e6_8b7fdbbd5d8db54a|n7|nq5e7_07dba2edc2d519a1|n8|nq5e8_be766ae57cfa9042|n8|nq5e8_f2b2eadb0bc3f323|n9|nq5e9_c796e1a7980688d2|K4|L1": 2,
+    "m7|n10|nq5e10_9bd42da1c1a6841b|n5|nq5e5_6194c950c7d8e169|n6|nq5e6_2c78a53ac6e928f8|n6|nq5e6_ec1d4faea1cff3e8|n7|nq5e7_2b2edceb8bbeb2b4|n8|nq5e8_f2b2eadb0bc3f323|n9|nq5e9_c796e1a7980688d2|K4|L2": 3,
+    "m7|n10|nq5e10_c7dcb13d40794ed8|n12|nq5e12_10aa36a8dd29d82c|n12|nq5e12_6c99b08fcbf3f930|n6|nq5e6_18e02fabf8c4cfad|n6|nq5e6_cfe958901d9c70d4|n8|nq5e8_be766ae57cfa9042|n8|nq5e8_f2b2eadb0bc3f323|K4|L2": 4,
+    "m8|n10|nq5e10_9bd42da1c1a6841b|n6|nq5e6_2c78a53ac6e928f8|n6|nq5e6_415194320e4754e5|n6|nq5e6_8b7fdbbd5d8db54a|n7|nq5e7_fc8f0fc4e97ae2e8|n8|nq5e8_be766ae57cfa9042|n8|nq5e8_f2b2eadb0bc3f323|n9|nq5e9_c796e1a7980688d2|K4|L2": 5,
+    "n8|nq5e8_a6feb39063ce3ac4": 1,
+    "n8|nq5e8_6f60d9e268c12ef1": 2,
+    "n7|nq5e7_fc87283b72f8a856": 3,
+    "n8|nq5e8_8325c2bcedbdd951": 4,
+    "n6|nq5e6_10b44c52f07a1b52": 5,
+}
+
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _load_macro8_nasdaq_presentation_payload(live_sync_bucket: str) -> dict[str, Any]:
@@ -106,6 +127,14 @@ def _practical_final(final: pd.DataFrame) -> pd.DataFrame:
     counts = out["model_family"].value_counts()
     if len(out) != 10 or counts.get("COMBO1", 0) != 5 or counts.get("COMBO2", 0) != 5:
         raise RuntimeError("NASDAQ Macro8 Practical10 display contract failed")
+    out["display_role"] = out.apply(
+        lambda row: NASDAQ_OPERATIONAL_ROLE_OVERRIDES.get(str(row["candidate_id"]), str(row["display_role"])),
+        axis=1,
+    )
+    out["display_order"] = out.apply(
+        lambda row: NASDAQ_OPERATIONAL_DISPLAY_ORDER.get(str(row["candidate_id"]), int(row["display_order"])),
+        axis=1,
+    )
     return out.sort_values("display_order", kind="mergesort").reset_index(drop=True)
 
 
