@@ -150,6 +150,13 @@ def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
     snapshot["week_ago_raw_risk_state"] = snapshot["week_ago_strategy_risk_state"].astype("Int64")
     snapshot["invest_position"] = 1 - snapshot["raw_risk_state"].fillna(1).astype(int)
     snapshot["current_risk_start_date"] = snapshot["current_state_start_date"]
+    confirmed_snapshot = runtime.get("confirmed_snapshot", runtime["snapshot"]).copy().set_index("candidate_id").reindex(final["candidate_id"]).reset_index()
+    confirmed_snapshot["model_family"] = final["model_family"].to_numpy()
+    confirmed_snapshot["display_slot"] = final["display_slot"].to_numpy()
+    confirmed_snapshot["display_role"] = final["display_role"].to_numpy()
+    confirmed_snapshot["status"] = np.where(confirmed_snapshot["calculable"], "USABLE", "UNAVAILABLE")
+    confirmed_snapshot["raw_risk_state"] = confirmed_snapshot["strategy_risk_state"].astype("Int64")
+    confirmed_snapshot["invest_position"] = 1 - confirmed_snapshot["raw_risk_state"].fillna(1).astype(int)
     candidate_history = _candidate_history(runtime)
     component_history, component_chart_history = _component_history(runtime, final)
     metrics, hold, windows = _display_metrics(runtime, final)
@@ -160,6 +167,10 @@ def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
         "proxy_only": True,
         "direct_oas_used": False,
         "snapshot": snapshot,
+        "confirmed_snapshot": confirmed_snapshot,
+        "confirmed_basis_date": runtime.get("confirmed_basis_date", runtime.get("basis_date")),
+        "provisional_basis_date": runtime.get("provisional_basis_date", runtime.get("basis_date")),
+        "source_status": list(runtime.get("source_status", [])),
         "candidate_history": candidate_history,
         "component_history": component_history,
         "component_chart_history": component_chart_history,

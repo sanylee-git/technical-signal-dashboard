@@ -9422,6 +9422,7 @@ def _macro_compact_status_html(
     start_k: int | None = None,
     state_return_text: str = "계산 불가",
     state_return_color: str = "#8F8F8F",
+    confirmed_snapshot: dict | None = None,
 ) -> str:
     risk_on = bool(int(risk_state)) if not isinstance(risk_state, bool) else risk_state
     risk_color = _MACRO_STATUS_RISK_OFF_COLOR if risk_on else _MACRO_STATUS_RISK_ON_COLOR
@@ -9437,11 +9438,25 @@ def _macro_compact_status_html(
     else:
         transition_html = "오늘 전환 없음"
     separator = "<span style='color:rgba(255,255,255,.45)'>·</span>"
+    provisional_line = (
+        f"잠정신호: 기준일 {basis_date} {separator} "
+        f"현재 플래그 {_macro_flag_ratio_html(int(active_count), int(start_k or component_count or 1), bool(risk_state))} {separator} "
+        f"상태 <span style='color:{risk_color};font-weight:700'>{risk_text}</span>"
+    )
+    if confirmed_snapshot and confirmed_snapshot.get("calculable"):
+        confirmed_risk = bool(int(confirmed_snapshot.get("raw_risk_state", 0)))
+        confirmed_color = _MACRO_STATUS_RISK_OFF_COLOR if confirmed_risk else _MACRO_STATUS_RISK_ON_COLOR
+        confirmed_text = "리스크 사이클 ON" if confirmed_risk else "리스크 사이클 OFF"
+        confirmed_line = (
+            f"확정신호: 기준일 {_macro5_kospi_escape(confirmed_snapshot.get('basis_date') or '확인 불가')} {separator} "
+            f"현재 플래그 {_macro_flag_ratio_html(int(confirmed_snapshot.get('active_count', 0) or 0), int(start_k or component_count or 1), confirmed_risk)} {separator} "
+            f"상태 <span style='color:{confirmed_color};font-weight:700'>{confirmed_text}</span>"
+        )
+    else:
+        confirmed_line = "확정신호: 계산 불가"
     return (
         "<div class='macro2-helper-text' style='line-height:1.75;'>"
-        f"기준일 {basis_date} {separator} "
-        f"현재 플래그 {_macro_flag_ratio_html(int(active_count), int(start_k or component_count or 1), bool(risk_state))} {separator} "
-        f"상태 <span style='color:{risk_color};font-weight:700'>{risk_text}</span><br>"
+        f"{confirmed_line}<br>{provisional_line}<br>"
         f"현재 상태 시작일 <span style='color:{risk_color};font-weight:700'>{state_start}</span> {separator} "
         f"지속 거래일 <span style='color:{risk_color};font-weight:700'>{duration_text}</span> {separator} "
         f"상태 구간 수익률 <span style='color:{state_return_color};font-weight:700'>{state_return_text}</span> {separator} 실행 {execution_text} {separator} "
@@ -9469,6 +9484,7 @@ def _build_macro6_status_panel(
     status_color = _MACRO_STATUS_RISK_OFF_COLOR if combo_state else _MACRO_STATUS_RISK_ON_COLOR
     active_labels = []
     entries = []
+    confirmed_dates = []
     if preset_cfg.get("kind") == "combo2_final8":
         component_cfgs = preset_cfg.get("component_cfgs", {})
         for component_key in preset_cfg.get("components", []):
@@ -9485,6 +9501,7 @@ def _build_macro6_status_panel(
             )
             bottleneck = data_status.get("bottleneck")
             if bottleneck:
+                confirmed_dates.append(bottleneck.get("latest_date"))
                 latest_text = (
                     f"가장 오래된 사용값 {bottleneck['label']} "
                     f"{bottleneck.get('latest_text') or _macro_date_text(bottleneck['latest_date'])}"
@@ -9511,6 +9528,8 @@ def _build_macro6_status_panel(
                 sync_bucket=sync_bucket,
             )
             latest_text = data_status.get("latest_text", "확인 불가")
+            if indicator in selected:
+                confirmed_dates.append(data_status.get("latest_date"))
             entries.append({
                 "label": _MACRO3_INDICATOR_LABELS.get(indicator, indicator),
                 "selected": indicator in selected,
@@ -9523,6 +9542,19 @@ def _build_macro6_status_panel(
         state_duration.get("state_start_date"),
         latest.get("date"),
     )
+    confirmed_snapshot = None
+    confirmed_candidates = pd.to_datetime(pd.Series(confirmed_dates), errors="coerce").dropna()
+    if not confirmed_candidates.empty:
+        confirmed_date = confirmed_candidates.min().normalize()
+        confirmed_event = combo_event_df.loc[pd.to_datetime(combo_event_df["date"]).le(confirmed_date)].sort_values("date")
+        if not confirmed_event.empty:
+            confirmed_latest = confirmed_event.iloc[-1]
+            confirmed_snapshot = {
+                "basis_date": _macro_date_text(confirmed_latest["date"]),
+                "active_count": int(confirmed_latest.get("active_count", 0)),
+                "raw_risk_state": int(bool(confirmed_latest.get("combo_risk_state", False))),
+                "calculable": True,
+            }
     summary_html = _macro_compact_status_html(
         basis_date=basis_date,
         active_count=active_count,
@@ -9536,6 +9568,7 @@ def _build_macro6_status_panel(
         duration_text=state_duration.get("duration_text", "확인 불가"),
         state_return_text=state_return["text"],
         state_return_color=state_return["color"],
+        confirmed_snapshot=confirmed_snapshot,
     )
     midpoint = int(np.ceil(len(entries) / 2))
     left_entries = entries[:midpoint]
@@ -14403,6 +14436,7 @@ def _macro5_kospi_current_status_html(
     duration_override: str | None = None,
     state_start_date_override=None,
     benchmark_history: pd.DataFrame | None = None,
+    confirmed_live_row: dict | None = None,
 ) -> str:
     if live_ok and live_row:
         basis = _macro5_kospi_escape(live_row.get("basis_date") or "—")
@@ -14447,6 +14481,7 @@ def _macro5_kospi_current_status_html(
         duration_text=duration_text,
         state_return_text=state_return["text"],
         state_return_color=state_return["color"],
+        confirmed_snapshot=confirmed_live_row,
     )
 
 
@@ -14525,6 +14560,34 @@ def _macro5_kospi_current_state_span(
         "duration_text": str(len(ordered) - start_idx),
         "raw_state": current,
         "row_count": len(ordered),
+    }
+
+
+def _macro5_kospi_snapshot_from_history(candidate_history: pd.DataFrame, basis_date) -> dict | None:
+    """Project the existing live history onto a confirmed candidate basis date."""
+    if candidate_history is None or candidate_history.empty or basis_date is None:
+        return None
+    basis = pd.to_datetime(basis_date, errors="coerce")
+    if pd.isna(basis):
+        return None
+    history = candidate_history.copy()
+    history["date"] = pd.to_datetime(history["date"], errors="coerce").dt.normalize()
+    valid_signal = history["valid_signal"].astype(bool) if "valid_signal" in history else pd.Series(True, index=history.index)
+    history = history.loc[history["date"].le(basis) & valid_signal].sort_values("date")
+    if history.empty:
+        return None
+    latest = history.iloc[-1]
+    span = _macro5_kospi_current_state_span(history)
+    return {
+        "basis_date": _macro5_kospi_date_text(latest["date"]),
+        "active_count": int(latest.get("active_count", latest.get("on_count", 0)) or 0),
+        "raw_risk_state": int(latest.get("raw_risk_state", 0) or 0),
+        "t1_position": int(latest.get("t1_position", 0) or 0),
+        "new_start_signal": bool(latest.get("risk_start_signal", False)),
+        "new_end_signal": bool(latest.get("risk_end_signal", False)),
+        "current_state_start_date": span.get("state_start_date"),
+        "current_state_trading_days": span.get("duration_text"),
+        "calculable": True,
     }
 
 
@@ -17307,6 +17370,12 @@ def main(page="signal"):
             _reference_label5k = _macro5_kospi_reference_label(_selected_row5k["source_signal_parity"])
             _live_selected5k = _live_row_map5k.get(_macro5_kospi_preset)
             _live_selected_ok5k = bool(_live_selected5k and _live_selected5k.get("calculable") and _live_history_ready5k)
+            _confirmed_live_selected5k = None
+            if _live_selected_ok5k:
+                _confirmed_live_selected5k = _macro5_kospi_snapshot_from_history(
+                    _live_candidate_history_selected5k,
+                    _live_selected5k.get("confirmed_basis_date") or _live_selected5k.get("basis_date"),
+                )
             _debug_probe_enabled5k = _macro5_kospi_debug_enabled()
             if _live_selected_ok5k:
                 if not _live_candidate_history_selected5k.empty:
@@ -17328,6 +17397,7 @@ def main(page="signal"):
                     _state_span5k.get("duration_text"),
                     _state_span5k.get("state_start_date"),
                     _live_benchmark_history_all5k if _live_history_ready5k else _benchmark5k,
+                    _confirmed_live_selected5k,
                 ),
                 unsafe_allow_html=True,
             )

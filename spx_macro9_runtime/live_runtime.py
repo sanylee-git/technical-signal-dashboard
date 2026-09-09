@@ -16,6 +16,10 @@ from .live_sources import SOURCE_SPECS, fetch_all_sources
 FROZEN_CUTOFF = pd.Timestamp("2026-08-21")
 
 
+def _date(value: object) -> str | None:
+    return None if value is None or pd.isna(value) else pd.Timestamp(value).strftime("%Y-%m-%d")
+
+
 def _utc(value: object) -> pd.Timestamp:
     result = pd.Timestamp(value or datetime.now(timezone.utc))
     return result.tz_localize("UTC") if result.tzinfo is None else result.tz_convert("UTC")
@@ -54,24 +58,44 @@ def _z252(series: pd.Series) -> pd.Series:
     return ((series - mean) / std).clip(-3.0, 3.0)
 
 
-def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+def _latest_available_session(frame: pd.DataFrame, dates: pd.DatetimeIndex, lag: int) -> pd.Timestamp | None:
+    """Return the first market session on which the latest source observation is usable."""
+    _values, observations = _available(frame, dates, lag)
+    observations = pd.to_datetime(observations, errors="coerce")
+    if observations.dropna().empty:
+        return None
+    latest = observations.max()
+    matches = observations.index[observations.eq(latest)]
+    return None if len(matches) == 0 else pd.Timestamp(matches[0]).normalize()
+
+
+def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, list[dict[str, Any]], pd.Timestamp | None]:
     market = _valid(frames.get("spx_ohlcv", pd.DataFrame()))
     market = market.loc[market["observation_date"].gt(FROZEN_CUTOFF)].copy()
     dates = pd.DatetimeIndex(market["observation_date"]).sort_values().unique()
+    if not len(dates):
+        return pd.DataFrame(), [], None
+
+    calendar = pd.DatetimeIndex(pd.to_datetime(frozen.loc[frozen["performance_calendar_eligible"].astype(bool), "date"])).append(dates).sort_values().unique()
     status = []
-    latest_market = pd.Timestamp(dates.max()) if len(dates) else pd.NaT
+    latest_market = pd.Timestamp(dates.max())
     prior_market = pd.Timestamp(dates[-2]) if len(dates) > 1 else latest_market
-    fresh: dict[str, bool] = {}
+    strict_limits: list[pd.Timestamp] = []
     for name, spec in SOURCE_SPECS.items():
         valid = _valid(frames.get(name, pd.DataFrame()))
         latest = pd.NaT if valid.empty else pd.Timestamp(valid["observation_date"].max())
         okay = bool(pd.notna(latest)) and (latest >= latest_market - pd.Timedelta(days=12) if name == "nfci" else latest >= prior_market)
-        fresh[name] = okay
-        status.append({"source_id": name, "provider": spec.provider, "provider_identifier": spec.provider_identifier, "latest_observation_date": None if pd.isna(latest) else latest.strftime("%Y-%m-%d"), "freshness_status": "FRESH" if okay else "STALE_OR_UNAVAILABLE"})
-    if not len(dates) or not all(fresh.values()):
-        return pd.DataFrame(), status
-
-    calendar = pd.DatetimeIndex(pd.to_datetime(frozen.loc[frozen["performance_calendar_eligible"].astype(bool), "date"])).append(dates).sort_values().unique()
+        available = _latest_available_session(frames.get(name, pd.DataFrame()), calendar, spec.lag_market_sessions)
+        if name != "nfci" and available is not None:
+            strict_limits.append(available)
+        status.append({
+            "source_id": name,
+            "provider": spec.provider,
+            "provider_identifier": spec.provider_identifier,
+            "latest_observation_date": None if pd.isna(latest) else latest.strftime("%Y-%m-%d"),
+            "latest_available_session": _date(available),
+            "freshness_status": "FRESH" if okay else "STALE_OR_UNAVAILABLE",
+        })
     tail = pd.DataFrame({"date": dates})
     indexed = market.set_index("observation_date")
     for column in ("open", "high", "low", "close"):
@@ -95,7 +119,8 @@ def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[
     tail["performance_calendar_eligible"] = tail["close"].gt(0)
     tail["ohlc_signal_eligible"] = tail[["open", "high", "low", "close"]].notna().all(axis=1)
     tail["breadth_input_eligible"] = tail["equal_weight_price"].gt(0) & tail["close"].gt(0)
-    return tail, status
+    confirmed_basis = min(strict_limits) if strict_limits else None
+    return tail, status, confirmed_basis
 
 
 def _merge(frozen: pd.DataFrame, tail: pd.DataFrame) -> pd.DataFrame:
@@ -181,19 +206,27 @@ def _append_history(frozen_runtime: dict[str, Any], panel: pd.DataFrame, *, core
 def run_live_runtime(*, as_of: object = None, provider_frames: dict[str, pd.DataFrame] | None = None) -> dict[str, Any]:
     frozen_runtime = run_frozen_runtime()
     frames = provider_frames if provider_frames is not None else fetch_all_sources(as_of=as_of)
-    tail, source_status = _build_tail(frozen_runtime["panel"], frames)
+    tail, source_status, confirmed_limit = _build_tail(frozen_runtime["panel"], frames)
     panel = _merge(frozen_runtime["panel"], tail)
     valid_tail = panel.loc[panel["date"].gt(FROZEN_CUTOFF) & panel["core15_input_eligible"].eq(True), "date"]
-    basis = FROZEN_CUTOFF if valid_tail.empty else pd.Timestamp(valid_tail.iloc[-1]).normalize()
-    panel = panel.loc[pd.to_datetime(panel["date"]).le(basis)].copy()
+    provisional_basis = FROZEN_CUTOFF if valid_tail.empty else pd.Timestamp(valid_tail.iloc[-1]).normalize()
+    provisional_status = (
+        "PROVISIONAL_UNAVAILABLE"
+        if not tail.empty and valid_tail.empty
+        else "PROVISIONAL" if provisional_basis > FROZEN_CUTOFF else "CONFIRMED"
+    )
+    panel = panel.loc[pd.to_datetime(panel["date"]).le(provisional_basis)].copy()
     core = replay_core(panel, frozen_runtime["registry"])
     history = _append_history(frozen_runtime, panel, core=core)
-    status = "LIVE" if basis > FROZEN_CUTOFF else "FROZEN_ONLY"
-    snapshot = _snapshot(frozen_runtime["final10"], history, panel, status=status)
+    confirmed_basis = FROZEN_CUTOFF if confirmed_limit is None else min(pd.Timestamp(confirmed_limit).normalize(), provisional_basis)
+    confirmed_history = history.loc[pd.to_datetime(history["date"]).le(confirmed_basis)].copy()
+    confirmed_panel = panel.loc[pd.to_datetime(panel["date"]).le(confirmed_basis)].copy()
+    snapshot = _snapshot(frozen_runtime["final10"], history, panel, status=provisional_status)
+    confirmed_snapshot = _snapshot(frozen_runtime["final10"], confirmed_history, confirmed_panel, status="CONFIRMED")
     return {
         "runtime_mode": "FROZEN_PREFIX_LIVE_TAIL", "network_access": provider_frames is None, "as_of_utc": _utc(as_of).isoformat(),
-        "basis_date": basis.strftime("%Y-%m-%d"), "frozen_cutoff": FROZEN_CUTOFF.strftime("%Y-%m-%d"),
-        "proxy_only": True, "direct_oas_used": False, "snapshot": snapshot, "metrics": frozen_runtime["metrics"], "history": history,
+        "basis_date": provisional_basis.strftime("%Y-%m-%d"), "confirmed_basis_date": confirmed_basis.strftime("%Y-%m-%d"), "provisional_basis_date": provisional_basis.strftime("%Y-%m-%d"), "provisional_status": provisional_status, "frozen_cutoff": FROZEN_CUTOFF.strftime("%Y-%m-%d"),
+        "proxy_only": True, "direct_oas_used": False, "snapshot": snapshot, "confirmed_snapshot": confirmed_snapshot, "metrics": frozen_runtime["metrics"], "history": history,
         "registry": frozen_runtime["registry"], "final10": frozen_runtime["final10"], "children": frozen_runtime["children"], "core": core,
         "panel": panel, "frozen_panel": frozen_runtime["panel"], "source_status": source_status,
         "live_tail_row_count": int(len(panel.loc[pd.to_datetime(panel["date"]).gt(FROZEN_CUTOFF)])), "frozen_rows_overwritten": 0,

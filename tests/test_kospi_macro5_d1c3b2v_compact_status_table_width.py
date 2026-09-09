@@ -99,7 +99,9 @@ def test_b2v_macro6_status_panel_uses_same_compact_wording() -> None:
     assert "현재 플래그 <span style='color:#FF8C69;font-weight:700;font-variant-numeric:tabular-nums;'>2/K2</span>" in status
     assert "오늘 Risk-off(위험회피) 시작" in status
     assert "실행 비투자" in status
-    assert status.count("2/K2") == 1
+    assert "확정신호:" in status
+    assert "잠정신호:" in status
+    assert status.count("2/K2") == 2
 
 
 def test_b2v_default_preset_is_unique_combo2_main_and_invalid_state_recovers_to_it() -> None:

@@ -73,36 +73,46 @@ def _source_is_fresh(frame: pd.DataFrame, spec_id: str, market_calendar: pd.Date
     return len(previous_sessions) > 0 and latest_observation >= pd.Timestamp(previous_sessions.max())
 
 
+def _latest_available_session(frame: pd.DataFrame, market_dates: pd.DatetimeIndex, lag: int) -> pd.Timestamp | None:
+    effective = _effective_available(frame, market_dates, lag)
+    if effective.empty:
+        return None
+    return pd.Timestamp(effective["effective_date"].max()).normalize()
+
+
 def _rolling_zscore(series: pd.Series, window: int = 252) -> pd.Series:
     mean = series.rolling(window, min_periods=max(30, window // 4)).mean()
     std = series.rolling(window, min_periods=max(30, window // 4)).std().replace(0.0, np.nan)
     return ((series - mean) / std).clip(-3.0, 3.0)
 
 
-def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, list[dict[str, Any]], pd.Timestamp | None]:
     ndx = _valid(frames.get("ndx_ohlcv", pd.DataFrame()))
     ndxe = _valid(frames.get("ndxe_close", pd.DataFrame()))
     market = ndx.loc[ndx["observation_date"].gt(FROZEN_CUTOFF)].copy()
     market_dates = pd.DatetimeIndex(market["observation_date"]).normalize().sort_values().unique()
     if not len(market_dates):
-        return pd.DataFrame(), []
+        return pd.DataFrame(), [], None
     availability_dates = pd.DatetimeIndex(pd.to_datetime(frozen.loc[frozen["performance_calendar_eligible"].astype(bool), "date"])).normalize().append(market_dates).sort_values().unique()
     source_status: list[dict[str, Any]] = []
     fresh: dict[str, bool] = {}
+    strict_limits: list[pd.Timestamp] = []
     for source_id, spec in SOURCE_SPECS.items():
         valid = _valid(frames.get(source_id, pd.DataFrame()))
         latest = valid["observation_date"].max() if not valid.empty else pd.NaT
         okay = source_id in ("ndx_ohlcv", "ndxe_close") or _source_is_fresh(valid, source_id, availability_dates)
         fresh[source_id] = bool(okay)
+        available = _latest_available_session(frames.get(source_id, pd.DataFrame()), availability_dates, spec.lag_market_sessions)
+        if source_id != "nfci" and available is not None:
+            strict_limits.append(available)
         source_status.append({
             "source_id": source_id,
             "provider": spec.provider,
             "provider_identifier": spec.provider_identifier,
             "latest_observation_date": _date(latest),
+            "latest_available_session": _date(available),
             "freshness_status": "FRESH" if okay else "STALE_OR_UNAVAILABLE",
         })
-    if not all(fresh.values()):
-        return pd.DataFrame(), source_status
 
     tail = pd.DataFrame({"date": market_dates})
     indexed_ndx = market.set_index("observation_date")
@@ -115,7 +125,8 @@ def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[
         spec = SOURCE_SPECS[source_id]
         available = _available_on_dates(frames[source_id], availability_dates, spec.lag_market_sessions)
         available = available.loc[available["date"].isin(market_dates)].reset_index(drop=True)
-        native = _valid(frames[source_id]).set_index("observation_date")["value"]
+        native_frame = _valid(frames.get(source_id, pd.DataFrame()))
+        native = pd.Series(dtype=float) if native_frame.empty else native_frame.set_index("observation_date")["value"]
         tail[f"{source_id}_native"] = pd.to_numeric(native.reindex(market_dates), errors="coerce").to_numpy()
         tail[f"{source_id}_available"] = pd.to_numeric(available["value"], errors="coerce").to_numpy()
         tail[f"{source_id}_source_observation_date"] = pd.to_datetime(available["observation_date"], errors="coerce").dt.normalize().to_numpy()
@@ -123,7 +134,8 @@ def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[
     tail["performance_calendar_eligible"] = tail["ndx_close"].notna() & tail["ndx_close"].gt(0)
     tail["ohlc_signal_eligible"] = tail[["ndx_open", "ndx_high", "ndx_low", "ndx_close"]].notna().all(axis=1)
     tail["breadth_input_eligible"] = tail["ndx_close"].gt(0) & tail["ndxe_close"].gt(0)
-    return tail, source_status
+    confirmed_basis = min(strict_limits) if strict_limits else None
+    return tail, source_status, confirmed_basis
 
 
 def _merge_frozen_and_tail(frozen: pd.DataFrame, tail: pd.DataFrame) -> pd.DataFrame:
@@ -134,8 +146,28 @@ def _merge_frozen_and_tail(frozen: pd.DataFrame, tail: pd.DataFrame) -> pd.DataF
     out["ndx_performance_return"] = pd.to_numeric(out["ndx_close"], errors="coerce").pct_change()
     out.loc[~tail_mask, "ndx_performance_return"] = frozen["ndx_performance_return"].to_numpy()
     out["ndx_equal_weight_breadth"] = np.log(pd.to_numeric(out["ndxe_close"], errors="coerce") / pd.to_numeric(out["ndx_close"], errors="coerce"))
-    out["hy_proxy"] = out["dbaa_available"] - out["dgs10_available"]
-    out["ig_proxy"] = out["daaa_available"] - out["dgs10_available"]
+    # A proxy is complete only when both legs were observed on the same date.
+    # Once complete, the existing availability contract carries that completed
+    # proxy forward; it never mixes a stale corporate yield with a newer rate.
+    frozen_hy_proxy = out["hy_proxy"].copy()
+    frozen_ig_proxy = out["ig_proxy"].copy()
+
+    def completed_proxy(left: str, right: str, frozen_values: pd.Series) -> pd.Series:
+        left_date = pd.to_datetime(out.get(f"{left}_source_observation_date"), errors="coerce").dt.normalize()
+        right_date = pd.to_datetime(out.get(f"{right}_source_observation_date"), errors="coerce").dt.normalize()
+        complete = (
+            out[left + "_available"].notna()
+            & out[right + "_available"].notna()
+            & left_date.notna()
+            & right_date.notna()
+            & left_date.eq(right_date)
+        )
+        proxy = (out[left + "_available"] - out[right + "_available"]).where(complete)
+        proxy.loc[~tail_mask] = frozen_values.loc[~tail_mask]
+        return proxy.ffill()
+
+    out["hy_proxy"] = completed_proxy("dbaa", "dgs10", frozen_hy_proxy)
+    out["ig_proxy"] = completed_proxy("daaa", "dgs10", frozen_ig_proxy)
     out["vix_spread"] = out["vixcls_available"] - out["vxvcls_available"]
     out["us_10y_2y_spread"] = out["dgs10_available"] - out["dgs2_available"]
     out["us_10y_3m_spread"] = out["dgs10_available"] - out["dgs3mo_available"]
@@ -143,9 +175,9 @@ def _merge_frozen_and_tail(frozen: pd.DataFrame, tail: pd.DataFrame) -> pd.DataF
         _rolling_zscore(out["hy_proxy"]), _rolling_zscore(out["nfci_available"]), _rolling_zscore(out["vixcls_available"]),
     ], axis=1).mean(axis=1)
     available = {
-        "hy_available": out[["dbaa_available", "dgs10_available"]].notna().all(axis=1),
-        "ig_available": out[["daaa_available", "dgs10_available"]].notna().all(axis=1),
-        "credit_stress_available": out[["dbaa_available", "dgs10_available", "nfci_available", "vixcls_available"]].notna().all(axis=1),
+        "hy_available": out["hy_proxy"].notna(),
+        "ig_available": out["ig_proxy"].notna(),
+        "credit_stress_available": out[["hy_proxy", "nfci_available", "vixcls_available"]].notna().all(axis=1),
         "vix_available": out["vixcls_available"].notna(),
         "vix_spread_available": out[["vixcls_available", "vxvcls_available"]].notna().all(axis=1),
         "real_yield_10y_available": out["dfii10_available"].notna(),
@@ -214,27 +246,41 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
     frozen = frozen_runtime["panel"].copy()
     frozen["date"] = pd.to_datetime(frozen["date"]).dt.normalize()
     frames = provider_frames if provider_frames is not None else fetch_all_sources(as_of=as_of_utc)
-    tail, source_status = _build_tail(frozen, frames)
+    tail, source_status, confirmed_limit = _build_tail(frozen, frames)
     panel = _merge_frozen_and_tail(frozen, tail)
     continuous_basis = _continuous_tail(panel)
-    basis = FROZEN_CUTOFF if continuous_basis is None else continuous_basis
-    panel = panel.loc[panel["date"].le(basis)].copy()
+    provisional_basis = FROZEN_CUTOFF if continuous_basis is None else continuous_basis
+    provisional_status = (
+        "PROVISIONAL_UNAVAILABLE"
+        if not tail.empty and continuous_basis is None
+        else "PROVISIONAL" if provisional_basis > FROZEN_CUTOFF else "CONFIRMED"
+    )
+    panel = panel.loc[panel["date"].le(provisional_basis)].copy()
     core = replay_core(panel, frozen_runtime["registry"])
-    current_metrics = replay_final20(panel, frozen_runtime["final20"], frozen_runtime["children"], core, evaluation_end=basis)
-    history = replay_final20_history(panel, frozen_runtime["final20"], frozen_runtime["children"], core, evaluation_end=basis)
+    current_metrics = replay_final20(panel, frozen_runtime["final20"], frozen_runtime["children"], core, evaluation_end=provisional_basis)
+    history = replay_final20_history(panel, frozen_runtime["final20"], frozen_runtime["children"], core, evaluation_end=provisional_basis)
+    confirmed_basis = FROZEN_CUTOFF if confirmed_limit is None else min(pd.Timestamp(confirmed_limit).normalize(), provisional_basis)
     snapshot = _snapshot(
-        frozen_runtime["final20"], history, panel, basis,
-        availability_status="LIVE" if basis > FROZEN_CUTOFF else "FROZEN_ONLY",
+        frozen_runtime["final20"], history, panel, provisional_basis,
+        availability_status=provisional_status,
+    )
+    confirmed_snapshot = _snapshot(
+        frozen_runtime["final20"], history, panel, confirmed_basis,
+        availability_status="CONFIRMED",
     )
     return {
         "runtime_mode": "LIVE_TAIL",
         "network_access": provider_frames is None,
         "as_of_utc": as_of_utc.isoformat(),
-        "basis_date": _date(basis),
+        "basis_date": _date(provisional_basis),
+        "confirmed_basis_date": _date(confirmed_basis),
+        "provisional_basis_date": _date(provisional_basis),
+        "provisional_status": provisional_status,
         "frozen_cutoff": _date(FROZEN_CUTOFF),
         "proxy_only": True,
         "direct_oas_used": False,
         "snapshot": snapshot,
+        "confirmed_snapshot": confirmed_snapshot,
         "metrics": frozen_runtime["metrics"],
         "current_metrics": current_metrics,
         "history": history,

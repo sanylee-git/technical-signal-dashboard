@@ -141,6 +141,17 @@ def _rolling_zscore(series: pd.Series, window: int = 252) -> pd.Series:
     return ((series - mean) / std).clip(-3.0, 3.0)
 
 
+def _same_observation_proxy(frame: pd.DataFrame, left: str, right: str) -> pd.Series:
+    """Carry only a previously completed same-observation-date proxy value."""
+    left_values = frame.get(f"{left}_observation_date", pd.Series(pd.NaT, index=frame.index))
+    right_values = frame.get(f"{right}_observation_date", pd.Series(pd.NaT, index=frame.index))
+    left_date = pd.to_datetime(left_values, errors="coerce").dt.normalize()
+    right_date = pd.to_datetime(right_values, errors="coerce").dt.normalize()
+    complete = left_date.eq(right_date) & left_date.notna()
+    raw = (pd.to_numeric(frame[left], errors="coerce") - pd.to_numeric(frame[right], errors="coerce")).where(complete)
+    return raw.ffill()
+
+
 def _combined_frame(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame], as_of: pd.Timestamp) -> tuple[pd.DataFrame, list[dict[str, Any]], dict[str, Any]]:
     calendar_asset = load_calendar()
     completed_session = latest_completed_session(as_of, calendar_asset)
@@ -179,10 +190,17 @@ def _combined_frame(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame], as_of
         source_info.append(info)
         if len(tail_dates):
             out.loc[out["date"].gt(FROZEN_CUTOFF), source_id] = aligned[source_id].to_numpy()
+            out.loc[out["date"].gt(FROZEN_CUTOFF), f"{source_id}_observation_date"] = aligned[f"{source_id}_observation_date"].to_numpy()
     if len(tail_dates):
         tail_mask = out["date"].gt(FROZEN_CUTOFF)
-        out["hy_proxy"] = out["us_baa_corp_yield"] - out["us_10y_yield"]
-        out["ig_proxy"] = out["us_aaa_corp_yield"] - out["us_10y_yield"]
+        frozen_hy = out["hy_proxy"].copy()
+        frozen_ig = out["ig_proxy"].copy()
+        hy_proxy = _same_observation_proxy(out, "us_baa_corp_yield", "us_10y_yield")
+        ig_proxy = _same_observation_proxy(out, "us_aaa_corp_yield", "us_10y_yield")
+        hy_proxy.loc[~tail_mask] = frozen_hy.loc[~tail_mask]
+        ig_proxy.loc[~tail_mask] = frozen_ig.loc[~tail_mask]
+        out["hy_proxy"] = hy_proxy.ffill()
+        out["ig_proxy"] = ig_proxy.ffill()
         out["vix_spread"] = out["vix"] - out["vix3m"]
         out["us_10y_2y_spread"] = out["us_10y_yield"] - out["us_2y_yield"]
         out["us_10y_3m_spread"] = out["us_10y_yield"] - out["us_3m_yield"]
@@ -252,25 +270,27 @@ def _segment_snapshot(state: pd.DataFrame, combined: pd.DataFrame, basis: pd.Tim
     return {"state_date": _date(basis), "valid": True, "raw_risk_state": current, "active_count": int(row["active_count"]), "current_risk_start_date": _date(start), "current_duration_trading_days": int(len(segment)), "current_segment_return": segment_return, "current_segment_return_end_date": _date(basis), "week_ago_state_date": None if week_ago is None else _date(week_ago["date"]), "week_ago_raw_risk_state": None if week_ago is None else bool(week_ago["raw_risk_state"]), "week_ago_active_count": None if week_ago is None else int(week_ago["active_count"]), "week_ago_valid": week_ago is not None}
 
 
-def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_frames: dict[str, pd.DataFrame] | None = None) -> dict[str, Any]:
-    as_of_utc = _as_utc(as_of)
-    contract = json.loads((ASSETS / "kosdaq_macro7_live_source_contract.json").read_text(encoding="utf-8"))
-    frozen = _load_frozen()
-    frames = provider_frames if provider_frames is not None else fetch_all_sources(as_of=as_of_utc)
-    combined, source_status, merge = _combined_frame(frozen, frames, as_of_utc)
-    definitions = pd.read_csv(ASSETS / "kosdaq_macro7_signal_definitions.csv")
-    final = pd.read_csv(ASSETS / "kosdaq_macro7_final10.csv")
-    children = pd.read_csv(ASSETS / "kosdaq_macro7_combo2_child_mapping.csv")
-    source_bases = {item["source_id"]: pd.Timestamp(item["available_through_date"]) if item.get("available_through_date") else None for item in source_status}
+def _evaluate_final_candidates(
+    combined: pd.DataFrame,
+    definitions: pd.DataFrame,
+    final: pd.DataFrame,
+    children: pd.DataFrame,
+    source_bases: dict[str, pd.Timestamp | None],
+    *,
+    include_performance: bool,
+    snapshot_status: str,
+) -> dict[str, Any]:
+    """Replay the existing Macro7 tree to a supplied source-basis contract."""
     core_frames: list[pd.DataFrame] = []
     core_bases: dict[str, pd.Timestamp | None] = {}
     core_reasons: dict[str, str | None] = {}
+    indexed = combined.set_index("date")
     for row in definitions.itertuples(index=False):
-        frame = _candidate_frame(combined.set_index("date"), pd.Series(row._asdict()))
+        frame = _candidate_frame(indexed, pd.Series(row._asdict()))
         frame.insert(0, "candidate_id", row.candidate_id)
         frame = frame.reset_index(drop=True)
         family_sources = FAMILY_SOURCES[str(row.indicator_family)]
-        limits = [source_bases[source] for source in family_sources]
+        limits = [source_bases.get(source) for source in family_sources]
         limit = min((value for value in limits if value is not None), default=None)
         basis, reason = _continuous_basis(frame, row.candidate_id, limit)
         if basis is not None:
@@ -278,17 +298,17 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
         core_bases[row.candidate_id], core_reasons[row.candidate_id] = basis, reason
         core_frames.append(frame)
     core = pd.concat(core_frames, ignore_index=True)
+
     child_parts: list[pd.DataFrame] = []
     child_bases: dict[str, pd.Timestamp | None] = {}
-    child_reasons: dict[str, str | None] = {}
     for child_id, group in children.groupby("child_combo1_id", sort=True):
         item = group.iloc[0]
-        ids = str(item.child_candidate_ids).split("|")
-        part, basis, reason = _combine_until(core, child_id, ids, int(item.child_K), int(item.child_L), core_bases)
-        child_bases[child_id], child_reasons[child_id] = basis, reason
+        part, basis, _reason = _combine_until(core, child_id, str(item.child_candidate_ids).split("|"), int(item.child_K), int(item.child_L), core_bases)
+        child_bases[child_id] = basis
         if part is not None:
             child_parts.append(part)
     child = pd.concat(child_parts, ignore_index=True) if child_parts else pd.DataFrame()
+
     combo1_parts: list[pd.DataFrame] = []
     combo1_bases: dict[str, pd.Timestamp | None] = {}
     combo1_reasons: dict[str, str | None] = {}
@@ -299,6 +319,7 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
             combo1_parts.append(part)
     final_combo1 = pd.concat(combo1_parts, ignore_index=True) if combo1_parts else pd.DataFrame()
     child_core = child.rename(columns={"combo_id": "candidate_id", "raw_risk_state": "risk_state", "valid": "valid_signal"})[["candidate_id", "date", "active_count", "risk_state", "valid_signal", "risk_start", "risk_end"]] if not child.empty else pd.DataFrame()
+
     combo2_parts: list[pd.DataFrame] = []
     combo2_bases: dict[str, pd.Timestamp | None] = {}
     combo2_reasons: dict[str, str | None] = {}
@@ -322,14 +343,79 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
             snapshots.append({"candidate_id": row.candidate_id, "model_family": row.model_family, "slot": int(row.display_slot), "display_label": row.display_role, "basis_date": None, "state_date": None, "valid": False, "status": "UNAVAILABLE", "reason": reasons.get(row.candidate_id), "K": int(row.K), "L": int(row.L)})
             continue
         state = t1.loc[t1.combo_id.eq(row.candidate_id)].copy()
-        snapshot = {"candidate_id": row.candidate_id, "model_family": row.model_family, "slot": int(row.display_slot), "display_label": row.display_role, "basis_date": _date(basis), "K": int(row.K), "L": int(row.L), "status": "USABLE", **_segment_snapshot(state, combined, pd.Timestamp(basis))}
+        snapshot = {"candidate_id": row.candidate_id, "model_family": row.model_family, "slot": int(row.display_slot), "display_label": row.display_role, "basis_date": _date(basis), "K": int(row.K), "L": int(row.L), "status": "USABLE", "availability_status": snapshot_status, **_segment_snapshot(state, combined, pd.Timestamp(basis))}
         current = state.loc[state.date.eq(pd.Timestamp(basis))].iloc[-1]
         snapshot["risk_off_t1"] = bool(current["risk_off_t1"])
         snapshot["invest_position"] = int(current["invest_position"])
         snapshots.append(snapshot)
-        performance = _performance(combined.loc[combined.date.le(basis)].set_index("date"), state, EVALUATION_START, 10.0)
-        performance.insert(0, "candidate_id", row.candidate_id)
-        performances.append(performance)
-        metrics.append({"candidate_id": row.candidate_id, **_metrics(performance)})
+        if include_performance:
+            performance = _performance(combined.loc[combined.date.le(basis)].set_index("date"), state, EVALUATION_START, 10.0)
+            performance.insert(0, "candidate_id", row.candidate_id)
+            performances.append(performance)
+            metrics.append({"candidate_id": row.candidate_id, **_metrics(performance)})
+    return {
+        "core": core,
+        "core_bases": core_bases,
+        "core_reasons": core_reasons,
+        "child": child,
+        "child_bases": child_bases,
+        "final_combo1": final_combo1,
+        "final_combo2": final_combo2,
+        "t1": t1,
+        "snapshot": pd.DataFrame(snapshots),
+        "performance": pd.concat(performances, ignore_index=True) if performances else pd.DataFrame(),
+        "metrics": pd.DataFrame(metrics),
+    }
+
+
+def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_frames: dict[str, pd.DataFrame] | None = None) -> dict[str, Any]:
+    as_of_utc = _as_utc(as_of)
+    contract = json.loads((ASSETS / "kosdaq_macro7_live_source_contract.json").read_text(encoding="utf-8"))
+    frozen = _load_frozen()
+    frames = provider_frames if provider_frames is not None else fetch_all_sources(as_of=as_of_utc)
+    combined, source_status, merge = _combined_frame(frozen, frames, as_of_utc)
+    definitions = pd.read_csv(ASSETS / "kosdaq_macro7_signal_definitions.csv")
+    final = pd.read_csv(ASSETS / "kosdaq_macro7_final10.csv")
+    children = pd.read_csv(ASSETS / "kosdaq_macro7_combo2_child_mapping.csv")
+    strict_source_bases = {item["source_id"]: pd.Timestamp(item["available_through_date"]) if item.get("available_through_date") else None for item in source_status}
+    strict = _evaluate_final_candidates(
+        combined,
+        definitions,
+        final,
+        children,
+        strict_source_bases,
+        include_performance=False,
+        snapshot_status="CONFIRMED",
+    )
+    latest_session = pd.to_datetime(merge.get("latest_calculation_session"), errors="coerce")
+    provisional_source_bases = {
+        source_id: (latest_session.normalize() if pd.notna(latest_session) and basis is not None else None)
+        for source_id, basis in strict_source_bases.items()
+    }
+    provisional = _evaluate_final_candidates(
+        combined,
+        definitions,
+        final,
+        children,
+        provisional_source_bases,
+        include_performance=True,
+        snapshot_status="PROVISIONAL",
+    )
     provisional_state = "COMPUTED" if merge["last_market_row_status"] == "INTRADAY" else "NOT_COMPUTED"
-    return {"as_of_utc": as_of_utc.isoformat(), "as_of_kst": as_of_utc.tz_convert("Asia/Seoul").isoformat(), "market_session_status": session_status(as_of_utc), "provisional_intraday_model_state": provisional_state, "contract": contract, "combined": combined, "source_status": pd.DataFrame(source_status), "merge": merge, "core": core, "core_bases": core_bases, "core_reasons": core_reasons, "child": child, "child_bases": child_bases, "final_combo1": final_combo1, "final_combo2": final_combo2, "t1": t1, "snapshot": pd.DataFrame(snapshots), "performance": pd.concat(performances, ignore_index=True) if performances else pd.DataFrame(), "metrics": pd.DataFrame(metrics), "combo2_input_semantics": "CHILD_COMBO1_RAW_RISK_STATE", "final_t1_application_count": 1, "invalid_component_as_risk_on_count": 0}
+    return {
+        "as_of_utc": as_of_utc.isoformat(),
+        "as_of_kst": as_of_utc.tz_convert("Asia/Seoul").isoformat(),
+        "market_session_status": session_status(as_of_utc),
+        "provisional_intraday_model_state": provisional_state,
+        "contract": contract,
+        "combined": combined,
+        "source_status": pd.DataFrame(source_status),
+        "merge": merge,
+        **provisional,
+        "confirmed_snapshot": strict["snapshot"],
+        "confirmed_basis_by_candidate": dict(zip(strict["snapshot"]["candidate_id"], strict["snapshot"]["basis_date"])),
+        "provisional_basis_by_candidate": dict(zip(provisional["snapshot"]["candidate_id"], provisional["snapshot"]["basis_date"])),
+        "combo2_input_semantics": "CHILD_COMBO1_RAW_RISK_STATE",
+        "final_t1_application_count": 1,
+        "invalid_component_as_risk_on_count": 0,
+    }

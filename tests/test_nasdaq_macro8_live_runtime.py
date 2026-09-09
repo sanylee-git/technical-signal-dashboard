@@ -101,5 +101,22 @@ def test_stale_or_missing_live_source_keeps_frozen_cutoff_without_rewriting_hist
     live = run_live_runtime(as_of=datetime(2026, 8, 26, tzinfo=timezone.utc), provider_frames=frames)
 
     assert live["basis_date"] == "2026-08-21"
+    assert live["provisional_status"] == "PROVISIONAL_UNAVAILABLE"
     assert live["live_tail_row_count"] == 0
     assert_frame_equal(live["panel"].reset_index(drop=True), frozen["panel"].reset_index(drop=True), check_dtype=False)
+
+
+def test_stale_corporate_yields_carry_completed_proxy_without_mixing_observation_dates() -> None:
+    frames = _live_frames()
+    frames["dbaa"] = frames["dbaa"].iloc[:1].copy()
+    frames["daaa"] = frames["daaa"].iloc[:1].copy()
+
+    live = run_live_runtime(as_of=datetime(2026, 8, 26, tzinfo=timezone.utc), provider_frames=frames)
+    panel = live["panel"].set_index("date")
+    before = panel.loc[pd.Timestamp("2026-08-24"), "hy_proxy"]
+    carried = panel.loc[pd.Timestamp("2026-08-25")]
+
+    assert live["confirmed_basis_date"] == "2026-08-24"
+    assert live["provisional_basis_date"] == "2026-08-25"
+    assert carried["dbaa_source_observation_date"] != carried["dgs10_source_observation_date"]
+    assert carried["hy_proxy"] == before

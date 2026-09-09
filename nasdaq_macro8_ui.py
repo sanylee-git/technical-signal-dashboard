@@ -303,7 +303,26 @@ def _group_summary(payload: dict[str, Any], final: pd.DataFrame | None = None) -
     return f"<div class='macro2-helper-text' style='margin-top:6px;line-height:1.55'><div>{c2['availability']}{separator}{c1['availability']}</div><div style='margin-top:2px'>{c2['risk']}{separator}{c1['risk']}</div><div style='margin-top:2px'>{stages}</div></div>"
 
 
-def _current_status_html(row: pd.Series, history: pd.DataFrame) -> str:
+def _signal_snapshot_html(label: str, row: pd.Series) -> str:
+    if label == "잠정신호" and row.get("availability_status") == "PROVISIONAL_UNAVAILABLE":
+        return "잠정신호: 계산 불가 (필수 원천 결측)"
+    if row.get("status") != "USABLE":
+        return f"{label}: 계산 불가"
+    risk = bool(row["raw_risk_state"])
+    color = RISK_OFF if risk else RISK_ON
+    state = "리스크 사이클 ON" if risk else "리스크 사이클 OFF"
+    return (
+        f"{label}: 기준일 {_date(row['basis_date'])} <span style='color:rgba(255,255,255,.45)'>·</span> "
+        f"현재 플래그 {_on_k_html(row['active_count'], row['K'], risk)} <span style='color:rgba(255,255,255,.45)'>·</span> "
+        f"상태 <span style='color:{color};font-weight:700'>{state}</span>"
+    )
+
+
+def _current_status_html(
+    row: pd.Series,
+    history: pd.DataFrame,
+    confirmed_row: pd.Series | None = None,
+) -> str:
     if row["status"] != "USABLE":
         return "<div class='macro2-helper-text'>현재 상태를 계산할 수 없습니다.</div>"
     risk = bool(row["raw_risk_state"])
@@ -314,9 +333,16 @@ def _current_status_html(row: pd.Series, history: pd.DataFrame) -> str:
     latest = history.sort_values("date").iloc[-1] if not history.empty else None
     transition = "오늘 전환 없음" if latest is None or not bool(latest.risk_start or latest.risk_end) else (f"<span style='color:{RISK_OFF};font-weight:700'>오늘 Risk-off 시작</span>" if bool(latest.risk_start) else "<span style='color:#60A5FA;font-weight:700'>오늘 Risk-off 종료</span>")
     execution = "비투자" if int(row["invest_position"]) == 0 else "투자"
+    confirmed_row = row if confirmed_row is None else confirmed_row
+    provisional_date = pd.Timestamp(row["basis_date"]).normalize()
+    confirmed_date = pd.Timestamp(confirmed_row["basis_date"]).normalize() if confirmed_row.get("basis_date") else None
+    sessions = pd.to_datetime(history.get("date", pd.Series(dtype="datetime64[ns]")), errors="coerce").dropna().dt.normalize().drop_duplicates()
+    gap = 0 if confirmed_date is None else int(((sessions > confirmed_date) & (sessions <= provisional_date)).sum())
+    gap_html = "" if gap == 0 else f"<br><span style='color:rgba(255,255,255,.56)'>확정 기준과 {gap} 거래일 차이</span>"
     return (
         "<div class='macro2-helper-text' style='line-height:1.75'>"
-        f"기준일 {_date(row['basis_date'])} <span style='color:rgba(255,255,255,.45)'>·</span> 현재 플래그 {_on_k_html(row['active_count'], row['K'], risk)} <span style='color:rgba(255,255,255,.45)'>·</span> 상태 <span style='color:{color};font-weight:700'>{state}</span><br>"
+        f"{_signal_snapshot_html('확정신호', confirmed_row)}<br>"
+        f"{_signal_snapshot_html('잠정신호', row)}{gap_html}<br>"
         f"현재 상태 시작일 <span style='color:{color};font-weight:700'>{_date(row['current_risk_start_date'])}</span> <span style='color:rgba(255,255,255,.45)'>·</span> 지속 거래일 <span style='color:{color};font-weight:700'>{int(row['current_duration_trading_days'])}</span> <span style='color:rgba(255,255,255,.45)'>·</span> 상태 구간 수익률 {segment_text} <span style='color:rgba(255,255,255,.45)'>·</span> 실행 {execution} <span style='color:rgba(255,255,255,.45)'>·</span> {transition}</div>"
     )
 
@@ -473,7 +499,8 @@ def render_macro8_nasdaq_section(container: Any, *, payload: dict[str, Any] | No
             st.markdown(f"<div style='padding-top:8px;font-size:11.5px;line-height:1.42;color:rgba(255,255,255,.84)'>시작 {int(state.K)}개 이상 ON<br>종료 {int(state.L)}개 이하 ON</div>", unsafe_allow_html=True)
         st.markdown('<div class="macro2-divider macro2-divider-tight-top"></div>', unsafe_allow_html=True)
         candidate_history = _view(payload["candidate_history"], candidate_id=candidate_id, end=state.basis_date)
-        st.markdown(_current_status_html(state, candidate_history), unsafe_allow_html=True)
+        confirmed_state = _snapshot_row({**payload, "snapshot": payload["confirmed_snapshot"]}, candidate_id)
+        st.markdown(_current_status_html(state, candidate_history, confirmed_state), unsafe_allow_html=True)
         st.markdown('<div class="macro2-divider macro2-divider-tight-top"></div>', unsafe_allow_html=True)
         with st.expander("백테스트 비교 보기 · 조합2", expanded=False):
             st.markdown(_backtest_table(payload, "COMBO2", candidate_id, final), unsafe_allow_html=True)

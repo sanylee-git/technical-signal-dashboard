@@ -257,6 +257,9 @@ def build_presentation_payload(live_payload: dict[str, Any]) -> dict[str, Any]:
     snapshot = live_payload["snapshot"].copy().set_index("candidate_id").reindex(final_ids).reset_index()
     for column in ("model_family", "display_slot", "display_role", "K", "L"):
         snapshot[column] = final[column].to_numpy()
+    confirmed_snapshot = live_payload.get("confirmed_snapshot", live_payload["snapshot"]).copy().set_index("candidate_id").reindex(final_ids).reset_index()
+    for column in ("model_family", "display_slot", "display_role", "K", "L"):
+        confirmed_snapshot[column] = final[column].to_numpy()
     candidate_history = _candidate_history(live_payload, final)
     component_history = _component_history(live_payload, final, definitions, children)
     component_chart_history = _core_chart_history(live_payload, definitions, required_ids)
@@ -269,6 +272,9 @@ def build_presentation_payload(live_payload: dict[str, Any]) -> dict[str, Any]:
         "market_session_status": live_payload["market_session_status"],
         "provisional_intraday_model_state": live_payload["provisional_intraday_model_state"],
         "snapshot": snapshot,
+        "confirmed_snapshot": confirmed_snapshot,
+        "confirmed_basis_by_candidate": dict(live_payload.get("confirmed_basis_by_candidate", {})),
+        "provisional_basis_by_candidate": dict(live_payload.get("provisional_basis_by_candidate", {})),
         "candidate_history": candidate_history,
         "component_history": component_history,
         "component_chart_history": component_chart_history,

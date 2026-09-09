@@ -59,13 +59,15 @@ def test_spx_live_runtime_preserves_frozen_prefix_and_appends_only_valid_tail() 
     assert live["snapshot"]["basis_date"].eq("2026-08-26").all()
 
 
-def test_spx_live_runtime_stale_required_source_does_not_create_tail() -> None:
+def test_spx_live_runtime_stale_required_source_keeps_confirmed_and_provisional_snapshots() -> None:
     frames = _provider_fixture()
     frames["dgs10"] = frames["dgs10"].iloc[:1].copy()
     live = run_live_runtime(as_of="2026-08-27T12:00:00Z", provider_frames=frames)
-    assert live["basis_date"] == "2026-08-21"
-    assert live["live_tail_row_count"] == 0
-    assert live["snapshot"]["availability_status"].eq("FROZEN_ONLY").all()
+    assert live["confirmed_basis_date"] == "2026-08-24"
+    assert live["provisional_basis_date"] == "2026-08-26"
+    assert live["live_tail_row_count"] == 3
+    assert live["confirmed_snapshot"]["availability_status"].eq("CONFIRMED").all()
+    assert live["snapshot"]["availability_status"].eq("PROVISIONAL").all()
 
 
 def test_spx_live_runtime_frozen_core_prefix_matches_stage2_reference() -> None:

@@ -216,10 +216,22 @@ def _candidate_rows(candidate_freshness: pd.DataFrame) -> list[dict[str, Any]]:
         "current_state_start_date",
         "current_state_trading_days",
         "freshness_status",
+        "source_bottleneck_actual_date",
         "blocked_source_ids",
     ]
     available = [col for col in columns if col in candidate_freshness.columns]
-    return candidate_freshness[available].to_dict("records")
+    rows = candidate_freshness[available].to_dict("records")
+    for row in rows:
+        provisional = pd.to_datetime(row.get("basis_date"), errors="coerce")
+        confirmed = pd.to_datetime(row.get("source_bottleneck_actual_date"), errors="coerce")
+        row["provisional_basis_date"] = None if pd.isna(provisional) else provisional.strftime("%Y-%m-%d")
+        row["confirmed_basis_date"] = (
+            row["provisional_basis_date"]
+            if pd.isna(confirmed) or (not pd.isna(provisional) and confirmed > provisional)
+            else confirmed.strftime("%Y-%m-%d")
+        )
+        row["availability_status"] = "CONFIRMED" if row["confirmed_basis_date"] == row["provisional_basis_date"] else "PROVISIONAL"
+    return rows
 
 
 def _candidate_signal_history(ctx: D1C1Context, final9_live: pd.DataFrame) -> pd.DataFrame:
