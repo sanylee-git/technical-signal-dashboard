@@ -334,7 +334,7 @@ def _current_status_html(
     confirmed_date = pd.Timestamp(confirmed_row["basis_date"]).normalize() if confirmed_row.get("basis_date") else None
     sessions = pd.to_datetime(history.get("date", pd.Series(dtype="datetime64[ns]")), errors="coerce").dropna().dt.normalize().drop_duplicates()
     gap = 0 if confirmed_date is None else int(((sessions > confirmed_date) & (sessions <= provisional_date)).sum())
-    gap_html = "" if gap == 0 else f"<br><span style='color:rgba(255,255,255,.56)'>확정 기준과 {gap} 거래일 차이</span>"
+    gap_html = "" if gap == 0 else f" <span style='color:rgba(255,255,255,.56)'>· 확정 기준과 {gap} 거래일 차이</span>"
     return (
         "<div class='macro2-helper-text' style='line-height:1.75'>"
         f"{_signal_snapshot_html('확정신호', confirmed_row)}<br>"
@@ -409,7 +409,13 @@ def _component_status_table(payload: dict[str, Any], candidate_id: str) -> str:
         valid = bool(row.get("component_valid"))
         risk = bool(row.get("component_risk_state")) if valid else False
         flag = f"<span style='color:{RISK_OFF if risk else 'rgba(255,255,255,.18)'};font-weight:700'>●</span>"
-        entries.append((escape(str(row["component_label"])), flag, _date(row["date"])))
+        latest_text = _date(row["date"])
+        confirmed_basis = payload.get("component_confirmed_basis_by_id", {}).get(str(row.get("component_id")))
+        if confirmed_basis is None:
+            confirmed_basis = payload.get("confirmed_basis_by_candidate", {}).get(str(row.get("parent_candidate_id")))
+        if latest_text and confirmed_basis and latest_text > str(confirmed_basis):
+            latest_text = f"{latest_text} · 잠정 · 확정 {confirmed_basis}"
+        entries.append((escape(str(row["component_label"])), flag, latest_text))
     midpoint = int(np.ceil(len(entries) / 2))
     body = []
     for index in range(max(midpoint, len(entries) - midpoint)):

@@ -157,6 +157,8 @@ def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
     confirmed_snapshot["status"] = np.where(confirmed_snapshot["calculable"], "USABLE", "UNAVAILABLE")
     confirmed_snapshot["raw_risk_state"] = confirmed_snapshot["strategy_risk_state"].astype("Int64")
     confirmed_snapshot["invest_position"] = 1 - confirmed_snapshot["raw_risk_state"].fillna(1).astype(int)
+    confirmed_basis_by_candidate = dict(zip(confirmed_snapshot["candidate_id"].astype(str), confirmed_snapshot["basis_date"].map(_date)))
+    provisional_basis_by_candidate = dict(zip(snapshot["candidate_id"].astype(str), snapshot["basis_date"].map(_date)))
     candidate_history = _candidate_history(runtime)
     component_history, component_chart_history = _component_history(runtime, final)
     metrics, hold, windows = _display_metrics(runtime, final)
@@ -168,6 +170,10 @@ def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
         "direct_oas_used": False,
         "snapshot": snapshot,
         "confirmed_snapshot": confirmed_snapshot,
+        "confirmed_basis_by_candidate": confirmed_basis_by_candidate,
+        "provisional_basis_by_candidate": provisional_basis_by_candidate,
+        "component_confirmed_basis_by_id": confirmed_basis_by_candidate,
+        "component_provisional_basis_by_id": provisional_basis_by_candidate,
         "confirmed_basis_date": runtime.get("confirmed_basis_date", runtime.get("basis_date")),
         "provisional_basis_date": runtime.get("provisional_basis_date", runtime.get("basis_date")),
         "source_status": list(runtime.get("source_status", [])),

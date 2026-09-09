@@ -9423,6 +9423,7 @@ def _macro_compact_status_html(
     state_return_text: str = "계산 불가",
     state_return_color: str = "#8F8F8F",
     confirmed_snapshot: dict | None = None,
+    confirmed_gap: int | None = None,
 ) -> str:
     risk_on = bool(int(risk_state)) if not isinstance(risk_state, bool) else risk_state
     risk_color = _MACRO_STATUS_RISK_OFF_COLOR if risk_on else _MACRO_STATUS_RISK_ON_COLOR
@@ -9443,6 +9444,8 @@ def _macro_compact_status_html(
         f"현재 플래그 {_macro_flag_ratio_html(int(active_count), int(start_k or component_count or 1), bool(risk_state))} {separator} "
         f"상태 <span style='color:{risk_color};font-weight:700'>{risk_text}</span>"
     )
+    if confirmed_gap:
+        provisional_line += f" {separator} 확정 기준과 {int(confirmed_gap)} 거래일 차이"
     if confirmed_snapshot and confirmed_snapshot.get("calculable"):
         confirmed_risk = bool(int(confirmed_snapshot.get("raw_risk_state", 0)))
         confirmed_color = _MACRO_STATUS_RISK_OFF_COLOR if confirmed_risk else _MACRO_STATUS_RISK_ON_COLOR
@@ -9555,6 +9558,13 @@ def _build_macro6_status_panel(
                 "raw_risk_state": int(bool(confirmed_latest.get("combo_risk_state", False))),
                 "calculable": True,
             }
+    confirmed_gap = None
+    if confirmed_snapshot is not None and confirmed_snapshot.get("basis_date"):
+        try:
+            available_dates = pd.to_datetime(combo_event_df["date"], errors="coerce").dropna().dt.normalize().drop_duplicates()
+            confirmed_gap = int(((available_dates > pd.Timestamp(confirmed_snapshot["basis_date"]).normalize()) & (available_dates <= pd.Timestamp(basis_date).normalize())).sum())
+        except (KeyError, TypeError, ValueError):
+            confirmed_gap = None
     summary_html = _macro_compact_status_html(
         basis_date=basis_date,
         active_count=active_count,
@@ -9569,6 +9579,7 @@ def _build_macro6_status_panel(
         state_return_text=state_return["text"],
         state_return_color=state_return["color"],
         confirmed_snapshot=confirmed_snapshot,
+        confirmed_gap=confirmed_gap,
     )
     midpoint = int(np.ceil(len(entries) / 2))
     left_entries = entries[:midpoint]
@@ -14467,6 +14478,16 @@ def _macro5_kospi_current_status_html(
         state_start_date = None
 
     state_return = _macro_state_period_return_values(benchmark_history, state_start_date, basis)
+    confirmed_gap = None
+    if confirmed_live_row and confirmed_live_row.get("basis_date") and benchmark_history is not None:
+        try:
+            if isinstance(benchmark_history, pd.Series):
+                available_dates = pd.to_datetime(benchmark_history.index, errors="coerce").dropna().normalize().drop_duplicates()
+            else:
+                available_dates = pd.to_datetime(benchmark_history["date"], errors="coerce").dropna().dt.normalize().drop_duplicates()
+            confirmed_gap = int(((available_dates > pd.Timestamp(confirmed_live_row["basis_date"]).normalize()) & (available_dates <= pd.Timestamp(basis).normalize())).sum())
+        except (KeyError, TypeError, ValueError):
+            confirmed_gap = None
 
     return _macro_compact_status_html(
         basis_date=basis,
@@ -14482,6 +14503,7 @@ def _macro5_kospi_current_status_html(
         state_return_text=state_return["text"],
         state_return_color=state_return["color"],
         confirmed_snapshot=confirmed_live_row,
+        confirmed_gap=confirmed_gap,
     )
 
 

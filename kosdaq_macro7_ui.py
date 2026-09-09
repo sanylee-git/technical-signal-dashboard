@@ -368,7 +368,7 @@ def _current_status_html(
     confirmed_date = pd.Timestamp(confirmed_row["basis_date"]).normalize() if confirmed_row.get("basis_date") else None
     sessions = pd.to_datetime(candidate_history.get("date", pd.Series(dtype="datetime64[ns]")), errors="coerce").dropna().dt.normalize().drop_duplicates()
     gap = 0 if confirmed_date is None else int(((sessions > confirmed_date) & (sessions <= provisional_date)).sum())
-    gap_html = "" if gap == 0 else f"<br><span style='color:rgba(255,255,255,.56)'>확정 기준과 {gap} 거래일 차이</span>"
+    gap_html = "" if gap == 0 else f" <span style='color:rgba(255,255,255,.56)'>· 확정 기준과 {gap} 거래일 차이</span>"
     return (
         "<div class='macro2-helper-text' style='line-height:1.75;'>"
         f"{_signal_snapshot_html('확정신호', confirmed_row)}<br>"
@@ -459,7 +459,13 @@ def _component_status_table(payload: dict[str, Any], candidate_id: str) -> str:
         valid = bool(row.get("component_valid"))
         state = bool(row.get("component_risk_state")) if valid else False
         flag = f"<span style='color:{RISK_OFF if state else 'rgba(255,255,255,.18)'};font-weight:700'>●</span>"
-        entries.append((escape(_component_display_label(row)), flag, _date(row["date"])))
+        latest_text = _date(row["date"])
+        confirmed_basis = payload.get("component_confirmed_basis_by_id", {}).get(str(row.get("component_id")))
+        if confirmed_basis is None:
+            confirmed_basis = payload.get("confirmed_basis_by_candidate", {}).get(str(row.get("parent_candidate_id")))
+        if latest_text and confirmed_basis and latest_text > str(confirmed_basis):
+            latest_text = f"{latest_text} · 잠정 · 확정 {confirmed_basis}"
+        entries.append((escape(_component_display_label(row)), flag, latest_text))
     midpoint = int(np.ceil(len(entries) / 2))
     left, right = entries[:midpoint], entries[midpoint:]
     body = []
@@ -471,7 +477,7 @@ def _component_status_table(payload: dict[str, Any], candidate_id: str) -> str:
             else:
                 cells.append(f"<td style='padding:5px 8px;color:#D6D6D6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{entry[0]}</td><td style='padding:5px 8px;text-align:center;color:#7C7CF7'>●</td><td style='padding:5px 8px;text-align:center'>{entry[1]}</td><td style='padding:5px 8px;color:#AFAFAF;white-space:nowrap'>{entry[2]}</td><td></td>")
         body.append("<tr>" + "".join(cells) + "</tr>")
-    header = "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>지표</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>선택</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>플래그</th><th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>최신 날짜</th><th style='border-bottom:1px solid rgba(255,255,255,.08)'></th>"
+    header = "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>지표</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>선택</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>플래그</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>최신 날짜</th><th style='border-bottom:1px solid rgba(255,255,255,.08)'></th>"
     colgroup = "<colgroup><col style='width:27%'><col style='width:5%'><col style='width:5%'><col style='width:11%'><col style='width:2%'><col style='width:27%'><col style='width:5%'><col style='width:5%'><col style='width:11%'><col style='width:2%'></colgroup>"
     return f"<table style='width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px'>{colgroup}<thead><tr>{header}{header}</tr></thead><tbody>{''.join(body)}</tbody></table>"
 

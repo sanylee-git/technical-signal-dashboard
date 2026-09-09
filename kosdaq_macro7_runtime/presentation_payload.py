@@ -275,6 +275,8 @@ def build_presentation_payload(live_payload: dict[str, Any]) -> dict[str, Any]:
         "confirmed_snapshot": confirmed_snapshot,
         "confirmed_basis_by_candidate": dict(live_payload.get("confirmed_basis_by_candidate", {})),
         "provisional_basis_by_candidate": dict(live_payload.get("provisional_basis_by_candidate", {})),
+        "component_confirmed_basis_by_id": dict(live_payload.get("confirmed_component_basis_by_id", {})),
+        "component_provisional_basis_by_id": dict(live_payload.get("provisional_component_basis_by_id", {})),
         "candidate_history": candidate_history,
         "component_history": component_history,
         "component_chart_history": component_chart_history,

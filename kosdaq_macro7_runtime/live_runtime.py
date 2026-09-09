@@ -415,6 +415,8 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
         "confirmed_snapshot": strict["snapshot"],
         "confirmed_basis_by_candidate": dict(zip(strict["snapshot"]["candidate_id"], strict["snapshot"]["basis_date"])),
         "provisional_basis_by_candidate": dict(zip(provisional["snapshot"]["candidate_id"], provisional["snapshot"]["basis_date"])),
+        "confirmed_component_basis_by_id": {str(key): _date(value) for key, value in {**strict["core_bases"], **strict["child_bases"]}.items()},
+        "provisional_component_basis_by_id": {str(key): _date(value) for key, value in {**provisional["core_bases"], **provisional["child_bases"]}.items()},
         "combo2_input_semantics": "CHILD_COMBO1_RAW_RISK_STATE",
         "final_t1_application_count": 1,
         "invalid_component_as_risk_on_count": 0,
