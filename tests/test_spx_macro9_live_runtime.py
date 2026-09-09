@@ -70,6 +70,15 @@ def test_spx_live_runtime_stale_required_source_keeps_confirmed_and_provisional_
     assert live["snapshot"]["availability_status"].eq("PROVISIONAL").all()
 
 
+def test_spx_empty_live_sources_are_explicitly_unavailable_instead_of_confirmed() -> None:
+    frames = {source_id: frame.iloc[0:0].copy() for source_id, frame in _provider_fixture().items()}
+    live = run_live_runtime(as_of="2026-08-27T12:00:00Z", provider_frames=frames)
+
+    assert live["basis_date"] == "2026-08-21"
+    assert live["provisional_status"] == "PROVISIONAL_UNAVAILABLE"
+    assert live["provisional_unavailable_reason"]
+
+
 def test_spx_live_runtime_frozen_core_prefix_matches_stage2_reference() -> None:
     frozen = run_frozen_runtime()
     reference = pd.read_parquet("spx_macro9_assets/frozen/core15_selected_reference_raw_state.parquet")

@@ -28,6 +28,27 @@ ASSETS = Path(__file__).resolve().parents[1] / "kosdaq_macro7_assets"
 FROZEN_CUTOFF = pd.Timestamp("2026-07-28")
 EVALUATION_START = "2008-04-01"
 
+_FAMILY_SOURCE_MAP = {
+    "global_credit_stress": ("us_baa_corp_yield", "us_10y_yield", "nfci", "vix"),
+    "kosdaq_bollinger": ("kosdaq_ohlcv",), "kosdaq_hv": ("kosdaq_ohlcv",),
+    "kosdaq_index_level": ("kosdaq_ohlcv",), "kosdaq_natr": ("kosdaq_ohlcv",),
+    "kosdaq_rsi": ("kosdaq_ohlcv",), "usdkrw_level": ("usdkrw",),
+    "us_10y_real_yield_level": ("us_10y_real_yield",),
+    "us_10y_2y_spread": ("us_10y_yield", "us_2y_yield"),
+    "us_10y_3m_spread": ("us_10y_yield", "us_3m_yield"),
+    "us_10y_slope": ("us_10y_yield",),
+    "us_hy_oas_level": ("us_baa_corp_yield", "us_10y_yield"),
+    "us_ig_oas_level": ("us_aaa_corp_yield", "us_10y_yield"),
+    "vix_level": ("vix",), "vix_spread": ("vix", "vix3m"),
+}
+_SOURCE_DISPLAY_LABELS = {
+    "kosdaq_ohlcv": "1. KOSDAQ 지수", "us_baa_corp_yield": "2. HY",
+    "us_aaa_corp_yield": "3. IG", "nfci": "4. 신용스트레스", "vix": "5. VIX",
+    "vix3m": "6. VIX 스프레드", "us_10y_real_yield": "7. 10Y 실질금리",
+    "us_10y_yield": "10. 10Y 금리", "us_2y_yield": "8. 2Y 금리",
+    "us_3m_yield": "9. 3M 금리", "usdkrw": "원/달러 환율",
+}
+
 
 def _date(value: object) -> str | None:
     if value is None or pd.isna(value):
@@ -159,6 +180,54 @@ def _component_history(
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
 
+def _component_provenance(
+    live_payload: dict[str, Any],
+    component_history: pd.DataFrame,
+    definitions: pd.DataFrame,
+    children: pd.DataFrame,
+) -> dict[str, str]:
+    definition_families = definitions.set_index("candidate_id")["indicator_family"].astype(str).to_dict()
+    child_rows = children.set_index("child_combo1_id")
+    source_status = live_payload.get("source_status")
+    if isinstance(source_status, pd.DataFrame):
+        source_rows = {str(row.get("source_id")): row for row in source_status.to_dict("records")}
+    else:
+        source_rows = {str(row.get("source_id")): row for row in (source_status or [])}
+
+    def families_for(component_id: str, seen: set[str] | None = None) -> list[str]:
+        seen = set() if seen is None else seen
+        if component_id in seen:
+            return []
+        seen.add(component_id)
+        if component_id in definition_families:
+            return [definition_families[component_id]]
+        if component_id not in child_rows.index:
+            return []
+        child_ids = str(child_rows.loc[component_id, "child_candidate_ids"])
+        return [family for child_id in child_ids.split("|") for family in families_for(child_id, seen)]
+
+    result: dict[str, str] = {}
+    for component_id in component_history["component_id"].drop_duplicates().astype(str):
+        families = families_for(component_id)
+        source_ids = list(dict.fromkeys(source for family in families for source in _FAMILY_SOURCE_MAP.get(family, ())))
+        candidates: list[tuple[pd.Timestamp, str]] = []
+        for source_id in source_ids:
+            source = source_rows.get(source_id, {})
+            date_key = "raw_available_date" if source_id == "nfci" else "available_through_date"
+            date = source.get(date_key) or source.get("last_observable_session") or source.get("observation_date")
+            parsed = pd.to_datetime(date, errors="coerce")
+            if not pd.isna(parsed):
+                candidates.append((parsed.normalize(), source_id))
+        if not candidates:
+            result[component_id] = "확인 불가"
+            continue
+        date, source_id = min(candidates)
+        label = _SOURCE_DISPLAY_LABELS.get(source_id, source_id)
+        note = " · 주간 업데이트" if source_id == "nfci" else ""
+        result[component_id] = f"가장 오래된 사용값 {label} {date.strftime('%Y-%m-%d')}{note}"
+    return result
+
+
 def _candidate_history(live_payload: dict[str, Any], final: pd.DataFrame) -> pd.DataFrame:
     t1 = _frame_with_date(live_payload["t1"]).rename(columns={"combo_id": "candidate_id"})
     bases = {str(row.candidate_id): pd.Timestamp(row.basis_date) if row.basis_date else None for row in live_payload["snapshot"].itertuples(index=False)}
@@ -262,6 +331,7 @@ def build_presentation_payload(live_payload: dict[str, Any]) -> dict[str, Any]:
         confirmed_snapshot[column] = final[column].to_numpy()
     candidate_history = _candidate_history(live_payload, final)
     component_history = _component_history(live_payload, final, definitions, children)
+    component_provenance = _component_provenance(live_payload, component_history, definitions, children)
     component_chart_history = _core_chart_history(live_payload, definitions, required_ids)
     benchmark_history = _benchmark_history(live_payload, final)
     display_metrics, hold_metrics, windows = _frozen_display_metrics(final)
@@ -277,6 +347,7 @@ def build_presentation_payload(live_payload: dict[str, Any]) -> dict[str, Any]:
         "provisional_basis_by_candidate": dict(live_payload.get("provisional_basis_by_candidate", {})),
         "component_confirmed_basis_by_id": dict(live_payload.get("confirmed_component_basis_by_id", {})),
         "component_provisional_basis_by_id": dict(live_payload.get("provisional_component_basis_by_id", {})),
+        "component_provenance_by_id": component_provenance,
         "candidate_history": candidate_history,
         "component_history": component_history,
         "component_chart_history": component_chart_history,

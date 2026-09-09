@@ -459,12 +459,13 @@ def _component_status_table(payload: dict[str, Any], candidate_id: str) -> str:
         valid = bool(row.get("component_valid"))
         state = bool(row.get("component_risk_state")) if valid else False
         flag = f"<span style='color:{RISK_OFF if state else 'rgba(255,255,255,.18)'};font-weight:700'>●</span>"
-        latest_text = _date(row["date"])
-        confirmed_basis = payload.get("component_confirmed_basis_by_id", {}).get(str(row.get("component_id")))
-        if confirmed_basis is None:
-            confirmed_basis = payload.get("confirmed_basis_by_candidate", {}).get(str(row.get("parent_candidate_id")))
-        if latest_text and confirmed_basis and latest_text > str(confirmed_basis):
-            latest_text = f"{latest_text} · 잠정 · 확정 {confirmed_basis}"
+        component_id = str(row.get("component_id"))
+        provenance = payload.get("component_provenance_by_id", {})
+        latest_text = provenance.get(component_id) or _date(row["date"])
+        if component_id not in provenance:
+            confirmed_basis = payload.get("component_confirmed_basis_by_id", {}).get(component_id)
+            if latest_text and confirmed_basis and latest_text > str(confirmed_basis):
+                latest_text = f"{latest_text} · 잠정 · 확정 {confirmed_basis}"
         entries.append((escape(_component_display_label(row)), flag, latest_text))
     midpoint = int(np.ceil(len(entries) / 2))
     left, right = entries[:midpoint], entries[midpoint:]
@@ -475,11 +476,10 @@ def _component_status_table(payload: dict[str, Any], candidate_id: str) -> str:
             if entry is None:
                 cells.append("<td></td><td></td><td></td><td></td><td></td>")
             else:
-                cells.append(f"<td style='padding:5px 8px;color:#D6D6D6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{entry[0]}</td><td style='padding:5px 8px;text-align:center;color:#7C7CF7'>●</td><td style='padding:5px 8px;text-align:center'>{entry[1]}</td><td style='padding:5px 8px;color:#AFAFAF;white-space:nowrap'>{entry[2]}</td><td></td>")
+                cells.append(f"<td style='padding:5px 8px;color:#D6D6D6;vertical-align:top;overflow-wrap:anywhere'>{entry[0]}</td><td style='padding:5px 8px;text-align:center;color:#7C7CF7;vertical-align:top'>●</td><td style='padding:5px 8px;text-align:center;vertical-align:top'>{entry[1]}</td><td style='padding:5px 8px;color:#AFAFAF;vertical-align:top;overflow-wrap:anywhere'>{escape(str(entry[2] or '확인 불가'))}</td><td></td>")
         body.append("<tr>" + "".join(cells) + "</tr>")
-    header = "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>지표</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>선택</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>플래그</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>최신 날짜</th><th style='border-bottom:1px solid rgba(255,255,255,.08)'></th>"
-    colgroup = "<colgroup><col style='width:27%'><col style='width:5%'><col style='width:5%'><col style='width:11%'><col style='width:2%'><col style='width:27%'><col style='width:5%'><col style='width:5%'><col style='width:11%'><col style='width:2%'></colgroup>"
-    return f"<table style='width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px'>{colgroup}<thead><tr>{header}{header}</tr></thead><tbody>{''.join(body)}</tbody></table>"
+    header = "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>지표</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>선택</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>플래그</th><th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>최신 사용값</th><th style='border-bottom:1px solid rgba(255,255,255,.08)'></th>"
+    return f"<table style='width:100%;border-collapse:collapse;font-size:11px;line-height:1.32'><thead><tr>{header}{header}</tr></thead><tbody>{''.join(body)}</tbody></table>"
 
 
 def _render_css() -> None:

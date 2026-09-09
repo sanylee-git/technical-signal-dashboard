@@ -6734,6 +6734,19 @@ _MACRO3_INDICATOR_LABELS = {
     "RSI": "⑫ RSI",
 }
 
+_MACRO3_PLAIN_NUMBER_BY_CIRCLED = {
+    "①": "1.", "②": "2.", "③": "3.", "④": "4.", "⑤": "5.", "⑥": "6.",
+    "⑦": "7.", "⑧": "8.", "⑨": "9.", "⑩": "10.", "⑪": "11.", "⑫": "12.",
+}
+
+
+def _macro3_plain_indicator_label(label: object) -> str:
+    text = str(label or "")
+    for circled, plain in _MACRO3_PLAIN_NUMBER_BY_CIRCLED.items():
+        if text.startswith(circled):
+            return plain + text[len(circled):]
+    return text
+
 
 def _macro3_eastern_now() -> pd.Timestamp:
     return pd.Timestamp.now(tz=ZoneInfo("America/New_York"))
@@ -9263,10 +9276,27 @@ def _macro6_indicator_data_status_row(
             latest_text = f"{latest_text} · 지연"
     elif note == "확인 불가":
         latest_text = "확인 불가"
+    confirmed_latest_date = latest_date
+    if indicator == "Credit Stress":
+        # NFCI remains a valid weekly carry-forward input for the display, but
+        # its release date must not lower the common confirmed daily basis.
+        underlying_dates = []
+        for underlying in ("HY", "VIX"):
+            series = _macro6_get_indicator_raw_series(
+                underlying,
+                years,
+                benchmark_name=benchmark_name,
+                sync_bucket=sync_bucket,
+            )
+            if series is not None and not series.empty:
+                underlying_dates.append(pd.Timestamp(series.index.max()).normalize())
+        if underlying_dates:
+            confirmed_latest_date = min(underlying_dates)
     return {
         "indicator": indicator,
         "label": _MACRO3_INDICATOR_LABELS.get(indicator, indicator),
         "latest_date": latest_date,
+        "confirmed_latest_date": confirmed_latest_date,
         "note": note,
         "latest_text": latest_text,
         "expected_latest_date": expected_latest,
@@ -9504,9 +9534,9 @@ def _build_macro6_status_panel(
             )
             bottleneck = data_status.get("bottleneck")
             if bottleneck:
-                confirmed_dates.append(bottleneck.get("latest_date"))
+                confirmed_dates.append(bottleneck.get("confirmed_latest_date", bottleneck.get("latest_date")))
                 latest_text = (
-                    f"가장 오래된 사용값 {bottleneck['label']} "
+                    f"가장 오래된 사용값 {_macro3_plain_indicator_label(bottleneck['label'])} "
                     f"{bottleneck.get('latest_text') or _macro_date_text(bottleneck['latest_date'])}"
                 )
             else:
@@ -9532,7 +9562,12 @@ def _build_macro6_status_panel(
             )
             latest_text = data_status.get("latest_text", "확인 불가")
             if indicator in selected:
-                confirmed_dates.append(data_status.get("latest_date"))
+                confirmed_dates.append(data_status.get("confirmed_latest_date", data_status.get("latest_date")))
+            if latest_text != "확인 불가":
+                latest_text = (
+                    f"가장 오래된 사용값 "
+                    f"{_macro3_plain_indicator_label(data_status.get('label', indicator))} {latest_text}"
+                )
             entries.append({
                 "label": _MACRO3_INDICATOR_LABELS.get(indicator, indicator),
                 "selected": indicator in selected,
@@ -9607,12 +9642,12 @@ def _build_macro6_status_panel(
         "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>지표</th>"
         "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>선택</th>"
         "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>플래그</th>"
-        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>최신날짜</th>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>최신 사용값</th>"
         "<th style='width:12px;border-bottom:1px solid rgba(255,255,255,0.08);'></th>"
         "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>지표</th>"
         "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>선택</th>"
         "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>플래그</th>"
-        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>최신날짜</th>"
+        "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);'>최신 사용값</th>"
         f"</tr></thead><tbody>{''.join(rows_html)}</tbody></table>"
     )
     return summary_html, table_html
@@ -14190,6 +14225,21 @@ def _macro5_kospi_component_family(component_id: str) -> str:
     return value
 
 
+@st.cache_data(show_spinner=False)
+def _macro5_kospi_child_component_ids(component_id: str) -> tuple[str, ...]:
+    path = _macro5_kospi_asset_path("kospi_d1c1_dependency_graph.json")
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            graph = json.load(handle)
+        return tuple(
+            str(edge["child"])
+            for edge in graph.get("edges", [])
+            if str(edge.get("parent")) == str(component_id)
+        )
+    except (OSError, TypeError, ValueError, KeyError):
+        return ()
+
+
 def _macro5_kospi_display_label(value: str) -> str:
     raw = str(value or "")
     family = _macro5_kospi_component_family(raw)
@@ -14242,7 +14292,11 @@ def _macro5_kospi_date_text(value) -> str:
         return str(value)
 
 
-def _macro5_kospi_source_ids_for_component(component_id: str) -> list[str]:
+def _macro5_kospi_source_ids_for_component(component_id: str, _seen: set[str] | None = None) -> list[str]:
+    _seen = set() if _seen is None else _seen
+    if str(component_id) in _seen:
+        return []
+    _seen.add(str(component_id))
     family = _macro5_kospi_component_family(component_id)
     mapping = {
         "global_credit_stress": ["us_baa_corp_yield", "us_aaa_corp_yield", "nfci", "vix"],
@@ -14266,7 +14320,13 @@ def _macro5_kospi_source_ids_for_component(component_id: str) -> list[str]:
         "vix_level": ["vix"],
         "vix_spread": ["vix", "vix3m"],
     }
-    return mapping.get(family, [])
+    direct = mapping.get(family)
+    if direct is not None:
+        return list(direct)
+    source_ids: list[str] = []
+    for child_id in _macro5_kospi_child_component_ids(component_id):
+        source_ids.extend(_macro5_kospi_source_ids_for_component(child_id, _seen))
+    return list(dict.fromkeys(source_ids))
 
 
 def _macro5_kospi_source_latest_text(source_rows: list[dict] | None, component_id: str, fallback_date=None) -> str:
@@ -14293,7 +14353,20 @@ def _macro5_kospi_source_latest_text(source_rows: list[dict] | None, component_i
     provider = str(bottleneck.get("provider", "")).upper()
     freshness = str(bottleneck.get("freshness_status", ""))
     lag = bottleneck.get("lag_krx_sessions")
-    parts = [display_date]
+    source_labels = {
+        "kospi_ohlcv": "1. KOSPI 지수",
+        "us_baa_corp_yield": "2. HY",
+        "us_aaa_corp_yield": "3. IG",
+        "nfci": "4. 신용스트레스",
+        "vix": "5. VIX",
+        "vix3m": "6. VIX 스프레드",
+        "us_10y_real_yield": "7. 10Y 실질금리",
+        "us_2y_yield": "8. 2Y 금리",
+        "us_3m_yield": "9. 3M 금리",
+        "us_10y_yield": "10. 10Y 금리",
+        "usdkrw": "원/달러 환율",
+    }
+    parts = [f"가장 오래된 사용값 {source_labels.get(str(bottleneck.get('source_id')), str(bottleneck.get('source_id') or '원천'))} {display_date}"]
     if freshness == "NO_NEW_RELEASE_EXPECTED":
         parts.append("주간 업데이트")
     elif provider:
@@ -14912,19 +14985,17 @@ def _macro5_kospi_build_component_status_panel(
         except Exception:
             state = 0
         flag_html = _macro_status_circle(bool(state), color_on="#FF8C69")
-        if _macro5_kospi_model_type(selected_model_type) == "combo2":
+        source_ids = _macro5_kospi_source_ids_for_component(component_id)
+        latest_text = _macro5_kospi_source_latest_text(source_rows, component_id, fallback_date=row.get("date"))
+        if not source_ids:
             child = live_row_map.get(component_id, {})
-            latest_text = _macro5_kospi_date_text(child.get("basis_date") or row.get("date"))
-            if child and child.get("freshness_status"):
-                freshness_text = _macro5_kospi_freshness_display(
-                    child.get("freshness_status"),
-                    child.get("provider"),
-                    child.get("lag_krx_sessions"),
-                )
-                if freshness_text:
-                    latest_text = f"{latest_text} · {freshness_text}"
-        else:
-            latest_text = _macro5_kospi_source_latest_text(source_rows, component_id, fallback_date=row.get("date"))
+            fallback_text = _macro5_kospi_date_text(child.get("basis_date") or row.get("date"))
+            freshness_text = _macro5_kospi_freshness_display(
+                child.get("freshness_status"),
+                child.get("provider"),
+                child.get("lag_krx_sessions"),
+            )
+            latest_text = f"{fallback_text} · {freshness_text}" if freshness_text else fallback_text
         label_source = component_id if candidate_map and component_id in candidate_map else row.get("component_label") or component_id
         entries.append({
             "label": _macro5_kospi_component_display_label(label_source, candidate_map, component_dict),

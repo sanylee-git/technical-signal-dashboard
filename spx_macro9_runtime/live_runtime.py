@@ -71,6 +71,8 @@ def _latest_available_session(frame: pd.DataFrame, dates: pd.DatetimeIndex, lag:
 
 def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, list[dict[str, Any]], pd.Timestamp | None]:
     market = _valid(frames.get("spx_ohlcv", pd.DataFrame()))
+    if market.empty or "observation_date" not in market.columns:
+        return pd.DataFrame(), [], None
     market = market.loc[market["observation_date"].gt(FROZEN_CUTOFF)].copy()
     dates = pd.DatetimeIndex(market["observation_date"]).sort_values().unique()
     if not len(dates):
@@ -212,7 +214,7 @@ def run_live_runtime(*, as_of: object = None, provider_frames: dict[str, pd.Data
     provisional_basis = FROZEN_CUTOFF if valid_tail.empty else pd.Timestamp(valid_tail.iloc[-1]).normalize()
     provisional_status = (
         "PROVISIONAL_UNAVAILABLE"
-        if not tail.empty and valid_tail.empty
+        if valid_tail.empty
         else "PROVISIONAL" if provisional_basis > FROZEN_CUTOFF else "CONFIRMED"
     )
     panel = panel.loc[pd.to_datetime(panel["date"]).le(provisional_basis)].copy()
@@ -225,7 +227,7 @@ def run_live_runtime(*, as_of: object = None, provider_frames: dict[str, pd.Data
     confirmed_snapshot = _snapshot(frozen_runtime["final10"], confirmed_history, confirmed_panel, status="CONFIRMED")
     return {
         "runtime_mode": "FROZEN_PREFIX_LIVE_TAIL", "network_access": provider_frames is None, "as_of_utc": _utc(as_of).isoformat(),
-        "basis_date": provisional_basis.strftime("%Y-%m-%d"), "confirmed_basis_date": confirmed_basis.strftime("%Y-%m-%d"), "provisional_basis_date": provisional_basis.strftime("%Y-%m-%d"), "provisional_status": provisional_status, "frozen_cutoff": FROZEN_CUTOFF.strftime("%Y-%m-%d"),
+        "basis_date": provisional_basis.strftime("%Y-%m-%d"), "confirmed_basis_date": confirmed_basis.strftime("%Y-%m-%d"), "provisional_basis_date": provisional_basis.strftime("%Y-%m-%d"), "provisional_status": provisional_status, "provisional_unavailable_reason": None if provisional_status != "PROVISIONAL_UNAVAILABLE" else "최신 라이브 원천을 준비하지 못했습니다", "frozen_cutoff": FROZEN_CUTOFF.strftime("%Y-%m-%d"),
         "proxy_only": True, "direct_oas_used": False, "snapshot": snapshot, "confirmed_snapshot": confirmed_snapshot, "metrics": frozen_runtime["metrics"], "history": history,
         "registry": frozen_runtime["registry"], "final10": frozen_runtime["final10"], "children": frozen_runtime["children"], "core": core,
         "panel": panel, "frozen_panel": frozen_runtime["panel"], "source_status": source_status,

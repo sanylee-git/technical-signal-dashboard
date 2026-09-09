@@ -109,6 +109,24 @@ def qualify_candidates(
             reverse=True,
         )
         bottleneck = bottleneck_candidates[0] if bottleneck_candidates else ""
+        contracts_for_required = {sid: contracts.get(sid) for sid in required}
+        confirmed_candidates = [
+            sid
+            for sid in required
+            if not (
+                source_status.get(sid) in conditional_statuses
+                and contracts_for_required.get(sid) is not None
+                and contracts_for_required[sid].carry_forward_allowed
+            )
+        ]
+        confirmed_candidates_with_dates = [
+            sid for sid in confirmed_candidates if not pd.isna(source_actual.get(sid))
+        ]
+        confirmed_bottleneck = (
+            min(confirmed_candidates_with_dates, key=lambda sid: pd.Timestamp(source_actual.get(sid)))
+            if confirmed_candidates_with_dates
+            else ""
+        )
         row = dict(rec)
         row.update(
             {
@@ -131,6 +149,10 @@ def qualify_candidates(
                 "source_bottleneck_actual_date": source_actual.get(bottleneck),
                 "source_bottleneck_expected_date": source_expected.get(bottleneck),
                 "source_bottleneck_lag_sessions": source_lag.get(bottleneck),
+                "confirmed_basis_source_id": confirmed_bottleneck,
+                "confirmed_basis_actual_date": source_actual.get(confirmed_bottleneck),
+                "confirmed_basis_expected_date": source_expected.get(confirmed_bottleneck),
+                "confirmed_basis_lag_sessions": source_lag.get(confirmed_bottleneck),
                 "raw_signal_changed_by_freshness": False,
             }
         )

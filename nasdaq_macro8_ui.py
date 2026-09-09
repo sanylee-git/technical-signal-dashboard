@@ -286,7 +286,7 @@ def _group_summary(payload: dict[str, Any], final: pd.DataFrame | None = None) -
     for family, label in (("COMBO2", "조합2"), ("COMBO1", "조합1")):
         candidate_ids = final.loc[final["model_family"].eq(family), "candidate_id"]
         rows = snapshot.loc[snapshot["candidate_id"].isin(candidate_ids)]
-        usable = rows.loc[rows["status"].eq("USABLE")]
+        usable = rows.loc[rows["status"].eq("USABLE") & rows["availability_status"].ne("PROVISIONAL_UNAVAILABLE")]
         risk_off = int(usable["raw_risk_state"].astype(bool).sum())
         stage = [_stage(row.active_count, row.K, row.L, row.raw_risk_state) for row in usable.itertuples(index=False)]
         previous = [_stage(row.week_ago_active_count, row.K, row.L, row.week_ago_raw_risk_state) for row in usable.itertuples(index=False)]
@@ -323,6 +323,14 @@ def _current_status_html(
     history: pd.DataFrame,
     confirmed_row: pd.Series | None = None,
 ) -> str:
+    if row.get("availability_status") == "PROVISIONAL_UNAVAILABLE":
+        confirmed = row if confirmed_row is None else confirmed_row
+        return (
+            "<div class='macro2-helper-text' style='line-height:1.75'>"
+            f"{_signal_snapshot_html('확정신호', confirmed)}<br>"
+            "잠정신호: 확인 불가 (최신 라이브 원천을 준비하지 못함)<br>"
+            "현재 상태: 최신 라이브 원천 확인 불가</div>"
+        )
     if row["status"] != "USABLE":
         return "<div class='macro2-helper-text'>현재 상태를 계산할 수 없습니다.</div>"
     risk = bool(row["raw_risk_state"])
@@ -413,23 +421,23 @@ def _component_status_table(payload: dict[str, Any], candidate_id: str) -> str:
         valid = bool(row.get("component_valid"))
         risk = bool(row.get("component_risk_state")) if valid else False
         flag = f"<span style='color:{RISK_OFF if risk else 'rgba(255,255,255,.18)'};font-weight:700'>●</span>"
-        latest_text = _date(row["date"])
-        confirmed_basis = payload.get("component_confirmed_basis_by_id", {}).get(str(row.get("component_id")))
-        if confirmed_basis is None:
-            confirmed_basis = payload.get("confirmed_basis_by_candidate", {}).get(str(row.get("parent_candidate_id")))
-        if latest_text and confirmed_basis and latest_text > str(confirmed_basis):
-            latest_text = f"{latest_text} · 잠정 · 확정 {confirmed_basis}"
+        component_id = str(row.get("component_id"))
+        provenance = payload.get("component_provenance_by_id", {})
+        latest_text = provenance.get(component_id) or _date(row["date"])
+        if component_id not in provenance:
+            confirmed_basis = payload.get("component_confirmed_basis_by_id", {}).get(component_id)
+            if latest_text and confirmed_basis and latest_text > str(confirmed_basis):
+                latest_text = f"{latest_text} · 잠정 · 확정 {confirmed_basis}"
         entries.append((escape(str(row["component_label"])), flag, latest_text))
     midpoint = int(np.ceil(len(entries) / 2))
     body = []
     for index in range(max(midpoint, len(entries) - midpoint)):
         line = []
         for entry in (entries[:midpoint][index] if index < midpoint else None, entries[midpoint:][index] if index < len(entries) - midpoint else None):
-            line.append("<td></td><td></td><td></td><td></td><td></td>" if entry is None else f"<td style='padding:5px 8px;color:#D6D6D6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{entry[0]}</td><td style='padding:5px 8px;text-align:center;color:#7C7CF7'>●</td><td style='padding:5px 8px;text-align:center'>{entry[1]}</td><td style='padding:5px 8px;color:#AFAFAF;white-space:nowrap'>{entry[2]}</td><td></td>")
+            line.append("<td></td><td></td><td></td><td></td><td></td>" if entry is None else f"<td style='padding:5px 8px;color:#D6D6D6;vertical-align:top;overflow-wrap:anywhere'>{entry[0]}</td><td style='padding:5px 8px;text-align:center;color:#7C7CF7;vertical-align:top'>●</td><td style='padding:5px 8px;text-align:center;vertical-align:top'>{entry[1]}</td><td style='padding:5px 8px;color:#AFAFAF;vertical-align:top;overflow-wrap:anywhere'>{escape(str(entry[2] or '확인 불가'))}</td><td></td>")
         body.append("<tr>" + "".join(line) + "</tr>")
-    header = "<th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>지표</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>선택</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>플래그</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>최신 날짜</th><th style='border-bottom:1px solid rgba(255,255,255,.08)'></th>"
-    cols = "<colgroup><col style='width:27%'><col style='width:5%'><col style='width:5%'><col style='width:11%'><col style='width:2%'><col style='width:27%'><col style='width:5%'><col style='width:5%'><col style='width:11%'><col style='width:2%'></colgroup>"
-    return f"<table style='width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px'>{cols}<thead><tr>{header}{header}</tr></thead><tbody>{''.join(body)}</tbody></table>"
+    header = "<th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>지표</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>선택</th><th style='text-align:center;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>플래그</th><th style='text-align:left;padding:6px 8px;color:#8F8F8F;font-weight:600;border-bottom:1px solid rgba(255,255,255,.08)'>최신 사용값</th><th style='border-bottom:1px solid rgba(255,255,255,.08)'></th>"
+    return f"<table style='width:100%;border-collapse:collapse;font-size:11px;line-height:1.32'><thead><tr>{header}{header}</tr></thead><tbody>{''.join(body)}</tbody></table>"
 
 
 def _render_css() -> None:

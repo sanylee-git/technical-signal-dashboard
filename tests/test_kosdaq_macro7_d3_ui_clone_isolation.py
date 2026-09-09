@@ -164,7 +164,7 @@ def test_kosdaq_component_labels_and_status_remain_payload_driven() -> None:
     status = _current_status_html(_snapshot_row(payload, candidate_id), history)
     assert "오늘 전환" in status
     assert "상태 구간 수익률" in status
-    assert "최신 날짜" in _component_status_table(payload, candidate_id)
+    assert "최신 사용값" in _component_status_table(payload, candidate_id)
 
 
 def test_kosdaq_main_labels_and_combo_family_separator_are_display_only() -> None:

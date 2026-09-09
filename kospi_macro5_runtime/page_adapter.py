@@ -217,13 +217,20 @@ def _candidate_rows(candidate_freshness: pd.DataFrame) -> list[dict[str, Any]]:
         "current_state_trading_days",
         "freshness_status",
         "source_bottleneck_actual_date",
+        "confirmed_basis_source_id",
+        "confirmed_basis_actual_date",
+        "confirmed_basis_expected_date",
+        "confirmed_basis_lag_sessions",
         "blocked_source_ids",
     ]
     available = [col for col in columns if col in candidate_freshness.columns]
     rows = candidate_freshness[available].to_dict("records")
     for row in rows:
         provisional = pd.to_datetime(row.get("basis_date"), errors="coerce")
-        confirmed = pd.to_datetime(row.get("source_bottleneck_actual_date"), errors="coerce")
+        confirmed = pd.to_datetime(
+            row.get("confirmed_basis_actual_date") or row.get("source_bottleneck_actual_date"),
+            errors="coerce",
+        )
         row["provisional_basis_date"] = None if pd.isna(provisional) else provisional.strftime("%Y-%m-%d")
         row["confirmed_basis_date"] = (
             row["provisional_basis_date"]

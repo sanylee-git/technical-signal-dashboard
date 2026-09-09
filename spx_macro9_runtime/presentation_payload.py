@@ -15,6 +15,63 @@ def _date(value: object) -> str | None:
     return None if value is None or pd.isna(value) else pd.Timestamp(value).strftime("%Y-%m-%d")
 
 
+_FAMILY_SOURCE_MAP = {
+    "Global Credit Stress": ("dbaa", "dgs10", "nfci", "vix"),
+    "S&P 500 Bollinger": ("spx_ohlcv",), "-HV": ("spx_ohlcv",),
+    "-NATR": ("spx_ohlcv",), "S&P 500 RSI": ("spx_ohlcv",),
+    "Breadth": ("spx_ohlcv", "equal_weight"),
+    "10Y Real Yield": ("dfii10",), "10Y-2Y": ("t10y2y",),
+    "10Y-3M": ("t10y3m",), "10Y Nominal Yield Slope": ("dgs10",),
+    "HY OAS": ("dbaa", "dgs10"), "IG OAS": ("daaa", "dgs10"),
+    "VIX": ("vix",), "VIX Spread": ("vix", "vix3m"),
+}
+_FAMILY_DISPLAY_LABELS = {
+    "Global Credit Stress": "4. 신용스트레스", "HY OAS": "2. HY OAS", "IG OAS": "3. IG OAS",
+    "VIX": "5. VIX", "VIX Spread": "6. VIX 스프레드", "10Y Real Yield": "7. 10Y 실질금리",
+    "10Y-2Y": "8. 10Y-2Y", "10Y-3M": "9. 10Y-3M", "10Y Nominal Yield Slope": "10. 금리기울기",
+    "S&P 500 Bollinger": "11. S&P 500 볼린저밴드", "S&P 500 RSI": "12. S&P 500 RSI",
+    "-NATR": "13. S&P 500 NATR", "-HV": "14. S&P 500 HV", "Breadth": "15. Breadth",
+}
+
+
+def _component_source_ids(component_id: str, registry: pd.DataFrame, children: pd.DataFrame) -> tuple[list[str], list[str]]:
+    if component_id in set(registry.index.astype(str)):
+        family = str(registry.loc[component_id, "indicator_family"])
+        return list(_FAMILY_SOURCE_MAP.get(family, ())), [family]
+    child = children.loc[children["child_canonical_parent_id"].astype(str).eq(str(component_id))]
+    if child.empty:
+        return [], []
+    ids = str(child.iloc[0].get("child_component_ids_key", "")).split("|")
+    metadata = registry.reindex(ids)
+    families = [str(value) for value in metadata["indicator_family"].dropna().tolist()]
+    source_ids = list(dict.fromkeys(source for family in families for source in _FAMILY_SOURCE_MAP.get(family, ())))
+    return source_ids, families
+
+
+def _component_provenance(runtime: dict[str, Any], component_history: pd.DataFrame) -> dict[str, str]:
+    registry = runtime["registry"].copy().set_index("candidate_id")
+    source_rows = {str(row.get("source_id")): row for row in runtime.get("source_status", [])}
+    result: dict[str, str] = {}
+    for component_id in component_history["component_id"].drop_duplicates().astype(str):
+        source_ids, families = _component_source_ids(component_id, registry, runtime["children"])
+        candidates = []
+        for source_id in source_ids:
+            source = source_rows.get(source_id, {})
+            date = source.get("latest_available_session") or source.get("latest_observation_date")
+            parsed = pd.to_datetime(date, errors="coerce")
+            if not pd.isna(parsed):
+                candidates.append((parsed.normalize(), source_id))
+        if not candidates:
+            result[component_id] = "확인 불가"
+            continue
+        date, source_id = min(candidates)
+        family = next((family for family in families if source_id in _FAMILY_SOURCE_MAP.get(family, ())), None)
+        label = _FAMILY_DISPLAY_LABELS.get(family or "", source_id)
+        note = " · 주간 업데이트" if source_id == "nfci" else ""
+        result[component_id] = f"가장 오래된 사용값 {label} {date.strftime('%Y-%m-%d')}{note}"
+    return result
+
+
 def _normalized(frame: pd.DataFrame) -> pd.DataFrame:
     out = frame.copy()
     out["date"] = pd.to_datetime(out["date"], errors="coerce").dt.normalize()
@@ -148,6 +205,7 @@ def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
     provisional_basis_by_candidate = dict(zip(snapshot["candidate_id"].astype(str), snapshot["basis_date"].map(_date)))
     candidate_history = _candidate_history(runtime)
     component_history, component_chart_history = _component_history(runtime, final)
+    component_provenance = _component_provenance(runtime, component_history)
     metrics, hold, windows = _display_metrics(runtime)
     return {
         "presentation_contract": "spx_macro9_live_presentation_payload_v1" if runtime.get("runtime_mode") == "FROZEN_PREFIX_LIVE_TAIL" else "spx_macro9_frozen_presentation_payload_v1",
@@ -159,10 +217,13 @@ def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
         "confirmed_snapshot": confirmed_snapshot,
         "confirmed_basis_by_candidate": confirmed_basis_by_candidate,
         "provisional_basis_by_candidate": provisional_basis_by_candidate,
-        "component_confirmed_basis_by_id": confirmed_basis_by_candidate,
-        "component_provisional_basis_by_id": provisional_basis_by_candidate,
+        "component_confirmed_basis_by_id": {},
+        "component_provisional_basis_by_id": {},
+        "component_provenance_by_id": component_provenance,
         "confirmed_basis_date": runtime.get("confirmed_basis_date", runtime.get("basis_date")),
         "provisional_basis_date": runtime.get("provisional_basis_date", runtime.get("basis_date")),
+        "provisional_status": runtime.get("provisional_status"),
+        "provisional_unavailable_reason": runtime.get("provisional_unavailable_reason"),
         "source_status": list(runtime.get("source_status", [])),
         "candidate_history": candidate_history,
         "component_history": component_history,

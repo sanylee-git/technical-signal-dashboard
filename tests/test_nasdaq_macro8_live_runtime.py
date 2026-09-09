@@ -106,6 +106,15 @@ def test_stale_or_missing_live_source_keeps_frozen_cutoff_without_rewriting_hist
     assert_frame_equal(live["panel"].reset_index(drop=True), frozen["panel"].reset_index(drop=True), check_dtype=False)
 
 
+def test_empty_live_sources_are_explicitly_unavailable_instead_of_confirmed() -> None:
+    frames = {source_id: frame.iloc[0:0].copy() for source_id, frame in _live_frames().items()}
+    live = run_live_runtime(as_of=datetime(2026, 8, 26, tzinfo=timezone.utc), provider_frames=frames)
+
+    assert live["basis_date"] == "2026-08-21"
+    assert live["provisional_status"] == "PROVISIONAL_UNAVAILABLE"
+    assert live["provisional_unavailable_reason"]
+
+
 def test_stale_corporate_yields_carry_completed_proxy_without_mixing_observation_dates() -> None:
     frames = _live_frames()
     frames["dbaa"] = frames["dbaa"].iloc[:1].copy()

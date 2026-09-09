@@ -89,6 +89,8 @@ def _rolling_zscore(series: pd.Series, window: int = 252) -> pd.Series:
 def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, list[dict[str, Any]], pd.Timestamp | None]:
     ndx = _valid(frames.get("ndx_ohlcv", pd.DataFrame()))
     ndxe = _valid(frames.get("ndxe_close", pd.DataFrame()))
+    if ndx.empty or "observation_date" not in ndx.columns:
+        return pd.DataFrame(), [], None
     market = ndx.loc[ndx["observation_date"].gt(FROZEN_CUTOFF)].copy()
     market_dates = pd.DatetimeIndex(market["observation_date"]).normalize().sort_values().unique()
     if not len(market_dates):
@@ -252,7 +254,7 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
     provisional_basis = FROZEN_CUTOFF if continuous_basis is None else continuous_basis
     provisional_status = (
         "PROVISIONAL_UNAVAILABLE"
-        if not tail.empty and continuous_basis is None
+        if continuous_basis is None
         else "PROVISIONAL" if provisional_basis > FROZEN_CUTOFF else "CONFIRMED"
     )
     panel = panel.loc[panel["date"].le(provisional_basis)].copy()
@@ -276,6 +278,11 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
         "confirmed_basis_date": _date(confirmed_basis),
         "provisional_basis_date": _date(provisional_basis),
         "provisional_status": provisional_status,
+        "provisional_unavailable_reason": (
+            None
+            if provisional_status != "PROVISIONAL_UNAVAILABLE"
+            else "최신 라이브 원천을 준비하지 못했습니다"
+        ),
         "frozen_cutoff": _date(FROZEN_CUTOFF),
         "proxy_only": True,
         "direct_oas_used": False,

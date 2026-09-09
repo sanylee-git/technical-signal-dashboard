@@ -25,6 +25,67 @@ def _date(value: object) -> str | None:
     return None if value is None or pd.isna(value) else pd.Timestamp(value).strftime("%Y-%m-%d")
 
 
+_FAMILY_SOURCE_MAP = {
+    "global_credit_stress": ("dbaa", "dgs10", "nfci", "vixcls"),
+    "ndx_bollinger": ("ndx_ohlcv",), "ndx_hv": ("ndx_ohlcv",),
+    "ndx_index_level": ("ndx_ohlcv",), "ndx_natr": ("ndx_ohlcv",),
+    "ndx_rsi": ("ndx_ohlcv",), "ndx_equal_weight_breadth": ("ndx_ohlcv", "ndxe_close"),
+    "us_10y_real_yield_level": ("dfii10",),
+    "us_10y_2y_spread": ("dgs10", "dgs2"),
+    "us_10y_3m_spread": ("dgs10", "dgs3mo"),
+    "us_10y_slope": ("dgs10",),
+    "us_hy_oas_level": ("dbaa", "dgs10"),
+    "us_ig_oas_level": ("daaa", "dgs10"),
+    "vix_level": ("vixcls",), "vix_spread": ("vixcls", "vxvcls"),
+}
+_FAMILY_DISPLAY_LABELS = {
+    "global_credit_stress": "4. 신용스트레스", "us_hy_oas_level": "2. HY",
+    "us_ig_oas_level": "3. IG", "vix_level": "5. VIX", "vix_spread": "6. VIX 스프레드",
+    "us_10y_real_yield_level": "7. 10Y 실질금리", "us_10y_2y_spread": "8. 10Y-2Y 스프레드",
+    "us_10y_3m_spread": "9. 10Y-3M 스프레드", "us_10y_slope": "10. 10Y 금리기울기",
+    "ndx_index_level": "10. NDX 지수", "ndx_rsi": "11. NDX RSI",
+    "ndx_bollinger": "12. NDX 볼린저밴드", "ndx_natr": "13. NDX NATR",
+    "ndx_hv": "14. NDX HV", "ndx_equal_weight_breadth": "15. Breadth",
+}
+
+
+def _component_source_ids(component_id: str, registry: pd.DataFrame, children: pd.DataFrame) -> tuple[list[str], list[str]]:
+    if component_id in set(registry.index.astype(str)):
+        family = str(registry.loc[component_id, "indicator_family"])
+        return list(_FAMILY_SOURCE_MAP.get(family, ())), [family]
+    child = children.loc[children["child_canonical_parent_id"].astype(str).eq(str(component_id))]
+    if child.empty:
+        return [], []
+    ids = str(child.iloc[0].get("child_component_ids_key", "")).split("|")
+    families = [str(value) for value in registry.reindex(ids).get("indicator_family", pd.Series(dtype=object)).dropna().tolist()]
+    source_ids = list(dict.fromkeys(source for family in families for source in _FAMILY_SOURCE_MAP.get(family, ())))
+    return source_ids, families
+
+
+def _component_provenance(runtime: dict[str, Any], component_history: pd.DataFrame) -> dict[str, str]:
+    registry = runtime["registry"].copy().set_index("candidate_id")
+    source_rows = {str(row.get("source_id")): row for row in runtime.get("source_status", [])}
+    result: dict[str, str] = {}
+    for component_id in component_history["component_id"].drop_duplicates().astype(str):
+        source_ids, families = _component_source_ids(component_id, registry, runtime["children"])
+        candidates = []
+        for source_id in source_ids:
+            source = source_rows.get(source_id, {})
+            date = source.get("latest_available_session") or source.get("latest_observation_date")
+            parsed = pd.to_datetime(date, errors="coerce")
+            if not pd.isna(parsed):
+                candidates.append((parsed.normalize(), source_id))
+        if not candidates:
+            result[component_id] = "확인 불가"
+            continue
+        date, source_id = min(candidates)
+        family = next((family for family in families if source_id in _FAMILY_SOURCE_MAP.get(family, ())), None)
+        label = _FAMILY_DISPLAY_LABELS.get(family or "", source_id)
+        note = " · 주간 업데이트" if source_id == "nfci" else ""
+        result[component_id] = f"가장 오래된 사용값 {label} {date.strftime('%Y-%m-%d')}{note}"
+    return result
+
+
 def _normalized(frame: pd.DataFrame) -> pd.DataFrame:
     out = frame.copy()
     out["date"] = pd.to_datetime(out["date"]).dt.normalize()
@@ -161,6 +222,7 @@ def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
     provisional_basis_by_candidate = dict(zip(snapshot["candidate_id"].astype(str), snapshot["basis_date"].map(_date)))
     candidate_history = _candidate_history(runtime)
     component_history, component_chart_history = _component_history(runtime, final)
+    component_provenance = _component_provenance(runtime, component_history)
     metrics, hold, windows = _display_metrics(runtime, final)
     return {
         "presentation_contract": "nasdaq_macro8_live_presentation_payload_v1" if runtime.get("runtime_mode") == "LIVE_TAIL" else "nasdaq_macro8_frozen_presentation_payload_v1",
@@ -172,10 +234,13 @@ def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
         "confirmed_snapshot": confirmed_snapshot,
         "confirmed_basis_by_candidate": confirmed_basis_by_candidate,
         "provisional_basis_by_candidate": provisional_basis_by_candidate,
-        "component_confirmed_basis_by_id": confirmed_basis_by_candidate,
-        "component_provisional_basis_by_id": provisional_basis_by_candidate,
+        "component_confirmed_basis_by_id": {},
+        "component_provisional_basis_by_id": {},
+        "component_provenance_by_id": component_provenance,
         "confirmed_basis_date": runtime.get("confirmed_basis_date", runtime.get("basis_date")),
         "provisional_basis_date": runtime.get("provisional_basis_date", runtime.get("basis_date")),
+        "provisional_status": runtime.get("provisional_status"),
+        "provisional_unavailable_reason": runtime.get("provisional_unavailable_reason"),
         "source_status": list(runtime.get("source_status", [])),
         "candidate_history": candidate_history,
         "component_history": component_history,
