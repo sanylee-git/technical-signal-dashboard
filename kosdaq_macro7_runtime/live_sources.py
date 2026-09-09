@@ -11,6 +11,8 @@ from typing import Callable
 import pandas as pd
 import requests
 
+from .market_calendar import latest_completed_session
+
 
 COMMON_COLUMNS = [
     "source_id", "provider", "provider_identifier", "observation_date", "publication_date",
@@ -179,11 +181,39 @@ def fetch_source(spec: LiveSourceSpec, *, as_of: datetime | pd.Timestamp | None 
 
 def fetch_all_sources(*, as_of: datetime | pd.Timestamp | None = None, fetcher: Callable[[LiveSourceSpec], pd.DataFrame] | None = None) -> dict[str, pd.DataFrame]:
     frames: dict[str, pd.DataFrame] = {}
+    latest_completed = latest_completed_session(as_of)
     for source_id, spec in SOURCE_SPECS.items():
         primary = fetcher(spec) if fetcher is not None else fetch_source(spec, as_of=as_of)
-        if source_id == "kosdaq_ohlcv" and not primary.get("valid", pd.Series(False, index=primary.index)).astype(bool).any():
-            fallback = fetch_source(spec, as_of=as_of, use_fallback=True)
-            if fallback.get("valid", pd.Series(False, index=fallback.index)).astype(bool).any():
+        primary_valid = primary.loc[primary.get("valid", pd.Series(False, index=primary.index)).astype(bool)] if not primary.empty else primary
+        primary_latest = (
+            pd.to_datetime(primary_valid["observation_date"], errors="coerce").dropna().max()
+            if not primary_valid.empty and "observation_date" in primary_valid
+            else None
+        )
+        needs_market_fallback = (
+            source_id == "kosdaq_ohlcv"
+            and (
+                primary_valid.empty
+                or latest_completed is not None
+                and (primary_latest is None or pd.Timestamp(primary_latest).normalize() < pd.Timestamp(latest_completed).normalize())
+            )
+        )
+        if needs_market_fallback:
+            fallback = fetcher(spec) if fetcher is not None else fetch_source(spec, as_of=as_of, use_fallback=True)
+            fallback_valid = fallback.loc[fallback.get("valid", pd.Series(False, index=fallback.index)).astype(bool)] if not fallback.empty else fallback
+            fallback_latest = (
+                pd.to_datetime(fallback_valid["observation_date"], errors="coerce").dropna().max()
+                if not fallback_valid.empty and "observation_date" in fallback_valid
+                else None
+            )
+            if (
+                not fallback_valid.empty
+                and (
+                    latest_completed is None
+                    or fallback_latest is not None
+                    and pd.Timestamp(fallback_latest).normalize() >= pd.Timestamp(latest_completed).normalize()
+                )
+            ):
                 fallback["provider"] = "yahoo"
                 fallback["provider_identifier"] = "^KQ11"
                 fallback["source_route"] = fallback["source_route"].astype(str) + ";authorized_fallback"

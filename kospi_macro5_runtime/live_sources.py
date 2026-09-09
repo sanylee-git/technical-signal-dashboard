@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 from typing import Any
@@ -105,6 +106,38 @@ def normalize_yahoo_ohlcv_payload(frame: pd.DataFrame, contract: SourceContract,
     result = _finalize(contract, out, route, invalid, as_of_utc=as_of_utc)
     if contract.source_id == "kospi_ohlcv":
         result = _mark_suspicious_kospi_latest_stale(result)
+    return result
+
+
+def normalize_naver_kospi_payload(payload: str, contract: SourceContract, *, as_of_utc: datetime | None = None) -> pd.DataFrame:
+    """Normalize the Naver KOSPI daily payload to the existing OHLC contract."""
+    try:
+        rows = ast.literal_eval(payload.strip())
+        data = pd.DataFrame(rows[1:], columns=rows[0])
+        out = pd.DataFrame(
+            {
+                "observation_date": pd.to_datetime(data["날짜"], format="%Y%m%d", errors="coerce"),
+                "open": pd.to_numeric(data["시가"], errors="coerce"),
+                "high": pd.to_numeric(data["고가"], errors="coerce"),
+                "low": pd.to_numeric(data["저가"], errors="coerce"),
+                "close": pd.to_numeric(data["종가"], errors="coerce"),
+                "volume": pd.to_numeric(data["거래량"], errors="coerce"),
+            }
+        )
+    except Exception as exc:
+        return _empty_result(contract, "SCHEMA_ERROR", exc.__class__.__name__, str(exc), route="naver_siseJson", as_of_utc=as_of_utc)
+    out["value"] = out["close"]
+    invalid = (
+        out["observation_date"].isna()
+        | out[["open", "high", "low", "close"]].isna().any(axis=1)
+        | out["open"].le(0)
+        | (out["high"] < out[["open", "close", "low"]].max(axis=1))
+        | (out["low"] > out[["open", "close", "high"]].min(axis=1))
+    )
+    result = _finalize(contract, out, "naver_siseJson", invalid, as_of_utc=as_of_utc)
+    result["provider"] = "naver_finance"
+    result["provider_series_id"] = "KOSPI"
+    result["source_route"] = result["source_route"].astype(str) + ";authorized_live_fallback"
     return result
 
 
@@ -235,6 +268,36 @@ def _fetch_kospi_yahoo_ohlcv(
         raw = yf.download(contract.provider_series_id, start=start, end=end, interval="1d", progress=False, auto_adjust=False, threads=False)
         base_route = f"yf.download(start={start},end={end},interval=1d)"
     return normalize_yahoo_ohlcv_payload(raw, contract, route=f"{base_route}{route_suffix}", as_of_utc=as_of_utc)
+
+
+def fetch_naver_kospi_ohlcv(
+    contract: SourceContract,
+    *,
+    as_of_utc: datetime | None = None,
+) -> pd.DataFrame:
+    """Fetch KOSPI live tail only when the primary Yahoo row is incomplete."""
+    now_utc = as_of_utc or datetime.now(timezone.utc)
+    if now_utc.tzinfo is None:
+        now_utc = now_utc.replace(tzinfo=timezone.utc)
+    now_kst = now_utc.astimezone(ZoneInfo("Asia/Seoul"))
+    end = now_kst.date() + timedelta(days=1)
+    start = end - timedelta(days=220)
+    try:
+        response = requests.get(
+            "https://api.finance.naver.com/siseJson.naver",
+            params={
+                "symbol": "KOSPI",
+                "requestType": "1",
+                "startTime": start.strftime("%Y%m%d"),
+                "endTime": end.strftime("%Y%m%d"),
+                "timeframe": "day",
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        return normalize_naver_kospi_payload(response.text, contract, as_of_utc=as_of_utc)
+    except Exception as exc:  # pragma: no cover - external provider behavior
+        return _empty_result(contract, "TEMPORARY_FETCH_FAILURE", exc.__class__.__name__, str(exc), route="naver_siseJson", as_of_utc=as_of_utc)
 
 
 def fetch_yahoo(

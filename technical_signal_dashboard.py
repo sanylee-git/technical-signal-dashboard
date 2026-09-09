@@ -4203,24 +4203,51 @@ def _yf_close(ticker: str, years: int = 5, sync_bucket: str | None = None) -> pd
     def _extract_close(raw_obj):
         df = _normalize_yf_ohlcv(raw_obj)
         if df is None or df.empty or 'Close' not in df.columns:
-            return pd.Series(dtype=float)
-        return df['Close'].dropna()
+            return pd.Series(dtype=float), None, None
+        observed = pd.to_datetime(df.index, errors='coerce')
+        observed = pd.DatetimeIndex(_strip_tz(observed)).normalize()
+        close = pd.to_numeric(df['Close'], errors='coerce')
+        close.index = observed
+        valid = close.dropna()
+        latest_observation = None if len(observed) == 0 else pd.Timestamp(observed.max()).normalize()
+        latest_valid = None if valid.empty else pd.Timestamp(valid.index.max()).normalize()
+        return valid, latest_observation, latest_valid
 
     fetchers = [
         lambda: yf.download(ticker, start=start, progress=False, threads=False, auto_adjust=False),
         lambda: yf.Ticker(ticker).history(start=start, auto_adjust=False),
     ]
 
+    expected_latest = None
+    if ticker in {'^GSPC', '^SP500EW', '^VIX', '^VIX3M'}:
+        try:
+            expected_latest = _macro3_latest_completed_us_trading_date()
+        except Exception:
+            expected_latest = None
+
+    best = pd.Series(dtype=float)
+    best_date = None
     for fetcher in fetchers:
-        for _ in range(2):
+        for attempt in range(2):
             try:
-                series = _extract_close(fetcher())
+                series, latest_observation, latest_valid = _extract_close(fetcher())
                 if not series.empty:
-                    return series
+                    if best.empty or (latest_valid is not None and (best_date is None or latest_valid > best_date)):
+                        best = series
+                        best_date = latest_valid
+                    # A complete latest row needs no second provider route. If the
+                    # latest observed row is invalid/partial, the next route gets
+                    # one chance to recover it.
+                    latest_is_complete = latest_observation is None or latest_valid == latest_observation
+                    latest_is_current = expected_latest is None or (latest_valid is not None and latest_valid >= expected_latest)
+                    if latest_is_complete and latest_is_current:
+                        return series
+                    break
             except Exception:
                 pass
-            time.sleep(0.6)
-    return pd.Series(dtype=float)
+            if attempt == 0:
+                time.sleep(0.6)
+    return best
 
 
 @st.cache_data(ttl=3600)

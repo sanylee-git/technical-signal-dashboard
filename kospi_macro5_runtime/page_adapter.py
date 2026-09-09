@@ -15,7 +15,7 @@ from .krx_calendar import kospi_completed_sessions, kospi_latest_allowed_live_se
 from .live_availability import build_transformed_frame
 from .live_contracts import SOURCE_CONTRACTS
 from .live_engine import compute_live_tree
-from .live_sources import fetch_source
+from .live_sources import fetch_naver_kospi_ohlcv, fetch_source
 from .live_tail import source_status_rows
 from .provider_dates import normalize_provider_dates_for_freshness
 from .retry import fetch_with_optional_bypass
@@ -136,6 +136,31 @@ def _load_one_source_frame(
         latest_allowed_kospi_session=latest_kospi_live,
         fetcher=fetch_source,
     )
+    if source_id == "kospi_ohlcv":
+        latest_valid = _latest_valid_source_date(raw)
+        if latest_krx is not None and (latest_valid is None or latest_valid < pd.Timestamp(latest_krx).normalize()):
+            fallback = fetch_naver_kospi_ohlcv(contract, as_of_utc=as_of_utc)
+            fallback_latest = _latest_valid_source_date(fallback)
+            if fallback_latest is not None and fallback_latest >= pd.Timestamp(latest_krx).normalize():
+                raw = fallback
+                attempts.append(
+                    {
+                        "source_id": source_id,
+                        "attempt_number": "NAVER_FALLBACK",
+                        "cache_mode": "AUTHORIZED_FALLBACK",
+                        "source_route": fallback["source_route"].iloc[0] if not fallback.empty else "",
+                        "row_count": int(fallback.get("valid", pd.Series(dtype=bool)).astype(bool).sum()),
+                        "latest_observation_date": fallback_latest.strftime("%Y-%m-%d"),
+                        "status": fallback["status"].iloc[0] if not fallback.empty else "FETCH_ERROR",
+                        "freshness_status": "FRESH",
+                        "error": "",
+                    }
+                )
+                retry_meta = {
+                    **retry_meta,
+                    "selected_attempt": "NAVER_FALLBACK",
+                    "selected_reason": "AUTHORIZED_NAVER_FALLBACK_FOR_MISSING_OR_INVALID_LATEST_KRX_ROW",
+                }
     initial = evaluate_source_freshness(
         contract,
         raw,
@@ -161,8 +186,8 @@ def _load_one_source_frame(
     )
     row = {
         "source_id": source_id,
-        "provider": contract.provider,
-        "provider_series_id": contract.provider_series_id,
+        "provider": selected["provider"].iloc[0] if not selected.empty and "provider" in selected else contract.provider,
+        "provider_series_id": selected["provider_series_id"].iloc[0] if not selected.empty and "provider_series_id" in selected else contract.provider_series_id,
         "fetch_status": selected["status"].iloc[0] if not selected.empty and "status" in selected else "FETCH_ERROR",
         "freshness_status": evaluation.final_freshness_status,
         "raw_latest_observation_date": date_audit["raw_latest_observation_date"],
@@ -186,6 +211,16 @@ def _load_one_source_frame(
         "row_count": int(len(selected.loc[selected.get("valid", False).astype(bool)])) if not selected.empty else 0,
     }
     return selected, row
+
+
+def _latest_valid_source_date(frame: pd.DataFrame) -> pd.Timestamp | None:
+    if frame is None or frame.empty or "valid" not in frame or "observation_date" not in frame:
+        return None
+    valid = frame.loc[frame["valid"].astype(bool)]
+    if valid.empty:
+        return None
+    dates = pd.to_datetime(valid["observation_date"], errors="coerce").dropna()
+    return None if dates.empty else pd.Timestamp(dates.max()).normalize()
 
 
 def _load_transformed_source_base(ctx: D1C1Context) -> pd.DataFrame:

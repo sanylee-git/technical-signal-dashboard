@@ -31,6 +31,10 @@ def _contracts() -> dict[str, SourceContract]:
 def _install_source_loader_stubs(monkeypatch, contracts: dict[str, SourceContract], selected_attempt: int = 1) -> list[dict[str, object]]:
     calls: list[dict[str, object]] = []
     monkeypatch.setattr(page_adapter, "SOURCE_CONTRACTS", contracts)
+    # This fixture intentionally stops one session before latest_krx. Keep the
+    # fallback path offline and empty so the loader-contract test remains about
+    # ordering/parallelism rather than making a provider request.
+    monkeypatch.setattr(page_adapter, "fetch_naver_kospi_ohlcv", lambda *_args, **_kwargs: pd.DataFrame())
 
     def fake_fetch_with_optional_bypass(contract, **kwargs):
         calls.append(

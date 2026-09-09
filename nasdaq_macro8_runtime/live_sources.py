@@ -128,6 +128,80 @@ def normalize_fred(payload: str, spec: LiveSourceSpec, *, as_of: datetime | pd.T
     return _finalize(spec, out, out["observation_date"].isna() | out["value"].isna(), as_of=as_of, route=route)
 
 
+def _latest_valid_date(frame: pd.DataFrame) -> pd.Timestamp | None:
+    if frame is None or frame.empty or "valid" not in frame or "observation_date" not in frame:
+        return None
+    dates = pd.to_datetime(frame.loc[frame["valid"].astype(bool), "observation_date"], errors="coerce").dropna()
+    return None if dates.empty else pd.Timestamp(dates.max()).normalize()
+
+
+def _latest_observation_date(frame: pd.DataFrame) -> pd.Timestamp | None:
+    if frame is None or frame.empty or "observation_date" not in frame:
+        return None
+    dates = pd.to_datetime(frame["observation_date"], errors="coerce").dropna()
+    return None if dates.empty else pd.Timestamp(dates.max()).normalize()
+
+
+def _latest_completed_us_session(as_of: datetime | pd.Timestamp | None) -> pd.Timestamp | None:
+    """Return the latest closed NYSE session without introducing a new data source."""
+    now = pd.Timestamp(as_of or datetime.now(timezone.utc))
+    now = now.tz_localize("UTC") if now.tzinfo is None else now.tz_convert("UTC")
+    try:
+        import pandas_market_calendars as mcal
+
+        schedule = mcal.get_calendar("NYSE").schedule(
+            start_date=(now.tz_convert("America/New_York").date() - pd.Timedelta(days=14)),
+            end_date=now.tz_convert("America/New_York").date(),
+        )
+        completed = schedule.loc[schedule["market_close"].le(now)]
+        return None if completed.empty else pd.Timestamp(completed.index[-1]).normalize()
+    except Exception:
+        local = now.tz_convert("America/New_York")
+        session = pd.Timestamp(local.date())
+        if local.weekday() >= 5 or local.time() < pd.Timestamp("16:00").time():
+            session -= pd.offsets.BDay(1)
+        while session.weekday() >= 5:
+            session -= pd.offsets.BDay(1)
+        return session.normalize()
+
+
+def _needs_yahoo_retry(frame: pd.DataFrame, as_of: datetime | pd.Timestamp | None) -> bool:
+    latest_valid = _latest_valid_date(frame)
+    latest_observation = _latest_observation_date(frame)
+    if latest_valid is None:
+        return True
+    if latest_observation is not None and latest_observation > latest_valid:
+        return True
+    expected = _latest_completed_us_session(as_of)
+    return expected is not None and latest_valid < expected
+
+
+def _fetch_yahoo_with_authorized_retry(spec: LiveSourceSpec, *, as_of: datetime | pd.Timestamp | None) -> pd.DataFrame:
+    import yfinance as yf
+
+    start, end = _window(as_of)
+    primary = normalize_yahoo(
+        yf.download(spec.provider_identifier, start=start, end=end, interval="1d", auto_adjust=False, progress=False, threads=False),
+        spec,
+        as_of=as_of,
+        route=f"yf.download({spec.provider_identifier})",
+    )
+    if not _needs_yahoo_retry(primary, as_of):
+        return primary
+    retry = normalize_yahoo(
+        yf.Ticker(spec.provider_identifier).history(start=start, end=end, interval="1d", auto_adjust=False),
+        spec,
+        as_of=as_of,
+        route=f"yf.Ticker.history({spec.provider_identifier})",
+    )
+    primary_date = _latest_valid_date(primary)
+    retry_date = _latest_valid_date(retry)
+    if retry_date is not None and (primary_date is None or retry_date >= primary_date):
+        retry["source_route"] = retry["source_route"].astype(str) + ";authorized_same_provider_retry"
+        return retry
+    return primary
+
+
 def _window(as_of: datetime | pd.Timestamp | None) -> tuple[str, str]:
     now = pd.Timestamp(as_of or datetime.now(timezone.utc))
     if now.tzinfo is None:
@@ -140,11 +214,7 @@ def _window(as_of: datetime | pd.Timestamp | None) -> tuple[str, str]:
 def fetch_source(spec: LiveSourceSpec, *, as_of: datetime | pd.Timestamp | None = None) -> pd.DataFrame:
     try:
         if spec.provider == "yahoo":
-            import yfinance as yf
-
-            start, end = _window(as_of)
-            raw = yf.download(spec.provider_identifier, start=start, end=end, interval="1d", auto_adjust=False, progress=False, threads=False)
-            return normalize_yahoo(raw, spec, as_of=as_of, route=f"yf.download({spec.provider_identifier})")
+            return _fetch_yahoo_with_authorized_retry(spec, as_of=as_of)
         response = requests.get(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={spec.provider_identifier}", timeout=20)
         response.raise_for_status()
         return normalize_fred(response.text, spec, as_of=as_of, route="fredgraph.csv")
