@@ -6675,24 +6675,24 @@ _MACRO3_BACKTEST_GROUP_BCD = (
     "macro5_combo1_final8_7",
 )
 _MACRO6_COMBO2_CANDIDATES = (
-    ("macro6_combo2_1", "m8_8112998890601066", "Main"),
-    ("macro6_combo2_6", "m5_5010704845", "고수익 방어형"),
+    ("macro6_combo2_6", "m5_5010704845", "Main1 고수익 방어형"),
+    ("macro6_combo2_1", "m8_8112998890601066", "Main2 수익·방어 균형형"),
     ("macro6_combo2_2", "m6_6624758514725359", "시장참여형"),
     ("macro6_combo2_3", "m7_7836479199389981", "안정 방어형"),
     ("macro6_combo2_4", "m7_7304308638289210", "고수익형"),
     ("macro6_combo2_5", "m4_4001137875", "T+2 균형형"),
 )
 _MACRO6_COMBO1_CANDIDATES = (
-    ("macro6_combo1_1", "combo1_proxy_540347d549244000", "Main"),
-    ("macro6_combo1_4", "combo1_proxy_f37033c32516e147", "강방어형"),
-    ("macro6_combo1_2", "combo1_proxy_ece4aa198a4060ff", "수익형"),
+    ("macro6_combo1_2", "combo1_proxy_ece4aa198a4060ff", "Main1 수익형"),
+    ("macro6_combo1_4", "combo1_proxy_f37033c32516e147", "Main2 강방어형"),
+    ("macro6_combo1_1", "combo1_proxy_540347d549244000", "핵심 리스크 균형형"),
     ("macro6_combo1_3", "combo1_proxy_08160f7db8770aa9", "균형 방어형"),
     ("macro6_combo1_5", "combo1_proxy_c3a64264c2e842f5", "저이탈형"),
 )
 _MACRO6_DISPLAY_LABEL_OVERRIDES = {
-    "m8_8112998890601066": "[조합2] Main1 수익·방어 균형형 (조합1 8개/K6/L5)",
-    "m5_5010704845": "[조합2] Main2 고수익 방어형 (조합1 5개/K3/L2)",
-    "combo1_proxy_540347d549244000": "[조합1] Main1 핵심 리스크 균형형 (지표 4개/K3/L2)",
+    "m5_5010704845": "[조합2] Main1 고수익 방어형 (조합1 5개/K3/L2)",
+    "m8_8112998890601066": "[조합2] Main2 수익·방어 균형형 (조합1 8개/K6/L5)",
+    "combo1_proxy_ece4aa198a4060ff": "[조합1] Main1 수익형 (지표 4개/K3/L2)",
     "combo1_proxy_f37033c32516e147": "[조합1] Main2 강방어형 (지표 7개/K4/L3)",
 }
 _MACRO6_COMBO2_ORDER = tuple(key for key, _, _ in _MACRO6_COMBO2_CANDIDATES)
@@ -14033,16 +14033,16 @@ def _macro5_kospi_suffix(candidate_id: str) -> str:
 
 
 _MACRO5_KOSPI_DISPLAY_LABEL_OVERRIDES = {
-    "m6::combo2_m6_k4_l2_2d90a80e824f7336": "[조합2] Main1 강건·안정 균형형 (조합1 6개/K4/L2)",
-    "m5::combo2_m5_k2_l1_2bc7e194fdecfd9e": "[조합2] Main2 MDD·Calmar (조합1 5개/K2/L1)",
-    "combo1_n11_k9_l5_b984a8e53ad69a2d": "[조합1] Main1 강건·균형 코어형 (지표 11개/K9/L5)",
-    "combo1_n11_k8_l5_93919287424179bd": "[조합1] Main2 방어·효율 코어형 (지표 11개/K8/L5)",
+    "m10::combo2_m10_k7_l4_bbd8c760d49b44bb": "[조합2] Main1 최상위 성과 (조합1 10개/K7/L4)",
+    "m8::combo2_m8_k5_l4_cee6978af4789711": "[조합2] Main2 다양성·안정 보완 (조합1 8개/K5/L4)",
+    "combo1_n11_k9_l5_b984a8e53ad69a2d": "[조합1] Main1 균형 코어 (지표 11개/K9/L5)",
+    "combo1_n11_k9_l6_ad654f06d0d609cb": "[조합1] Main2 공격 수익 (지표 11개/K9/L6)",
 }
 _MACRO5_KOSPI_ORDER_OVERRIDES = {
     "combo1_n11_k9_l5_b984a8e53ad69a2d": 0,
-    "combo1_n11_k8_l5_93919287424179bd": 1,
-    "m6::combo2_m6_k4_l2_2d90a80e824f7336": 0,
-    "m5::combo2_m5_k2_l1_2bc7e194fdecfd9e": 1,
+    "combo1_n11_k9_l6_ad654f06d0d609cb": 1,
+    "m10::combo2_m10_k7_l4_bbd8c760d49b44bb": 0,
+    "m8::combo2_m8_k5_l4_cee6978af4789711": 1,
 }
 
 
@@ -14069,14 +14069,7 @@ def _macro5_kospi_preset_label(row: pd.Series | dict, component_count: int | Non
     model_type = _macro5_kospi_model_type(row["model_type"])
     prefix = "조합1" if model_type == "combo1" else "조합2"
     unit = "지표" if model_type == "combo1" else "조합1"
-    try:
-        slot = int(row.get("slot"))
-    except Exception:
-        slot = -1
-    if (model_type == "combo1" and slot == 1) or (model_type == "combo2" and slot == 5):
-        role = "Main"
-    else:
-        role = str(row.get("role") or "")
+    role = str(row.get("role") or "")
     try:
         count = int(component_count if component_count is not None else row.get("m_or_n"))
     except Exception:
@@ -16081,7 +16074,7 @@ def main(page="signal"):
             ("market", "🌐 시장 내부지표"),
         ]
         if st.session_state.get("market_macro_section") not in {k for k, _ in _market_macro_sections}:
-            st.session_state["market_macro_section"] = "macro6"
+            st.session_state["market_macro_section"] = "macro9_spx"
         _market_macro_section = st.radio(
             "섹션 선택",
             options=[k for k, _ in _market_macro_sections],

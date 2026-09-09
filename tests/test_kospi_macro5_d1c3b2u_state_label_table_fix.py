@@ -25,8 +25,8 @@ def test_macro5_final9_labels_follow_common_contract() -> None:
     ]
 
     assert all(LABEL_RE.match(label) for label in labels)
-    assert labels[0].startswith("[조합1] Main1 강건·균형 코어형 (지표 11개/K9/L5)")
-    assert labels[4].startswith("[조합2] Main1 강건·안정 균형형 (조합1 6개/K4/L2)")
+    assert labels[0].startswith("[조합1] Main1 균형 코어 (지표 11개/K9/L5)")
+    assert labels[7].startswith("[조합2] Main1 최상위 성과 (조합1 10개/K7/L4)")
 
 
 def test_macro6_loaded_labels_follow_common_contract() -> None:

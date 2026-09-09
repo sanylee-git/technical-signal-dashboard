@@ -77,14 +77,14 @@ def test_operational_main_roles_are_display_only(payload: dict) -> None:
     practical = _practical_final(payload["final20"])
     combo1 = practical.loc[practical["model_family"].eq("COMBO1")]
     combo2 = practical.loc[practical["model_family"].eq("COMBO2")]
-    assert combo1.iloc[0]["candidate_id"] == "n8|nq5e8_a6feb39063ce3ac4"
-    assert combo1.iloc[0]["display_role"] == "Main1 시대 안정성"
-    assert combo1.iloc[1]["candidate_id"] == "n8|nq5e8_6f60d9e268c12ef1"
-    assert combo1.iloc[1]["display_role"] == "Main2 Whipsaw / 방어"
+    assert combo1.iloc[0]["candidate_id"] == "n8|nq5e8_6f60d9e268c12ef1"
+    assert combo1.iloc[0]["display_role"] == "Main1 Whipsaw / 방어"
+    assert combo1.iloc[1]["candidate_id"] == "n7|nq5e7_fc87283b72f8a856"
+    assert combo1.iloc[1]["display_role"] == "Main2 K/L 강건성"
     assert combo2.iloc[0]["candidate_id"].startswith("m5|")
     assert combo2.iloc[0]["display_role"] == "Main1 균형형"
-    assert combo2.iloc[1]["candidate_id"].startswith("m6|")
-    assert combo2.iloc[1]["display_role"] == "Main2 K/L 강건성"
+    assert combo2.iloc[1]["candidate_id"].startswith("m8|")
+    assert combo2.iloc[1]["display_role"] == "Main2 고성과 Practical"
     assert set(practical["candidate_id"]) == set(payload["final20"].loc[payload["final20"]["selection_type"].eq("Practical"), "candidate_id"])
 
 

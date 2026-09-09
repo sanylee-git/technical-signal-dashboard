@@ -28,25 +28,25 @@ SPX_OPERATIONAL_ROLE_OVERRIDES = {
     # Operational display roles are intentionally separate from the frozen
     # research metrics and candidate definitions.
     "ff766a2413cf24620dae5ba4": "Main1 MDD 방어·Calmar형",
-    "7b12636f7551ff2040b9c8ed": "Main2 안정적 메인",
+    "f79be460c762828a3a07d8d6": "Main2 기간 안정형",
     "8ed8c962d98d1ee2504c6ae0": "Main1 초저-Short 중형조합형",
-    "95cff35563d9d4316b84daa8": "Main2 고성과 Robust형",
-    "61b4f8da571569e1eb0c324c": "초저-Short 메인",
+    "acaaf10f62992f86ad7dbe3a": "Main2 단순·저 Risk-off형",
+    "61b4f8da571569e1eb0c324c": "초저-Short형",
     "0e715f71f7e73cd2d9f8af55": "Robust·기간안정",
 }
 SPX_OPERATIONAL_DISPLAY_ORDER = {
     # Main1/Main2 are first within each family; the remaining frozen Final10
     # candidates retain their fixed membership and only fill the later slots.
     "ff766a2413cf24620dae5ba4": 1,
-    "7b12636f7551ff2040b9c8ed": 2,
-    "939788293cd86b8488a45f38": 3,
-    "f79be460c762828a3a07d8d6": 4,
+    "f79be460c762828a3a07d8d6": 2,
+    "7b12636f7551ff2040b9c8ed": 3,
+    "939788293cd86b8488a45f38": 4,
     "1315bcf6403020b0353ca32b": 5,
     "8ed8c962d98d1ee2504c6ae0": 1,
-    "95cff35563d9d4316b84daa8": 2,
-    "61b4f8da571569e1eb0c324c": 3,
-    "0e715f71f7e73cd2d9f8af55": 4,
-    "acaaf10f62992f86ad7dbe3a": 5,
+    "acaaf10f62992f86ad7dbe3a": 2,
+    "95cff35563d9d4316b84daa8": 3,
+    "61b4f8da571569e1eb0c324c": 4,
+    "0e715f71f7e73cd2d9f8af55": 5,
 }
 
 
@@ -427,7 +427,7 @@ def render_macro9_spx_section(container: Any, *, payload: dict[str, Any] | None 
         final = _display_final(payload["final10"])
         combo2, combo1 = _ordered_candidate_ids(final, "COMBO2"), _ordered_candidate_ids(final, "COMBO1")
         ordered, separator = combo2 + combo1, "__macro9_spx_combo1_separator__"
-        default = combo2[0]
+        default = combo1[0]
         if st.session_state.get("macro9_spx_preset") == separator or st.session_state.get("macro9_spx_preset") not in ordered:
             st.session_state["macro9_spx_preset"] = default
         labels = {str(row.candidate_id): _candidate_label(row._asdict()) for row in final.itertuples(index=False)}

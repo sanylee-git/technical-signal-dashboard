@@ -55,11 +55,13 @@ def test_spx_operational_main_roles_are_display_only() -> None:
     final = _display_final(payload["final10"])
     assert final.loc[final["model_family"].eq("COMBO1"), "candidate_id"].tolist()[:2] == [
         "ff766a2413cf24620dae5ba4",
-        "7b12636f7551ff2040b9c8ed",
+        "f79be460c762828a3a07d8d6",
     ]
     assert final.loc[final["model_family"].eq("COMBO2"), "candidate_id"].tolist()[:2] == [
         "8ed8c962d98d1ee2504c6ae0",
-        "95cff35563d9d4316b84daa8",
+        "acaaf10f62992f86ad7dbe3a",
     ]
     assert final.loc[final["candidate_id"].eq("ff766a2413cf24620dae5ba4"), "display_role"].item() == "Main1 MDD 방어·Calmar형"
+    assert final.loc[final["candidate_id"].eq("f79be460c762828a3a07d8d6"), "display_role"].item() == "Main2 기간 안정형"
     assert final.loc[final["candidate_id"].eq("8ed8c962d98d1ee2504c6ae0"), "display_role"].item() == "Main1 초저-Short 중형조합형"
+    assert final.loc[final["candidate_id"].eq("acaaf10f62992f86ad7dbe3a"), "display_role"].item() == "Main2 단순·저 Risk-off형"
