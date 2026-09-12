@@ -68,7 +68,7 @@ def test_b2r_status_wording_removes_duplicate_technical_phrases() -> None:
     assert "현재 상태 시작일 <span style='color:#FF8C69;font-weight:700'>2026-05-26</span>" in html
     assert "지속 거래일 <span style='color:#FF8C69;font-weight:700'>47</span>" in html
     assert "실행 비투자" in html
-    assert "오늘 전환 없음" in html
+    assert "오늘 전환 없음 · Risk-off 유지" in html
     assert "T+1" not in html
     assert "47거래일 지속" not in html
     assert "기준</b> 시작" not in html

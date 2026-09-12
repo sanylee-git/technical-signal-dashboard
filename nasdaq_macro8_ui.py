@@ -310,7 +310,7 @@ def _signal_snapshot_html(label: str, row: pd.Series) -> str:
         return f"{label}: 계산 불가"
     risk = bool(row["raw_risk_state"])
     color = RISK_OFF if risk else RISK_ON
-    state = "리스크 사이클 ON" if risk else "리스크 사이클 OFF"
+    state = "Risk-off · 비투자" if risk else "Risk-on · 투자"
     return (
         f"{label}: 기준일 {_date(row['basis_date'])} <span style='color:rgba(255,255,255,.45)'>·</span> "
         f"현재 플래그 {_on_k_html(row['active_count'], row['K'], risk)} <span style='color:rgba(255,255,255,.45)'>·</span> "
@@ -335,11 +335,18 @@ def _current_status_html(
         return "<div class='macro2-helper-text'>현재 상태를 계산할 수 없습니다.</div>"
     risk = bool(row["raw_risk_state"])
     color = RISK_OFF if risk else RISK_ON
-    state = "리스크 사이클 ON" if risk else "리스크 사이클 OFF"
+    state = "Risk-off · 비투자" if risk else "Risk-on · 투자"
     segment = row.get("current_segment_return")
     segment_text = "확인 불가" if pd.isna(segment) else f"<span style='color:{RISK_ON if float(segment) >= 0 else RISK_OFF};font-weight:700'>{float(segment) * 100:.1f}%</span>"
     latest = history.sort_values("date").iloc[-1] if not history.empty else None
-    transition = "오늘 전환 없음" if latest is None or not bool(latest.risk_start or latest.risk_end) else (f"<span style='color:{RISK_OFF};font-weight:700'>오늘 Risk-off 시작</span>" if bool(latest.risk_start) else "<span style='color:#60A5FA;font-weight:700'>오늘 Risk-off 종료</span>")
+    if latest is None:
+        transition = "오늘 전환 없음 · Risk-off 유지" if risk else "오늘 전환 없음 · Risk-on 유지"
+    elif bool(latest.risk_start):
+        transition = f"<span style='color:{RISK_OFF};font-weight:700'>오늘 전환: Risk-on → Risk-off · 방어 시작</span>"
+    elif bool(latest.risk_end):
+        transition = "<span style='color:#60A5FA;font-weight:700'>오늘 전환: Risk-off → Risk-on · 투자 재개</span>"
+    else:
+        transition = "오늘 전환 없음 · Risk-off 유지" if risk else "오늘 전환 없음 · Risk-on 유지"
     execution = "비투자" if int(row["invest_position"]) == 0 else "투자"
     confirmed_row = row if confirmed_row is None else confirmed_row
     provisional_date = pd.Timestamp(row["basis_date"]).normalize()

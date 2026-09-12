@@ -331,10 +331,11 @@ def _today_transition_html(history: pd.DataFrame) -> str:
         return "오늘 전환 확인 불가"
     latest = history.sort_values("date").iloc[-1]
     if bool(latest.get("risk_start", False)):
-        return f"<span style='color:{RISK_OFF};font-weight:700;'>오늘 Risk-off 시작</span>"
+        return f"<span style='color:{RISK_OFF};font-weight:700;'>오늘 전환: Risk-on → Risk-off · 방어 시작</span>"
     if bool(latest.get("risk_end", False)):
-        return "<span style='color:#60A5FA;font-weight:700;'>오늘 Risk-off 종료</span>"
-    return "오늘 전환 없음"
+        return "<span style='color:#60A5FA;font-weight:700;'>오늘 전환: Risk-off → Risk-on · 투자 재개</span>"
+    risk = bool(latest.get("raw_risk_state", False))
+    return "오늘 전환 없음 · Risk-off 유지" if risk else "오늘 전환 없음 · Risk-on 유지"
 
 
 def _signal_snapshot_html(label: str, row: pd.Series) -> str:
@@ -342,7 +343,7 @@ def _signal_snapshot_html(label: str, row: pd.Series) -> str:
         return f"{label}: 계산 불가"
     risk = bool(row["raw_risk_state"])
     color = RISK_OFF if risk else RISK_ON
-    state = "리스크 사이클 ON" if risk else "리스크 사이클 OFF"
+    state = "Risk-off · 비투자" if risk else "Risk-on · 투자"
     return (
         f"{label}: 기준일 {_date(row['basis_date'])} <span style='color:rgba(255,255,255,.45)'>·</span> "
         f"현재 플래그 {_on_k_html(row['active_count'], row['K'], risk)} <span style='color:rgba(255,255,255,.45)'>·</span> "
@@ -359,7 +360,7 @@ def _current_status_html(
         return "<div class='macro2-helper-text'>현재 상태를 계산할 수 없습니다.</div>"
     state = bool(row["raw_risk_state"])
     color = RISK_OFF if state else RISK_ON
-    state_text = "리스크 사이클 ON" if state else "리스크 사이클 OFF"
+    state_text = "Risk-off · 비투자" if state else "Risk-on · 투자"
     execution = "비투자" if int(row["invest_position"]) == 0 else "투자"
     segment = row.get("current_segment_return")
     segment_html = "확인 불가" if pd.isna(segment) else f"<span style='color:{RISK_ON if float(segment) >= 0 else RISK_OFF};font-weight:700'>{float(segment)*100:.1f}%</span>"

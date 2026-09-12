@@ -9484,17 +9484,17 @@ def _macro_compact_status_html(
 ) -> str:
     risk_on = bool(int(risk_state)) if not isinstance(risk_state, bool) else risk_state
     risk_color = _MACRO_STATUS_RISK_OFF_COLOR if risk_on else _MACRO_STATUS_RISK_ON_COLOR
-    risk_text = "리스크 사이클 ON" if risk_on else "리스크 사이클 OFF"
+    risk_text = "Risk-off · 비투자" if risk_on else "Risk-on · 투자"
     try:
         execution_text = "투자" if int(execution_position) == 1 else "비투자"
     except Exception:
         execution_text = "확인 불가"
     if start_event:
-        transition_html = f"<span style='color:{_MACRO_STATUS_RISK_OFF_COLOR};font-weight:700;'>오늘 {_macro_risk_state_display_text(True)} 시작</span>"
+        transition_html = f"<span style='color:{_MACRO_STATUS_RISK_OFF_COLOR};font-weight:700;'>오늘 전환: Risk-on → Risk-off · 방어 시작</span>"
     elif end_event:
-        transition_html = f"<span style='color:#60A5FA;font-weight:700;'>오늘 {_macro_risk_state_display_text(True)} 종료</span>"
+        transition_html = f"<span style='color:#60A5FA;font-weight:700;'>오늘 전환: Risk-off → Risk-on · 투자 재개</span>"
     else:
-        transition_html = "오늘 전환 없음"
+        transition_html = "오늘 전환 없음 · Risk-off 유지" if risk_on else "오늘 전환 없음 · Risk-on 유지"
     separator = "<span style='color:rgba(255,255,255,.45)'>·</span>"
     provisional_line = (
         f"잠정신호: 기준일 {basis_date} {separator} "
@@ -9506,7 +9506,7 @@ def _macro_compact_status_html(
     if confirmed_snapshot and confirmed_snapshot.get("calculable"):
         confirmed_risk = bool(int(confirmed_snapshot.get("raw_risk_state", 0)))
         confirmed_color = _MACRO_STATUS_RISK_OFF_COLOR if confirmed_risk else _MACRO_STATUS_RISK_ON_COLOR
-        confirmed_text = "리스크 사이클 ON" if confirmed_risk else "리스크 사이클 OFF"
+        confirmed_text = "Risk-off · 비투자" if confirmed_risk else "Risk-on · 투자"
         confirmed_line = (
             f"확정신호: 기준일 {_macro5_kospi_escape(confirmed_snapshot.get('basis_date') or '확인 불가')} {separator} "
             f"현재 플래그 {_macro_flag_ratio_html(int(confirmed_snapshot.get('active_count', 0) or 0), int(start_k or component_count or 1), confirmed_risk)} {separator} "
