@@ -179,7 +179,7 @@ def _layout(fig: go.Figure, title: str, x_start: pd.Timestamp, x_end: pd.Timesta
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         title=dict(text=title, font=dict(size=12, color="#9B9B9B"), x=0),
         font=dict(color="#C9C9C9"), hovermode="x unified",
-        legend=dict(orientation="h", y=1.01, x=1, xanchor="right", font=dict(size=10)),
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, x=1, xanchor="right", font=dict(size=10)),
     )
     fig.update_xaxes(range=[x_start, x_end], autorange=False, gridcolor="rgba(255,255,255,0.04)")
     fig.update_yaxes(gridcolor="rgba(255,255,255,0.04)")

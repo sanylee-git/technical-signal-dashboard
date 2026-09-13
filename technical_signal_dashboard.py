@@ -10277,7 +10277,7 @@ def _build_macro3_component_chart(
             hovertemplate="<b>신호발생일 %{x|%Y-%m-%d}</b><br>component 종료: %{y:,.2f}<extra></extra>",
         ))
     selected_labels = " + ".join([_MACRO3_INDICATOR_LABELS.get(name, name) for name in active_indicators])
-    fig.update_layout(**_ml(_macro3_component_label(component_key, component_cfg), height=260))
+    fig.update_layout(**_ml(_macro3_component_label(component_key, component_cfg), height=300))
     if x_start is not None and x_end is not None:
         fig.update_xaxes(range=[x_start, x_end], autorange=False)
     fig.add_annotation(
