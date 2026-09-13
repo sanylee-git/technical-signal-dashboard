@@ -32,14 +32,15 @@ STAGE_SCORES = {
     "관망": 0, "매도준비": 1, "매도": 2, "매도심화": 3,
 }
 PERIOD_OPTIONS: list[int | str] = [2, 3, 5, 7, 10, 15, "all"]
-KOSDAQ_COMBO2_MAIN1 = "combo2_m5_k3_l2_50e15ab10d6cba46"
-KOSDAQ_COMBO2_MAIN2 = "combo2_m7_k4_l3_58c1eaea19e6d371"
+KOSDAQ_COMBO2_MAIN1 = "combo2_m6_k3_l2_32c73aa82d8abc21"
+KOSDAQ_COMBO2_MAIN2 = "combo2_m5_k3_l2_50e15ab10d6cba46"
 KOSDAQ_COMBO1_MAIN1 = "combo1_n10_k8_l5_7d675fa2173be942"
 KOSDAQ_COMBO1_MAIN2 = "combo1_n9_k7_l5_ef47fc166183b7f0"
 DEFAULT_CANDIDATE = KOSDAQ_COMBO2_MAIN1
+KOSDAQ_PRESET_VERSION = "combo2-main1-m6-20260913"
 KOSDAQ_DISPLAY_ROLE_OVERRIDES = {
-    KOSDAQ_COMBO2_MAIN1: "Main1 안정적 균형형",
-    KOSDAQ_COMBO2_MAIN2: "Main2 성과 대표",
+    KOSDAQ_COMBO2_MAIN1: "Main1 MDD 방어형",
+    KOSDAQ_COMBO2_MAIN2: "Main2 안정적 균형형",
     KOSDAQ_COMBO1_MAIN1: "Main1 최고 성과형",
     KOSDAQ_COMBO1_MAIN2: "Main2 사이클·수익형",
 }
@@ -537,6 +538,9 @@ def render_macro7_kosdaq_section(
         combo1_order = _ordered_candidate_ids(final, "COMBO1")
         ordered = combo2_order + combo1_order
         separator = "__macro7_kosdaq_combo1_separator__"
+        if st.session_state.get("macro7_kosdaq_preset_version") != KOSDAQ_PRESET_VERSION:
+            st.session_state["macro7_kosdaq_preset"] = DEFAULT_CANDIDATE
+            st.session_state["macro7_kosdaq_preset_version"] = KOSDAQ_PRESET_VERSION
         if st.session_state.get("macro7_kosdaq_preset") == separator:
             st.session_state["macro7_kosdaq_preset"] = combo1_order[0] if combo1_order else DEFAULT_CANDIDATE
         if st.session_state.get("macro7_kosdaq_preset") not in ordered:

@@ -86,8 +86,8 @@ def test_chart_ranges_and_default_candidate_are_bound_to_payload_basis_date() ->
     fig = _main_chart(payload, DEFAULT_CANDIDATE, row["basis_date"], 5)
     assert fig is not None
     assert pd.Timestamp(fig.layout.xaxis.range[1]).normalize() == pd.Timestamp(row["basis_date"]).normalize()
-    assert "조합1 5개/K3/L2" in fig.layout.title.text
-    assert DEFAULT_CANDIDATE == "combo2_m5_k3_l2_50e15ab10d6cba46"
+    assert "조합1 6개/K3/L2" in fig.layout.title.text
+    assert DEFAULT_CANDIDATE == "combo2_m6_k3_l2_32c73aa82d8abc21"
 
 
 def test_all_period_charts_start_at_official_evaluation_boundary() -> None:
@@ -147,7 +147,7 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
         assert table.count(f"width:{width}") == 2
     assert "전체 CAGR" in table
     assert "x)</span>" in table
-    assert table.index("KOSDAQ 홀드") < table.index("Main1 안정적 균형형") < table.index("Main2 성과 대표")
+    assert table.index("KOSDAQ 홀드") < table.index("Main1 MDD 방어형") < table.index("Main2 안정적 균형형") < table.index("성과 대표")
 
 
 def test_kosdaq_component_labels_and_status_remain_payload_driven() -> None:
@@ -171,8 +171,9 @@ def test_kosdaq_main_labels_and_combo_family_separator_are_display_only() -> Non
     payload = _payload()
     rows = payload["final10"].set_index("candidate_id")
 
-    assert "Main1 안정적 균형형" in _candidate_label(rows.loc["combo2_m5_k3_l2_50e15ab10d6cba46"])
-    assert "Main2 성과 대표" in _candidate_label(rows.loc["combo2_m7_k4_l3_58c1eaea19e6d371"])
+    assert "Main1 MDD 방어형" in _candidate_label(rows.loc["combo2_m6_k3_l2_32c73aa82d8abc21"])
+    assert "Main2 안정적 균형형" in _candidate_label(rows.loc["combo2_m5_k3_l2_50e15ab10d6cba46"])
+    assert "[조합2] 성과 대표" in _candidate_label(rows.loc["combo2_m7_k4_l3_58c1eaea19e6d371"])
     assert "Main1 최고 성과형" in _candidate_label(rows.loc["combo1_n10_k8_l5_7d675fa2173be942"])
     assert "Main2 사이클·수익형" in _candidate_label(rows.loc["combo1_n9_k7_l5_ef47fc166183b7f0"])
 
