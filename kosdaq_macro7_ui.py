@@ -229,16 +229,16 @@ def _component_chart(payload: dict[str, Any], parent_id: str, component_id: str,
         chart = chart.loc[chart["component_id"].eq(component_id)]
         if chart.empty:
             return None
-        fields = (("ema", "EMA", "#A78BFA"), ("start_line", "시작선", "#F05A47"), ("end_line", "종료선", "#60A5FA"))
+        fields = (("ema", "EMA", "#F7C948", "solid"), ("start_line", "시작선", "#FF8C69", "dot"), ("end_line", "종료선", "#78DCFF", "dot"))
         if show_aux:
-            fields = (("value", "Raw", "#BDBDBD"),) + fields
-        for column, label, color in fields:
+            fields = (("value", "Raw", "#B6B6B6", "solid"),) + fields
+        for column, label, color, dash in fields:
             if column in chart and chart[column].notna().any():
-                fig.add_trace(go.Scatter(x=chart["date"], y=chart[column], name=label, line=dict(color=color, width=1.25)))
-        for column, label, color in (("lower", "하단", "#60A5FA"), ("upper", "상단", "#F05A47")):
+                fig.add_trace(go.Scatter(x=chart["date"], y=chart[column], name=label, line=dict(color=color, width=0.85 if column == "value" else 2.0, dash=dash)))
+        for column, label, color in (("lower", "하단", "#78DCFF"), ("upper", "상단", "#FF8C69")):
             if column in chart and chart[column].notna().any():
-                fig.add_trace(go.Scatter(x=chart["date"], y=chart[column], name=label, line=dict(color=color, width=1, dash="dot")))
-        fig.add_trace(go.Scatter(x=benchmark["date"], y=benchmark["kosdaq_close"], name="KOSDAQ", yaxis="y2", line=dict(color="#777777", width=1)))
+                fig.add_trace(go.Scatter(x=chart["date"], y=chart[column], name=label, line=dict(color=color, width=1.8, dash="dot")))
+        fig.add_trace(go.Scatter(x=benchmark["date"], y=benchmark["kosdaq_close"], name="KOSDAQ", yaxis="y2", line=dict(color="rgba(182,182,182,0.42)", width=1.1)))
         fig.update_layout(yaxis2=dict(overlaying="y", side="right", showgrid=False, color="#808080"))
     return _layout(fig, _component_display_label(component.iloc[-1]), x_start, x_end)
 

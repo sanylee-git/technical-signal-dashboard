@@ -10088,18 +10088,18 @@ def _build_macro3_indicator_chart(
         signal_df = signal_df.reindex(chart_index)
         price = ohlc["Close"].reindex(chart_index).dropna()
         _add_macro_indicator_risk_background(fig, signal_df, x_start, x_end)
-        fig.add_trace(go.Scatter(x=price.index, y=price, name=benchmark["label"], line=dict(color="rgba(182,182,182,0.88)", width=1.55)))
+        fig.add_trace(go.Scatter(x=price.index, y=price, name=benchmark["label"], line=dict(color="rgba(182,182,182,0.42)", width=1.1)))
         for col, name, color, dash in [
-            ("bb_middle", "BB Middle", "rgba(216,195,106,0.74)", "solid"),
-            ("bb_upper", "BB Upper", "rgba(255,140,105,0.68)", "dot"),
-            ("bb_lower", "BB Lower", "rgba(120,220,255,0.72)", "dot"),
+            ("bb_middle", "BB Middle", "rgba(247,201,72,0.95)", "solid"),
+            ("bb_upper", "BB Upper", "rgba(255,140,105,0.92)", "dot"),
+            ("bb_lower", "BB Lower", "rgba(120,220,255,0.92)", "dot"),
         ]:
             if col in signal_df.columns:
                 fig.add_trace(go.Scatter(
                     x=signal_df.index,
                     y=signal_df[col],
                     name=name,
-                    line=dict(color=color, width=1.15, dash=dash),
+                    line=dict(color=color, width=2.0, dash=dash),
                 ))
         start_y = price.reindex(signal_df.index[signal_df["risk_start_signal"].fillna(False)])
         end_y = price.reindex(signal_df.index[signal_df["risk_end_signal"].fillna(False)])
@@ -10130,28 +10130,28 @@ def _build_macro3_indicator_chart(
                 x=raw_display.index,
                 y=raw_display,
                 name=f"{indicator} 원본",
-                line=dict(color="rgba(182,182,182,0.22)", width=0.85),
+                line=dict(color="rgba(182,182,182,0.28)", width=0.85),
                 hovertemplate=f"<b>%{{x|%Y-%m-%d}}</b><br>{indicator} 원본  %{{y:.2f}}<extra></extra>",
             ))
     fig.add_trace(go.Scatter(
         x=main_s.index,
         y=main_s,
         name=ema_col.upper() if ema_col else indicator,
-        line=dict(color="rgba(216,195,106,0.32)", width=1.1),
+        line=dict(color="rgba(247,201,72,0.95)", width=2.0, dash="solid"),
     ))
     if "risk_start_line" in signal_df.columns:
         fig.add_trace(go.Scatter(
             x=signal_df.index,
             y=signal_df["risk_start_line"],
             name="시작선",
-            line=dict(color="rgba(255,140,105,0.55)", width=1.2, dash="dot"),
+            line=dict(color="rgba(255,140,105,0.92)", width=1.8, dash="dot"),
         ))
     if "risk_end_line" in signal_df.columns:
         fig.add_trace(go.Scatter(
             x=signal_df.index,
             y=signal_df["risk_end_line"],
             name="종료선",
-            line=dict(color="rgba(120,220,255,0.60)", width=1.2, dash="dot"),
+            line=dict(color="rgba(120,220,255,0.92)", width=1.8, dash="dot"),
         ))
     if indicator != "Index":
         spx_visible = spx_s.reindex(chart_index).dropna() if spx_s is not None else pd.Series(dtype=float)
@@ -10160,7 +10160,7 @@ def _build_macro3_indicator_chart(
                 x=spx_visible.index,
                 y=spx_visible,
                 name=benchmark["label"],
-                line=dict(color="rgba(182,182,182,0.88)", width=1.55),
+                line=dict(color="rgba(182,182,182,0.42)", width=1.1),
                 showlegend=True,
                 hoverinfo="skip",
                 yaxis="y2",
@@ -15597,13 +15597,16 @@ def _macro5_kospi_build_component_chart(
                         y=pd.to_numeric(indicator_visible["close"], errors="coerce"),
                         mode="lines",
                         name="가격",
-                        line=dict(color="rgba(182,182,182,0.88)", width=1.55),
+                        line=dict(
+                            color="rgba(182,182,182,0.42)" if not is_combo2_component else "rgba(182,182,182,0.88)",
+                            width=1.1 if not is_combo2_component else 1.55,
+                        ),
                     ))
                     mandatory_trace_count += 1
                 for col, name, color, dash in [
-                    ("bb_middle", "BB 중심", "rgba(216,195,106,0.74)", "solid"),
-                    ("bb_upper", "BB 상단", "rgba(255,140,105,0.68)", "dot"),
-                    ("bb_lower", "BB 하단", "rgba(120,220,255,0.72)", "dot"),
+                    ("bb_middle", "BB 중심", "rgba(247,201,72,0.95)", "solid"),
+                    ("bb_upper", "BB 상단", "rgba(255,140,105,0.92)", "dot"),
+                    ("bb_lower", "BB 하단", "rgba(120,220,255,0.92)", "dot"),
                 ]:
                     if col in indicator_visible.columns:
                         fig.add_trace(go.Scatter(
@@ -15611,7 +15614,7 @@ def _macro5_kospi_build_component_chart(
                             y=pd.to_numeric(indicator_visible[col], errors="coerce"),
                             mode="lines",
                             name=name,
-                            line=dict(color=color, width=1, dash=dash),
+                            line=dict(color=color, width=2.0, dash=dash),
                         ))
                         mandatory_trace_count += 1
             elif kind == "rsi":
@@ -15621,12 +15624,12 @@ def _macro5_kospi_build_component_chart(
                         y=pd.to_numeric(indicator_visible["rsi"], errors="coerce"),
                         mode="lines",
                         name="RSI",
-                        line=dict(color="rgba(124,124,247,0.82)", width=1.35),
+                        line=dict(color="rgba(247,201,72,0.95)", width=2.0, dash="solid"),
                     ))
                     mandatory_trace_count += 1
                 for col, name, color in [
-                    ("dyn_upper", "상단 기준", "rgba(255,140,105,0.55)"),
-                    ("dyn_lower", "하단 기준", "rgba(120,220,255,0.60)"),
+                    ("dyn_upper", "상단 기준", "rgba(255,140,105,0.92)"),
+                    ("dyn_lower", "하단 기준", "rgba(120,220,255,0.92)"),
                 ]:
                     if col in indicator_visible.columns:
                         fig.add_trace(go.Scatter(
@@ -15634,7 +15637,7 @@ def _macro5_kospi_build_component_chart(
                             y=pd.to_numeric(indicator_visible[col], errors="coerce"),
                             mode="lines",
                             name=name,
-                            line=dict(color=color, width=1.2, dash="dot"),
+                            line=dict(color=color, width=1.8, dash="dot"),
                         ))
                         mandatory_trace_count += 1
             else:
@@ -15644,12 +15647,12 @@ def _macro5_kospi_build_component_chart(
                         y=pd.to_numeric(indicator_visible[col], errors="coerce"),
                         mode="lines",
                         name=col.upper(),
-                        line=dict(color="rgba(216,195,106,0.32)", width=1.1),
+                        line=dict(color="rgba(247,201,72,0.95)", width=2.0, dash="solid"),
                     ))
                     mandatory_trace_count += 1
                 for col, name, color in [
-                    ("risk_start_line", "시작선", "rgba(255,140,105,0.55)"),
-                    ("risk_end_line", "종료선", "rgba(120,220,255,0.60)"),
+                    ("risk_start_line", "시작선", "rgba(255,140,105,0.92)"),
+                    ("risk_end_line", "종료선", "rgba(120,220,255,0.92)"),
                 ]:
                     if col in indicator_visible.columns:
                         fig.add_trace(go.Scatter(
@@ -15657,7 +15660,7 @@ def _macro5_kospi_build_component_chart(
                             y=pd.to_numeric(indicator_visible[col], errors="coerce"),
                             mode="lines",
                             name=name,
-                            line=dict(color=color, width=1.2, dash="dot"),
+                            line=dict(color=color, width=1.8, dash="dot"),
                         ))
                         mandatory_trace_count += 1
 
@@ -15671,7 +15674,7 @@ def _macro5_kospi_build_component_chart(
                         y=pd.to_numeric(indicator_visible[raw_col], errors="coerce"),
                         mode="lines",
                         name="원자료",
-                        line=dict(color="rgba(182,182,182,0.22)", width=0.85),
+                        line=dict(color="rgba(182,182,182,0.28)", width=0.85),
                     ))
         else:
             return None
@@ -15682,7 +15685,10 @@ def _macro5_kospi_build_component_chart(
         yaxis="y" if is_combo2_component else "y2",
         mode="lines",
         name="KOSPI",
-        line=dict(color="rgba(182,182,182,0.88)", width=1.55),
+        line=dict(
+            color="rgba(182,182,182,0.42)" if not is_combo2_component else "rgba(182,182,182,0.88)",
+            width=1.1 if not is_combo2_component else 1.55,
+        ),
     ))
     _macro5_kospi_add_price_markers(fig, merged, yaxis="y" if is_combo2_component else "y2")
     _macro5_kospi_apply_macro4_chart_layout(fig, chart_title, _MACRO5_KOSPI_CHART_HEIGHT, x_start, x_end)
