@@ -233,13 +233,19 @@ def _component_chart(payload: dict[str, Any], parent_id: str, component_id: str,
         chart = chart.loc[chart["component_id"].eq(component_id)]
         if chart.empty:
             return None
+        rsi_visible = "rsi" in chart and chart["rsi"].notna().any()
+        if rsi_visible:
+            fig.add_trace(go.Scatter(
+                x=chart["date"], y=chart["rsi"], name="RSI",
+                line=dict(color="#F7C948", width=2.0, dash="solid"),
+            ))
         fields = (("ema", "EMA", "#F7C948", "solid"), ("start_line", "시작선", "#FF8C69", "dot"), ("end_line", "종료선", "#78DCFF", "dot"))
         if show_aux:
             fields = (("value", "Raw", "#B6B6B6", "solid"),) + fields
         for column, label, color, dash in fields:
             if column in chart and chart[column].notna().any():
                 fig.add_trace(go.Scatter(x=chart["date"], y=chart[column], name=label, line=dict(color=color, width=0.85 if column == "value" else 2.0, dash=dash)))
-        for column, label, color in (("lower", "하단", "#78DCFF"), ("upper", "상단", "#FF8C69")):
+        for column, label, color in (("lower", "하단 기준" if rsi_visible else "하단", "#78DCFF"), ("upper", "상단 기준" if rsi_visible else "상단", "#FF8C69")):
             if column in chart and chart[column].notna().any():
                 fig.add_trace(go.Scatter(x=chart["date"], y=chart[column], name=label, line=dict(color=color, width=1.8, dash="dot")))
         fig.add_trace(go.Scatter(x=benchmark["date"], y=benchmark["ndx_close"], name="NASDAQ 100", yaxis="y2", line=dict(color="rgba(182,182,182,0.42)", width=1.1)))
