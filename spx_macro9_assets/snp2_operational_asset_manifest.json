@@ -9,7 +9,8 @@
     "candidate_compression_run": "/Users/ibaeksan/Documents/프로젝트/technical-signal-dashboard/divergence_analysis/runs/run_20260927T_snp2_v211_candidate_compression_v6",
     "combo2_authoritative_t1": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_snp/outputs/snp/combo2/final_selection/snp_c2_cross_m2_m12_tier_compression_20260926_r3/02_state/official_t1_state.npz",
     "combo2_authoritative_t1_sha256": "03dc7831effe8f7117eb8e33a0ea88c40366aef2931ad8d10d2f8b97c28eeace",
-    "panel_source_sha256": "92da6633fc12dea2aa0d02726e4910b527ab72b82c17156e857d96eadbb5863c"
+    "panel_source_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_snp/data/frozen/snp/snapshot_sp2_20260823T040000Z/snp_core15_inputs.parquet",
+    "panel_source_sha256": "cb1622d41c74c7667dca418cd57f2a6ed19794e11393fd7e13bd1e81b74f12ef"
   },
   "contract": {
     "evaluation_period": "2008-04-01~2026-08-21",
@@ -47,8 +48,8 @@
       "bytes": 9652
     },
     "operational/snp2_source_panel.parquet": {
-      "sha256": "92da6633fc12dea2aa0d02726e4910b527ab72b82c17156e857d96eadbb5863c",
-      "bytes": 1181355
+      "sha256": "a9c52bc872f12e965fd43bfa2791d444206807775b2a01ee0eb944ad1d7f2160",
+      "bytes": 1237479
     }
   }
 }

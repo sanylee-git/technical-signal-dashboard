@@ -19,6 +19,7 @@ OUT = ASSETS / "operational"
 SINGLE_RUN = ROOT / "divergence_analysis/runs/run_20260925T145120Z_snp2_kospi_aligned_single69"
 COMPRESSION_RUN = ROOT / "divergence_analysis/runs/run_20260927T_snp2_v211_candidate_compression_v6"
 COMBO2_STATE = ROOT.parent / "macro_dashboard_snp/outputs/snp/combo2/final_selection/snp_c2_cross_m2_m12_tier_compression_20260926_r3/02_state/official_t1_state.npz"
+PANEL_SOURCE = ROOT.parent / "macro_dashboard_snp/data/frozen/snp/snapshot_sp2_20260823T040000Z/snp_core15_inputs.parquet"
 N8_N12 = ROOT / "divergence_analysis/runs/run_20260926T_n8_c15_m15_n9_n12_sequential_v1"
 N13_N15 = ROOT / "divergence_analysis/runs/run_20260926T_n12_c16_m14_n13_n15_sequential_v3"
 
@@ -185,11 +186,25 @@ def _make_combo2_reference(official: pd.DataFrame, combo2: pd.DataFrame) -> pd.D
     return output
 
 
+def _make_operational_panel() -> pd.DataFrame:
+    """Materialize the exact Single69 research panel plus runtime-only fields."""
+    panel = pd.read_parquet(PANEL_SOURCE).copy()
+    panel["date"] = pd.to_datetime(panel["date"]).dt.normalize()
+    panel = panel.sort_values("date", kind="mergesort").drop_duplicates("date", keep="last").reset_index(drop=True)
+    panel["hy_raw_proxy"] = -pd.to_numeric(panel["hy_oas_safe"], errors="coerce")
+    panel["ig_raw_proxy"] = -pd.to_numeric(panel["ig_oas_safe"], errors="coerce")
+    panel["spx_performance_return"] = pd.to_numeric(panel["close"], errors="coerce").pct_change()
+    panel["breadth_input_eligible"] = panel["breadth_raw"].gt(0).fillna(False)
+    required = ["hy_oas_safe", "ig_oas_safe", "global_credit_stress_safe", "vix", "vix3m", "real_yield_10y", "spread_10y2y", "spread_10y3m", "dgs10"]
+    panel["core15_input_eligible"] = panel[["ohlc_signal_eligible", "breadth_input_eligible"]].all(axis=1) & panel[required].notna().all(axis=1)
+    return panel
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     selected = pd.read_parquet(SINGLE_RUN / "05_selection/kospi_aligned_single69.parquet")
     official = pd.read_parquet(SINGLE_RUN / "03_states/selected_single69_official_t1.parquet")
-    panel = pd.read_parquet(ASSETS / "frozen/frozen_spx_proxy_only_core15_input.parquet")
+    panel = _make_operational_panel()
     combo1 = pd.read_csv(COMPRESSION_RUN / "combo1/input_candidates.csv", low_memory=False)
     combo2 = pd.read_csv(COMPRESSION_RUN / "combo2/input_candidates.csv", low_memory=False)
     combo1 = combo1.loc[combo1["candidate_id"].astype(str).isin([x[0] for x in COMBO1_IDS])].copy()
@@ -227,7 +242,8 @@ def main() -> None:
             "candidate_compression_run": str(COMPRESSION_RUN.resolve()),
             "combo2_authoritative_t1": str(COMBO2_STATE.resolve()),
             "combo2_authoritative_t1_sha256": _sha256(COMBO2_STATE),
-            "panel_source_sha256": _sha256(ASSETS / "frozen/frozen_spx_proxy_only_core15_input.parquet"),
+            "panel_source_path": str(PANEL_SOURCE.resolve()),
+            "panel_source_sha256": _sha256(PANEL_SOURCE),
         },
         "contract": {
             "evaluation_period": "2008-04-01~2026-08-21",
