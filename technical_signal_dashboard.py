@@ -10330,18 +10330,18 @@ def _build_macro6_indicator_chart(
         signal_df = signal_df.reindex(chart_index)
         price = ohlc["Close"].reindex(chart_index).dropna()
         _add_macro_indicator_risk_background(fig, signal_df, x_start, x_end)
-        fig.add_trace(go.Scatter(x=price.index, y=price, name=benchmark["label"], line=dict(color="rgba(182,182,182,0.88)", width=1.55)))
+        fig.add_trace(go.Scatter(x=price.index, y=price, name=benchmark["label"], line=dict(color="rgba(182,182,182,0.42)", width=1.1)))
         for col, name, color, dash in [
-            ("bb_middle", "BB Middle", "rgba(216,195,106,0.74)", "solid"),
-            ("bb_upper", "BB Upper", "rgba(255,140,105,0.68)", "dot"),
-            ("bb_lower", "BB Lower", "rgba(120,220,255,0.72)", "dot"),
+            ("bb_middle", "BB 중심", "rgba(247,201,72,0.95)", "solid"),
+            ("bb_upper", "BB 상단", "rgba(255,140,105,0.92)", "dot"),
+            ("bb_lower", "BB 하단", "rgba(120,220,255,0.92)", "dot"),
         ]:
             if col in signal_df.columns:
                 fig.add_trace(go.Scatter(
                     x=signal_df.index,
                     y=signal_df[col],
                     name=name,
-                    line=dict(color=color, width=1.15, dash=dash),
+                    line=dict(color=color, width=2.0, dash=dash),
                 ))
         start_y = price.reindex(signal_df.index[signal_df["risk_start_signal"].fillna(False)])
         end_y = price.reindex(signal_df.index[signal_df["risk_end_signal"].fillna(False)])
@@ -10349,6 +10349,56 @@ def _build_macro6_indicator_chart(
             fig.add_trace(go.Scatter(x=start_y.index, y=start_y, mode="markers", name="리스크 시작", marker=dict(symbol="triangle-down", size=9, color="rgba(210,55,55,0.95)")))
         if not end_y.empty:
             fig.add_trace(go.Scatter(x=end_y.index, y=end_y, mode="markers", name="리스크 종료", marker=dict(symbol="triangle-up", size=9, color="rgba(80,160,255,0.92)")))
+        fig.update_layout(**_ml(title, height=300))
+        fig.update_xaxes(range=[x_start, x_end], autorange=False)
+        return fig
+
+    if cfg.get("kind") == "rsi":
+        signal_visible = signal_df.reindex(chart_index)
+        rsi_visible = signal_visible["rsi"].dropna() if "rsi" in signal_visible.columns else pd.Series(dtype=float)
+        if rsi_visible.empty:
+            return None
+        _add_macro_indicator_risk_background(fig, signal_visible, x_start, x_end)
+        fig.add_trace(go.Scatter(
+            x=rsi_visible.index,
+            y=rsi_visible,
+            name="RSI",
+            line=dict(color="rgba(247,201,72,0.95)", width=2.0, dash="solid"),
+        ))
+        for column, name, color in [
+            ("dyn_upper", "상단 기준", "rgba(255,140,105,0.92)"),
+            ("dyn_lower", "하단 기준", "rgba(120,220,255,0.92)"),
+        ]:
+            if column in signal_visible.columns and signal_visible[column].notna().any():
+                fig.add_trace(go.Scatter(
+                    x=signal_visible.index,
+                    y=signal_visible[column],
+                    name=name,
+                    line=dict(color=color, width=1.8, dash="dot"),
+                ))
+        if indicator != "Index":
+            spx_visible = spx_s.reindex(chart_index).dropna() if spx_s is not None else pd.Series(dtype=float)
+            if not spx_visible.empty:
+                fig.add_trace(go.Scatter(
+                    x=spx_visible.index,
+                    y=spx_visible,
+                    name=benchmark["label"],
+                    line=dict(color="rgba(182,182,182,0.42)", width=1.1),
+                    showlegend=True,
+                    hoverinfo="skip",
+                    yaxis="y2",
+                ))
+            fig.update_layout(yaxis2=_visible_price_yaxis("y", "right"))
+            marker_price, marker_axis = spx_visible, "y2"
+        else:
+            marker_price, marker_axis = rsi_visible, "y"
+        _add_price_signal_markers(
+            fig,
+            signal_visible.rename(columns={"risk_start_signal": "down_start_signal", "risk_end_signal": "down_end_signal"}),
+            marker_price,
+            yaxis=marker_axis,
+            prefix=indicator,
+        )
         fig.update_layout(**_ml(title, height=300))
         fig.update_xaxes(range=[x_start, x_end], autorange=False)
         return fig
@@ -10379,21 +10429,21 @@ def _build_macro6_indicator_chart(
         x=main_s.index,
         y=main_s,
         name=ema_col.upper() if ema_col else indicator,
-        line=dict(color="rgba(216,195,106,0.32)", width=1.1),
+        line=dict(color="rgba(247,201,72,0.95)", width=2.0, dash="solid"),
     ))
     if "risk_start_line" in signal_df.columns:
         fig.add_trace(go.Scatter(
             x=signal_df.index,
             y=signal_df["risk_start_line"],
             name="시작선",
-            line=dict(color="rgba(255,140,105,0.55)", width=1.2, dash="dot"),
+            line=dict(color="rgba(255,140,105,0.92)", width=1.8, dash="dot"),
         ))
     if "risk_end_line" in signal_df.columns:
         fig.add_trace(go.Scatter(
             x=signal_df.index,
             y=signal_df["risk_end_line"],
             name="종료선",
-            line=dict(color="rgba(120,220,255,0.60)", width=1.2, dash="dot"),
+            line=dict(color="rgba(120,220,255,0.92)", width=1.8, dash="dot"),
         ))
     if indicator != "Index":
         spx_visible = spx_s.reindex(chart_index).dropna() if spx_s is not None else pd.Series(dtype=float)
@@ -10402,7 +10452,7 @@ def _build_macro6_indicator_chart(
                 x=spx_visible.index,
                 y=spx_visible,
                 name=benchmark["label"],
-                line=dict(color="rgba(182,182,182,0.88)", width=1.55),
+                line=dict(color="rgba(182,182,182,0.42)", width=1.1),
                 showlegend=True,
                 hoverinfo="skip",
                 yaxis="y2",
