@@ -25,28 +25,28 @@ STAGE_SCORES = {"매수심화": -3, "매수": -2, "매수준비": -1, "홀드": 
 PERIOD_OPTIONS: list[int | str] = [2, 3, 5, 7, 10, 15, "all"]
 
 SPX_OPERATIONAL_ROLE_OVERRIDES = {
-    # Operational display roles are intentionally separate from the frozen
-    # research metrics and candidate definitions.
-    "ff766a2413cf24620dae5ba4": "Main1 MDD 방어·Calmar형",
-    "f79be460c762828a3a07d8d6": "Main2 기간 안정형",
-    "8ed8c962d98d1ee2504c6ae0": "Main1 초저-Short 중형조합형",
-    "acaaf10f62992f86ad7dbe3a": "Main2 단순·저 Risk-off형",
-    "61b4f8da571569e1eb0c324c": "초저-Short형",
-    "0e715f71f7e73cd2d9f8af55": "Robust·기간안정",
+    "1c1c7597686c9e0a92c22342": "Main1 밸런스형",
+    "dc48a38a72c1ed1bb7c35213": "Main2 빠른복귀형",
+    "20a398b847381b5b90486444": "저휩소형",
+    "4851698f11598ca1988458e8": "큰위기방어형",
+    "08cb9a31c7e4e3627e8801a0": "고성과형",
+    "30d59a9bc0660ad8f05022e0": "Main1 밸런스형",
+    "9542e4c75d39ba78d33f1771": "Main2 조기경보형",
+    "9c74969a657d487a21698851": "빠른복귀형",
+    "c793ab337024e4ffd35c3f9c": "저휩소형",
+    "bc255fa19b22198946a3d4cd": "고성과형",
 }
 SPX_OPERATIONAL_DISPLAY_ORDER = {
-    # Main1/Main2 are first within each family; the remaining frozen Final10
-    # candidates retain their fixed membership and only fill the later slots.
-    "ff766a2413cf24620dae5ba4": 1,
-    "f79be460c762828a3a07d8d6": 2,
-    "7b12636f7551ff2040b9c8ed": 3,
-    "939788293cd86b8488a45f38": 4,
-    "1315bcf6403020b0353ca32b": 5,
-    "8ed8c962d98d1ee2504c6ae0": 1,
-    "acaaf10f62992f86ad7dbe3a": 2,
-    "95cff35563d9d4316b84daa8": 3,
-    "61b4f8da571569e1eb0c324c": 4,
-    "0e715f71f7e73cd2d9f8af55": 5,
+    "1c1c7597686c9e0a92c22342": 1,
+    "dc48a38a72c1ed1bb7c35213": 2,
+    "20a398b847381b5b90486444": 3,
+    "4851698f11598ca1988458e8": 4,
+    "08cb9a31c7e4e3627e8801a0": 5,
+    "30d59a9bc0660ad8f05022e0": 1,
+    "9542e4c75d39ba78d33f1771": 2,
+    "9c74969a657d487a21698851": 3,
+    "c793ab337024e4ffd35c3f9c": 4,
+    "bc255fa19b22198946a3d4cd": 5,
 }
 
 
@@ -474,7 +474,7 @@ def render_macro9_spx_section(container: Any, *, payload: dict[str, Any] | None 
         final = _display_final(payload["final10"])
         combo2, combo1 = _ordered_candidate_ids(final, "COMBO2"), _ordered_candidate_ids(final, "COMBO1")
         ordered, separator = combo2 + combo1, "__macro9_spx_combo1_separator__"
-        default = combo1[0]
+        default = combo2[0]
         if st.session_state.get("macro9_spx_preset") == separator or st.session_state.get("macro9_spx_preset") not in ordered:
             st.session_state["macro9_spx_preset"] = default
         labels = {str(row.candidate_id): _candidate_label(row._asdict()) for row in final.itertuples(index=False)}
@@ -526,7 +526,7 @@ def render_macro9_spx_section(container: Any, *, payload: dict[str, Any] | None 
         with st.expander("지표별 상태 보기", expanded=False):
             st.markdown(_component_status_table(payload, candidate_id), unsafe_allow_html=True)
         with st.expander("데이터·Proxy 계약", expanded=False):
-            st.markdown("<div class='macro2-helper-text'>Frozen S&P Core15 기준선 + 최신 FRED/Yahoo/Cboe tail · ^GSPC 기준지수<br><b>Proxy Only</b> · HY Proxy = DBAA − DGS10 · IG Proxy = DAAA − DGS10 · 직접 OAS·stitching 미사용</div>", unsafe_allow_html=True)
+            st.markdown("<div class='macro2-helper-text'>S&P2 corrected Single69 기준선 + 최신 FRED/Yahoo/Cboe tail · ^GSPC 기준지수<br><b>Proxy Only</b> · HY Proxy = DBAA − DGS10 · IG Proxy = DAAA − DGS10 · 직접 OAS·stitching 미사용</div>", unsafe_allow_html=True)
         st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
         main = _main_chart(payload, candidate_id, state.basis_date, period)
         if main is None:

@@ -1,0 +1,54 @@
+{
+  "status": "PASS_SPX2_OPERATIONAL_FINAL10_ASSETS_READY",
+  "runtime_dependency": "SNP2_OPERATIONAL_NAMESPACE_ONLY",
+  "source_lineage": {
+    "single69_selection": "/Users/ibaeksan/Documents/프로젝트/technical-signal-dashboard/divergence_analysis/runs/run_20260925T145120Z_snp2_kospi_aligned_single69/05_selection/kospi_aligned_single69.parquet",
+    "single69_selection_sha256": "3ed77381cf737c5d75960b194eeaa7eae0934f3c7ab726b995f2d2ab67e316fa",
+    "single69_official_t1": "/Users/ibaeksan/Documents/프로젝트/technical-signal-dashboard/divergence_analysis/runs/run_20260925T145120Z_snp2_kospi_aligned_single69/03_states/selected_single69_official_t1.parquet",
+    "single69_official_t1_sha256": "f52cb8367fdade85138526d4ffc895e65164271d5bf0906fb833f8bfcf910493",
+    "candidate_compression_run": "/Users/ibaeksan/Documents/프로젝트/technical-signal-dashboard/divergence_analysis/runs/run_20260927T_snp2_v211_candidate_compression_v6",
+    "combo2_authoritative_t1": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_snp/outputs/snp/combo2/final_selection/snp_c2_cross_m2_m12_tier_compression_20260926_r3/02_state/official_t1_state.npz",
+    "combo2_authoritative_t1_sha256": "03dc7831effe8f7117eb8e33a0ea88c40366aef2931ad8d10d2f8b97c28eeace",
+    "panel_source_sha256": "92da6633fc12dea2aa0d02726e4910b527ab72b82c17156e857d96eadbb5863c"
+  },
+  "contract": {
+    "evaluation_period": "2008-04-01~2026-08-21",
+    "single_count": 69,
+    "final_combo1_count": 5,
+    "final_combo2_count": 5,
+    "combo2_default": "30d59a9bc0660ad8f05022e0",
+    "official_t1_application_count": 1,
+    "combo2_authoritative_t1_source": "read-only source state artifact; no UI-side recalculation",
+    "legacy_final10_assets_loaded": false
+  },
+  "outputs": {
+    "operational/snp2_combo2_authoritative_t1.parquet": {
+      "sha256": "0e6a96676225f45ffb9f9fefee9a20939bbb98cf31b19a890beed119c7635503",
+      "bytes": 46626
+    },
+    "operational/snp2_combo2_child_mapping.csv": {
+      "sha256": "b79ec8121a3d0c0651f002c870393c3f2cbbc2f324697550483270cc6f59e688",
+      "bytes": 13061
+    },
+    "operational/snp2_final10.csv": {
+      "sha256": "9f48884fcf5f3ee04a94b6550a362145c9daf81749bfc01744e751cc6acdd07f",
+      "bytes": 6895
+    },
+    "operational/snp2_single69_official_t1.parquet": {
+      "sha256": "f52cb8367fdade85138526d4ffc895e65164271d5bf0906fb833f8bfcf910493",
+      "bytes": 101646
+    },
+    "operational/snp2_single69_raw_seed.parquet": {
+      "sha256": "7e4a3519c91f4e2500898136f6819016a74dc2a83adb86b215753845a7b96b9e",
+      "bytes": 101646
+    },
+    "operational/snp2_single69_registry.parquet": {
+      "sha256": "745c55e7a6465f110f500386e3b32069cdb6fb49b3cd14260897194c9857f558",
+      "bytes": 9652
+    },
+    "operational/snp2_source_panel.parquet": {
+      "sha256": "92da6633fc12dea2aa0d02726e4910b527ab72b82c17156e857d96eadbb5863c",
+      "bytes": 1181355
+    }
+  }
+}

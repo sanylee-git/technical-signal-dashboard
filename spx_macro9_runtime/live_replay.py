@@ -15,6 +15,55 @@ TRANSACTION_COST_BPS = 0.0
 EVALUATION_START = pd.Timestamp("2008-04-01")
 EVALUATION_END = pd.Timestamp("2026-08-21")
 
+# Stage 3 and the Stage4 contract-closure audit isolated this exact S&P2
+# component set as the previous-threshold contract scope. Other Core15
+# components retain their verified runtime formula.
+PREVIOUS_THRESHOLD_COMPONENT_IDS = frozenset({
+    "snp__global_credit_stress__EMA10_W120_S35_E10",
+    "snp__global_credit_stress__EMA20_W480_S50_E40",
+    "snp__global_credit_stress__EMA40_W60_S50_E10",
+    "snp__snp_breadth__EMA10_W480_S35_E25",
+    "snp__snp_breadth__EMA20_W240_S50_E25",
+    "snp__snp_breadth__EMA80_W120_S35_E25",
+    "snp__snp_index_level__EMA40_W120_S75_E65",
+    "snp__snp_index_level__EMA80_W60_S50_E40",
+    "snp__us_10y_2y_spread__EMA40_W30_S90_E25",
+    "snp__us_10y_2y_spread__EMA40_W30_S90_E65",
+    "snp__us_10y_2y_spread__EMA5_W480_S75_E65",
+    "snp__us_10y_3m_spread__EMA20_W60_S90_E65",
+    "snp__us_10y_3m_spread__EMA40_W60_S50_E10",
+    "snp__us_10y_real_yield__EMA1_W240_S75_E25",
+    "snp__us_10y_real_yield__EMA20_W30_S75_E25",
+    "snp__us_10y_real_yield__EMA20_W30_S90_E40",
+    "snp__us_10y_real_yield__EMA5_W240_S75_E25",
+    "snp__us_hy_oas__EMA10_W480_S20_E10",
+    "snp__us_hy_oas__EMA10_W480_S50_E10",
+    "snp__us_hy_oas__EMA20_W120_S35_E25",
+    "snp__us_hy_oas__EMA20_W480_S50_E25",
+    "snp__us_ig_oas__EMA40_W120_S75_E65",
+    "snp__us_ig_oas__EMA80_W120_S90_E10",
+    "snp__us_ig_oas__EMA80_W120_S90_E80",
+    "snp__vix_level__EMA10_W120_S50_E25",
+    "snp__vix_level__EMA5_W30_S90_E10",
+    "snp__vix_level__EMA80_W120_S75_E65",
+    "snp__vix_level__EMA80_W480_S90_E25",
+    "snp__vix_spread__EMA40_W480_S90_E40",
+    "snp__vix_spread__EMA40_W60_S75_E10",
+    "snp__vix_spread__EMA40_W60_S90_E10",
+    "snp__snp_hv__HV10_EMA40_W30_S90_E25",
+    "snp__snp_hv__HV40_EMA10_W480_S20_E10",
+    "snp__snp_hv__HV40_EMA20_W30_S75_E65",
+    "snp__snp_hv__HV40_EMA20_W30_S90_E65",
+    "snp__snp_hv__HV40_EMA80_W240_S90_E40",
+    "snp__snp_natr__NATR10_EMA40_W30_S75_E65",
+    "snp__snp_natr__NATR20_EMA1_W240_S20_E10",
+    "snp__snp_natr__NATR20_EMA1_W480_S20_E10",
+    "snp__snp_natr__NATR40_EMA10_W120_S20_E10",
+    "snp__snp_natr__NATR40_EMA80_W480_S50_E25",
+    "snp__us_10y_nominal_yield_slope__SW20_EMA5_W240_S75_E40",
+    "snp__us_10y_nominal_yield_slope__SW80_EMA5_W120_S90_E65",
+})
+
 
 def _state_from_events(start_event: pd.Series, end_event: pd.Series) -> tuple[pd.Series, pd.Series, pd.Series]:
     index = start_event.index.union(end_event.index).sort_values()
@@ -35,7 +84,13 @@ def _state_from_events(start_event: pd.Series, end_event: pd.Series) -> tuple[pd
     return pd.Series(state, index=index), pd.Series(start_out, index=index), pd.Series(end_out, index=index)
 
 
-def _dynamic_signal(series: pd.Series, params: dict[str, object], event_allowed: pd.Series | None = None) -> pd.DataFrame:
+def _dynamic_signal(
+    series: pd.Series,
+    params: dict[str, object],
+    event_allowed: pd.Series | None = None,
+    *,
+    use_previous_threshold: bool = False,
+) -> pd.DataFrame:
     out = pd.DataFrame({"value": pd.to_numeric(series, errors="coerce")}).dropna().sort_index()
     if out.empty:
         return pd.DataFrame()
@@ -50,8 +105,10 @@ def _dynamic_signal(series: pd.Series, params: dict[str, object], event_allowed:
     if out.empty:
         return out
     previous_ema = out["ema"].shift(1)
-    start = (previous_ema >= out["start_line"]) & (out["ema"] < out["start_line"])
-    end = (previous_ema <= out["end_line"]) & (out["ema"] > out["end_line"])
+    previous_start_line = out["start_line"].shift(1) if use_previous_threshold else out["start_line"]
+    previous_end_line = out["end_line"].shift(1) if use_previous_threshold else out["end_line"]
+    start = (previous_ema >= previous_start_line) & (out["ema"] < out["start_line"])
+    end = (previous_ema <= previous_end_line) & (out["ema"] > out["end_line"])
     if event_allowed is not None:
         allowed = event_allowed.reindex(out.index).fillna(False).astype(bool)
         start &= allowed
@@ -156,8 +213,9 @@ def _core_detail_signal(panel: pd.DataFrame, record: pd.Series) -> pd.DataFrame:
     params = json.loads(str(record.params_json))
     calendar = pd.DatetimeIndex(panel["date"]).normalize()
     indicator = str(record.indicator_id)
+    use_previous_threshold = str(record.candidate_id) in PREVIOUS_THRESHOLD_COMPONENT_IDS
     if indicator == "us_10y_nominal_yield_slope":
-        signal = _dynamic_signal(-_rolling_slope(_panel_series(panel, "dgs10"), int(params["slope_window"])), params)
+        signal = _dynamic_signal(-_rolling_slope(_panel_series(panel, "dgs10"), int(params["slope_window"])), params, use_previous_threshold=use_previous_threshold)
     elif indicator == "snp_rsi":
         signal = _rsi_signal(_panel_series(panel, "close"), params)
     else:
@@ -170,13 +228,13 @@ def _core_detail_signal(panel: pd.DataFrame, record: pd.Series) -> pd.DataFrame:
             signal = _bollinger_signal(close.where(ohlc), high.where(ohlc), low.where(ohlc), params, event_allowed)
         elif indicator == "snp_natr":
             source = -(100.0 * _wilder_atr(high.where(ohlc), low.where(ohlc), close, int(params["natr_n"])) / close)
-            signal = _dynamic_signal(source, params, event_allowed)
+            signal = _dynamic_signal(source, params, event_allowed, use_previous_threshold=use_previous_threshold)
         elif indicator == "snp_hv":
             valid_close = close.where(close > 0.0)
             source = -(np.log(valid_close / valid_close.shift(1)).rolling(int(params["hv_n"]), min_periods=int(params["hv_n"])).std(ddof=1) * np.sqrt(252.0))
-            signal = _dynamic_signal(source, params)
+            signal = _dynamic_signal(source, params, use_previous_threshold=use_previous_threshold)
         else:
-            signal = _dynamic_signal(_panel_series(panel, str(record["source_column"]), str(record["transform"])), params)
+            signal = _dynamic_signal(_panel_series(panel, str(record["source_column"]), str(record["transform"])), params, use_previous_threshold=use_previous_threshold)
     return signal
 
 
@@ -197,7 +255,7 @@ def replay_core(panel: pd.DataFrame, registry: pd.DataFrame) -> dict[str, dict[s
     return result
 
 
-def replay_core_chart_history(panel: pd.DataFrame, registry: pd.DataFrame) -> pd.DataFrame:
+def replay_core_chart_history(panel: pd.DataFrame, registry: pd.DataFrame, core_state: dict[str, dict[str, np.ndarray]] | None = None) -> pd.DataFrame:
     """Expose precomputed Core15 chart fields without UI-side calculation."""
     frame = panel.copy()
     frame["date"] = pd.to_datetime(frame["date"]).dt.normalize()
@@ -209,6 +267,12 @@ def replay_core_chart_history(panel: pd.DataFrame, registry: pd.DataFrame) -> pd
         row = pd.Series(record._asdict())
         detail = _core_detail_signal(frame, row)
         raw, valid, start, end = _align_to_calendar(detail, calendar)
+        if core_state is not None and str(record.candidate_id) in core_state:
+            authoritative = core_state[str(record.candidate_id)]
+            raw = np.asarray(authoritative["raw"], dtype=np.int8)
+            valid = np.asarray(authoritative["valid"], dtype=bool)
+            start = np.asarray(authoritative["start"], dtype=bool)
+            end = np.asarray(authoritative["end"], dtype=bool)
         chart = pd.DataFrame({"date": calendar})
         for column in chart_columns:
             chart[column] = detail[column].reindex(calendar).to_numpy() if column in detail else np.nan
@@ -385,6 +449,7 @@ def _replay_final10(
     core: dict[str, dict[str, np.ndarray]],
     *,
     evaluation_end: pd.Timestamp | None = None,
+    authoritative_t1: dict[str, np.ndarray] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     dates, mask, eval_start, eval_end, returns = performance_calendar(panel, evaluation_end=evaluation_end)
     raw_performance = {candidate_id: value["raw"][mask] for candidate_id, value in core.items()}
@@ -437,6 +502,13 @@ def _replay_final10(
                 raise RuntimeError(f"Combo2 T+1 state unresolved: {candidate_id}")
             prior = float(~state[eval_start - 1].astype(bool))
             semantic = "CHILD_COMBO1_RAW_RISK_STATE_THEN_FINAL_T1_ONCE"
+            if authoritative_t1 is not None and candidate_id in authoritative_t1:
+                reference = np.asarray(authoritative_t1[candidate_id], dtype=np.int8)
+                if len(reference) != len(evaluation_state) or not set(np.unique(reference)).issubset({0, 1}):
+                    raise RuntimeError(f"Combo2 authoritative T+1 state shape unresolved: {candidate_id}")
+                evaluation_state = reference
+                state[eval_start : eval_end + 1] = reference
+                semantic = "AUTHORITATIVE_COMBO2_T1_REFERENCE_ONCE"
         if (evaluation_state < 0).any() or state[eval_start - 1] < 0:
             raise RuntimeError(f"Final10 state unresolved: {candidate_id}")
         values = _metrics(evaluation_state.astype(bool), returns[eval_start : eval_end + 1], dates[eval_start : eval_end + 1], prior)
@@ -446,7 +518,7 @@ def _replay_final10(
             "selection_type": str(record.selection_type),
             "state_semantics": semantic,
             "valid_history_start": str(dates[history_start].date()),
-            "state_hash": hashlib.sha256(np.packbits(evaluation_state.astype(np.uint8)).tobytes()).hexdigest(),
+            "state_hash": hashlib.sha256(np.packbits(evaluation_state.astype(np.uint8), bitorder="little").tobytes()).hexdigest(),
         })
         rows.append(values)
         state_history = state[eval_start : eval_end + 1].astype(np.int8)
@@ -474,8 +546,9 @@ def replay_final10(
     core: dict[str, dict[str, np.ndarray]],
     *,
     evaluation_end: pd.Timestamp | None = None,
+    authoritative_t1: dict[str, np.ndarray] | None = None,
 ) -> pd.DataFrame:
-    return _replay_final10(panel, final10, children, core, evaluation_end=evaluation_end)[0]
+    return _replay_final10(panel, final10, children, core, evaluation_end=evaluation_end, authoritative_t1=authoritative_t1)[0]
 
 
 def replay_final10_history(
@@ -485,9 +558,10 @@ def replay_final10_history(
     core: dict[str, dict[str, np.ndarray]],
     *,
     evaluation_end: pd.Timestamp | None = None,
+    authoritative_t1: dict[str, np.ndarray] | None = None,
 ) -> pd.DataFrame:
     """Return Final10 strategy-state history from the exact Frozen replay."""
-    return _replay_final10(panel, final10, children, core, evaluation_end=evaluation_end)[1]
+    return _replay_final10(panel, final10, children, core, evaluation_end=evaluation_end, authoritative_t1=authoritative_t1)[1]
 
 
 def asset_sha256(path: Path) -> str:

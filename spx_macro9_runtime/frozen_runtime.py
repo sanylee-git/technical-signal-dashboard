@@ -9,80 +9,81 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .frozen_replay import asset_sha256, rebuild_combo1_raw, rebuild_combo2_t1
-from .live_replay import replay_core
+from .frozen_replay import asset_sha256
+from .live_replay import performance_calendar, replay_combo1_raw_history, replay_core, replay_final10, replay_final10_history
 
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "spx_macro9_assets"
 FROZEN = ASSETS / "frozen"
+OPERATIONAL = ASSETS / "operational"
+OPERATIONAL_MANIFEST = ASSETS / "snp2_operational_asset_manifest.json"
 
 
 def _date(value: object) -> str | None:
     return None if value is None or pd.isna(value) else pd.Timestamp(value).strftime("%Y-%m-%d")
 
 
-def _load() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
-    manifest = json.loads((FROZEN / "spx_macro9_live_asset_manifest.json").read_text(encoding="utf-8"))
-    if manifest.get("status") != "PASS_SPX_MACRO9_STAGE3_LIVE_INPUT_ASSETS_READY":
-        raise RuntimeError("S&P Macro9 live-input assets are not verified")
+def _load() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any], pd.DataFrame, pd.DataFrame]:
+    manifest = json.loads(OPERATIONAL_MANIFEST.read_text(encoding="utf-8"))
+    if manifest.get("status") != "PASS_SPX2_OPERATIONAL_FINAL10_ASSETS_READY":
+        raise RuntimeError("S&P2 operational assets are not verified")
     for relative, record in manifest["outputs"].items():
         if asset_sha256(ASSETS / relative) != record["sha256"]:
-            raise RuntimeError(f"S&P Macro9 asset SHA mismatch: {relative}")
-    panel = pd.read_parquet(FROZEN / "frozen_spx_proxy_only_core15_input.parquet")
-    registry = pd.read_parquet(FROZEN / "core15_selected_candidate_registry.parquet")
-    final10 = pd.read_csv(ASSETS / "spx_macro9_final10_runtime.csv")
-    children = pd.read_csv(ASSETS / "spx_macro9_combo2_child_mapping.csv")
-    return panel, registry, final10, children, manifest
+            raise RuntimeError(f"S&P2 operational asset SHA mismatch: {relative}")
+    panel = pd.read_parquet(ASSETS / "operational/snp2_source_panel.parquet")
+    registry = pd.read_parquet(ASSETS / "operational/snp2_single69_registry.parquet")
+    final10 = pd.read_csv(ASSETS / "operational/snp2_final10.csv")
+    children = pd.read_csv(ASSETS / "operational/snp2_combo2_child_mapping.csv")
+    raw_seed = pd.read_parquet(ASSETS / "operational/snp2_single69_raw_seed.parquet")
+    combo2_reference = pd.read_parquet(ASSETS / "operational/snp2_combo2_authoritative_t1.parquet")
+    return panel, registry, final10, children, manifest, raw_seed, combo2_reference
 
 
-def _history_and_seeds(final10: pd.DataFrame, children: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, Any]]:
-    core_raw = pd.read_parquet(FROZEN / "core15_selected_reference_raw_state.parquet")
-    core_valid = pd.read_parquet(FROZEN / "core15_selected_reference_valid_signal.parquet")
-    child_raw = pd.read_parquet(FROZEN / "combo2_required_child_raw_state.parquet")
-    c1_ref = pd.read_parquet(FROZEN / "final_combo1_reference_t1_state.parquet")
-    c2_ref = pd.read_parquet(FROZEN / "final_combo2_reference_t1_state.parquet")
-    for frame in (core_raw, core_valid, child_raw, c1_ref, c2_ref):
-        frame["date"] = pd.to_datetime(frame["date"]).dt.normalize()
+def _authoritative_final_states(reference: pd.DataFrame, dates: pd.DatetimeIndex) -> dict[str, np.ndarray]:
+    source = reference.copy()
+    source["date"] = pd.to_datetime(source["date"]).dt.normalize()
+    source = source.set_index("date").reindex(dates)
+    if source.isna().any().any():
+        raise RuntimeError("S&P2 authoritative Combo2 T+1 date alignment failed")
+    return {str(column): source[column].to_numpy(dtype=np.int8) for column in source.columns}
 
-    rows: list[pd.DataFrame] = []
-    c1_raw_seed: dict[str, int] = {}
-    c1_active_seed: dict[str, int] = {}
-    for record in final10.loc[final10["family"].eq("Combo1")].itertuples(index=False):
-        raw, active = rebuild_combo1_raw(core_raw, core_valid, str(record.component_ids_key).split("|"), int(record.K), int(record.L))
-        states = c1_ref[["date", str(record.candidate_id)]].rename(columns={str(record.candidate_id): "strategy_risk_state"}).copy()
-        active_by_date = pd.Series(np.r_[-1, active[:-1]], index=pd.DatetimeIndex(core_raw["date"]))
-        states["active_count"] = active_by_date.reindex(pd.DatetimeIndex(states["date"])).to_numpy()
-        states["candidate_id"] = str(record.candidate_id)
-        rows.append(states)
-        c1_raw_seed[str(record.candidate_id)] = int(raw[-1])
-        c1_active_seed[str(record.candidate_id)] = int(active[-1])
 
-    c2_raw_seed: dict[str, int] = {}
-    c2_active_seed: dict[str, int] = {}
-    child_seed: dict[str, int] = {column: int(child_raw[column].iloc[-1]) for column in child_raw.columns.drop("date")}
-    for record in final10.loc[final10["family"].eq("Combo2")].itertuples(index=False):
-        child = children.loc[children["parent_candidate_id"].eq(record.candidate_id)].sort_values("child_order", kind="mergesort")
-        child_ids = child["child_canonical_parent_id"].astype(str).tolist()
-        t1, raw = rebuild_combo2_t1(child_raw, child_ids, int(record.K), int(record.L), pd.DatetimeIndex(c2_ref["date"]))
-        active_raw = np.vstack([child_raw[item].to_numpy(dtype=np.int8) for item in child_ids]).sum(axis=0, dtype=np.int16)
-        positions = np.flatnonzero(pd.DatetimeIndex(child_raw["date"]).isin(pd.DatetimeIndex(c2_ref["date"])))
-        states = c2_ref[["date", str(record.candidate_id)]].rename(columns={str(record.candidate_id): "strategy_risk_state"}).copy()
-        states["active_count"] = active_raw[positions - 1]
-        states["candidate_id"] = str(record.candidate_id)
-        if not np.array_equal(t1, states["strategy_risk_state"].to_numpy(dtype=np.int8)):
-            raise RuntimeError(f"Frozen Combo2 T+1 parity failed: {record.candidate_id}")
-        rows.append(states)
-        c2_raw_seed[str(record.candidate_id)] = int(raw[-1])
-        c2_active_seed[str(record.candidate_id)] = int(active_raw[-1])
+def _overlay_authoritative_raw(panel: pd.DataFrame, core: dict[str, dict[str, np.ndarray]], raw_seed: pd.DataFrame) -> dict[str, dict[str, np.ndarray]]:
+    dates = pd.DatetimeIndex(pd.to_datetime(panel["date"]).dt.normalize())
+    seed = raw_seed.copy()
+    seed["date"] = pd.to_datetime(seed["date"]).dt.normalize()
+    positions = dates.get_indexer(pd.DatetimeIndex(seed["date"]))
+    if (positions < 0).any():
+        raise RuntimeError("S&P2 authoritative raw seed is outside source panel")
+    for candidate_id in seed.columns.drop("date"):
+        if candidate_id not in core:
+            raise RuntimeError(f"S&P2 authoritative raw seed candidate is not registered: {candidate_id}")
+        values = pd.to_numeric(seed[candidate_id], errors="coerce").to_numpy(dtype="int8")
+        core[candidate_id]["raw"][positions] = values
+        core[candidate_id]["valid"][positions] = True
+        core[candidate_id]["start"] = np.zeros(len(dates), dtype=bool)
+        core[candidate_id]["end"] = np.zeros(len(dates), dtype=bool)
+        previous = np.r_[-1, core[candidate_id]["raw"][:-1]]
+        current = core[candidate_id]["raw"]
+        core[candidate_id]["start"] = (current == 1) & (previous == 0)
+        core[candidate_id]["end"] = (current == 0) & (previous == 1)
+    return core
 
-    history = pd.concat(rows, ignore_index=True)
-    history["previous_strategy_risk_state"] = history.groupby("candidate_id", sort=False)["strategy_risk_state"].shift(1).fillna(0).astype("int8")
-    history["risk_start"] = history["strategy_risk_state"].eq(1) & history["previous_strategy_risk_state"].eq(0)
-    history["risk_end"] = history["strategy_risk_state"].eq(0) & history["previous_strategy_risk_state"].eq(1)
-    history["valid"] = True
-    history = history.sort_values(["candidate_id", "date"], kind="mergesort").reset_index(drop=True)
-    return history, {"c1_raw": c1_raw_seed, "c1_active": c1_active_seed, "c2_raw": c2_raw_seed, "c2_active": c2_active_seed, "child_raw": child_seed}
+
+def _history_and_seeds(panel: pd.DataFrame, final10: pd.DataFrame, children: pd.DataFrame, core: dict[str, dict[str, np.ndarray]], authoritative_t1: dict[str, np.ndarray]) -> tuple[pd.DataFrame, dict[str, Any]]:
+    history = replay_final10_history(panel, final10, children, core, authoritative_t1=authoritative_t1)
+    child_history = replay_combo1_raw_history(panel, children, core, evaluation_end=pd.Timestamp(panel["date"].max()))
+    latest = history.sort_values("date", kind="mergesort").groupby("candidate_id", sort=False).tail(1).set_index("candidate_id")
+    child_latest = child_history.sort_values("date", kind="mergesort").groupby("combo1_id", sort=False).tail(1).set_index("combo1_id")
+    seeds = {
+        "c1_raw": {str(row.candidate_id): int(latest.loc[str(row.candidate_id), "strategy_risk_state"]) for row in final10.loc[final10["family"].eq("Combo1")].itertuples(index=False)},
+        "c1_active": {str(row.candidate_id): int(latest.loc[str(row.candidate_id), "active_count"]) for row in final10.loc[final10["family"].eq("Combo1")].itertuples(index=False)},
+        "c2_raw": {str(row.candidate_id): int(latest.loc[str(row.candidate_id), "strategy_risk_state"]) for row in final10.loc[final10["family"].eq("Combo2")].itertuples(index=False)},
+        "c2_active": {str(row.candidate_id): int(latest.loc[str(row.candidate_id), "active_count"]) for row in final10.loc[final10["family"].eq("Combo2")].itertuples(index=False)},
+        "child_raw": {str(index): int(row["raw_risk_state"]) for index, row in child_latest.iterrows()},
+    }
+    return history, seeds
 
 
 def _snapshot(final10: pd.DataFrame, history: pd.DataFrame, panel: pd.DataFrame, *, status: str) -> pd.DataFrame:
@@ -113,15 +114,18 @@ def _snapshot(final10: pd.DataFrame, history: pd.DataFrame, panel: pd.DataFrame,
 
 
 def run_frozen_runtime() -> dict[str, Any]:
-    panel, registry, final10, children, manifest = _load()
-    history, seeds = _history_and_seeds(final10, children)
+    panel, registry, final10, children, manifest, raw_seed, combo2_reference = _load()
+    core = _overlay_authoritative_raw(panel, replay_core(panel, registry), raw_seed)
+    dates, _mask, eval_start, eval_end, _returns = performance_calendar(panel)
+    authoritative_t1 = _authoritative_final_states(combo2_reference, dates[eval_start : eval_end + 1])
+    history, seeds = _history_and_seeds(panel, final10, children, core, authoritative_t1)
     cutoff = pd.Timestamp(panel["date"].max()).normalize()
     snapshot = _snapshot(final10, history, panel, status="FROZEN_ONLY")
-    metrics = pd.read_parquet(FROZEN / "final10_frozen_replay_metrics.parquet")
-    core = replay_core(panel, registry)
+    metrics = replay_final10(panel, final10, children, core, authoritative_t1=authoritative_t1)
     return {
         "runtime_mode": "FROZEN_ONLY", "network_access": False, "basis_date": _date(cutoff), "frozen_cutoff": _date(cutoff),
-        "proxy_only": True, "direct_oas_used": False, "asset_manifest_sha256": asset_sha256(FROZEN / "spx_macro9_live_asset_manifest.json"),
+        "proxy_only": True, "direct_oas_used": False, "asset_manifest_sha256": asset_sha256(OPERATIONAL_MANIFEST),
         "snapshot": snapshot, "metrics": metrics, "history": history, "panel": panel, "registry": registry, "final10": final10,
-        "children": children, "seeds": seeds, "core": core,
+        "children": children, "seeds": seeds, "core": core, "raw_seed": raw_seed,
+        "authoritative_t1": authoritative_t1,
     }

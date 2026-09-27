@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .frozen_runtime import _snapshot, run_frozen_runtime
+from .frozen_runtime import _overlay_authoritative_raw, _snapshot, run_frozen_runtime
 from .live_replay import replay_core
 from .live_sources import SOURCE_SPECS, fetch_all_sources
 
@@ -218,7 +218,7 @@ def run_live_runtime(*, as_of: object = None, provider_frames: dict[str, pd.Data
         else "PROVISIONAL" if provisional_basis > FROZEN_CUTOFF else "CONFIRMED"
     )
     panel = panel.loc[pd.to_datetime(panel["date"]).le(provisional_basis)].copy()
-    core = replay_core(panel, frozen_runtime["registry"])
+    core = _overlay_authoritative_raw(panel, replay_core(panel, frozen_runtime["registry"]), frozen_runtime["raw_seed"])
     history = _append_history(frozen_runtime, panel, core=core)
     confirmed_basis = FROZEN_CUTOFF if confirmed_limit is None else min(pd.Timestamp(confirmed_limit).normalize(), provisional_basis)
     confirmed_history = history.loc[pd.to_datetime(history["date"]).le(confirmed_basis)].copy()
