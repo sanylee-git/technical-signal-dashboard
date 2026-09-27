@@ -1,0 +1,119 @@
+{
+  "status": "PASS_SNP2_COMBO1_TRIAL_FROZEN_ASSETS_READY",
+  "mode": "FROZEN_VISUAL_VALIDATION_ONLY",
+  "candidates": [
+    "3e12d084c6d477f9341a659b",
+    "1cb2304e4f83508d7d20b788",
+    "9b0bf6eb468f0e0f9ead4022"
+  ],
+  "candidate_tiers": {
+    "3e12d084c6d477f9341a659b": "T1_00_10",
+    "1cb2304e4f83508d7d20b788": "T2_10_20",
+    "9b0bf6eb468f0e0f9ead4022": "T3_20_30"
+  },
+  "combo2_count": 0,
+  "evaluation_period": [
+    "2008-04-01",
+    "2026-08-21"
+  ],
+  "evaluation_sessions": 4628,
+  "strict_pool_criteria": {
+    "tier4_effective_miss": 0,
+    "tier3_effective_miss": 0,
+    "correction_effective_miss": 0
+  },
+  "selection_order": "Per-tier top 100 from the strict pool by US V2.1 rank; page preview uses the user's T1/T2/T3 first-ranked examples.",
+  "source_runs": {
+    "single_preflight": "run_20260927T131640Z_snp2_ndx_shell_preflight_single",
+    "n4_n15_state_archive": "run_20260927T171600Z_snp2_combo2_n4_n15_parent_pool_robust_similarity",
+    "strict_selection": "run_20260927T182622Z_snp2_strict_us_v21_tier100_selection"
+  },
+  "inputs": {
+    "snp_source_panel.parquet": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/technical-signal-dashboard/divergence_analysis/runs/run_20260927T131640Z_snp2_ndx_shell_preflight_single/01_inputs/snp_source_panel.parquet",
+      "sha256": "a9c52bc872f12e965fd43bfa2791d444206807775b2a01ee0eb944ad1d7f2160",
+      "bytes": 1237479
+    },
+    "snp_single69_registry.parquet": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/technical-signal-dashboard/divergence_analysis/runs/run_20260927T131640Z_snp2_ndx_shell_preflight_single/01_inputs/snp_single69_registry.parquet",
+      "sha256": "745c55e7a6465f110f500386e3b32069cdb6fb49b3cd14260897194c9857f558",
+      "bytes": 9652
+    },
+    "single_raw_state.parquet": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/technical-signal-dashboard/divergence_analysis/runs/run_20260927T131640Z_snp2_ndx_shell_preflight_single/02_single/single_raw_state.parquet",
+      "sha256": "06590b64676672a1097808b05b820a831c9fb65f242f062080aa2a72504eb96c",
+      "bytes": 126921
+    },
+    "single_raw_valid.parquet": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/technical-signal-dashboard/divergence_analysis/runs/run_20260927T131640Z_snp2_ndx_shell_preflight_single/02_single/single_raw_valid.parquet",
+      "sha256": "7e3cd2ba5a7205e4e245aee81e68351211a37feb27853c3d656fc764f276cce7",
+      "bytes": 113278
+    },
+    "single_raw_events_long.parquet": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/technical-signal-dashboard/divergence_analysis/runs/run_20260927T131640Z_snp2_ndx_shell_preflight_single/02_single/single_raw_events_long.parquet",
+      "sha256": "1d3ad871b84c234a6457eb7e3206e0b193a9862815f61a50020c74794c37e76f",
+      "bytes": 847864
+    },
+    "single_official_t1.parquet": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/technical-signal-dashboard/divergence_analysis/runs/run_20260927T131640Z_snp2_ndx_shell_preflight_single/02_single/single_official_t1.parquet",
+      "sha256": "9e86c63798f3e81daed81d07bcb7dfc293721924a18f2c4098015241b3d8ccf6",
+      "bytes": 107668
+    },
+    "official_t1_states.npz": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/technical-signal-dashboard/divergence_analysis/runs/run_20260927T171600Z_snp2_combo2_n4_n15_parent_pool_robust_similarity/03_state/official_t1_states.npz",
+      "sha256": "f75335a6844e2f99046082fc31295e649b7073ed0ec315e232222c371d1e2e52",
+      "bytes": 2891774
+    },
+    "strict_pool_tier100_selected.csv": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/technical-signal-dashboard/divergence_analysis/runs/run_20260927T182622Z_snp2_strict_us_v21_tier100_selection/strict_pool_tier100_selected.csv",
+      "sha256": "00e898f13ee4f4811e5c918b583ff04a3f9d106b1fbd034dd03c9afdd2a23c54",
+      "bytes": 377965
+    },
+    "run_single_preflight.py": {
+      "path": "/Users/ibaeksan/Documents/프로젝트/technical-signal-dashboard/divergence_analysis/runs/run_20260927T131640Z_snp2_ndx_shell_preflight_single/run_single_preflight.py",
+      "sha256": "a452b70054602f17e166a0c40fb09e7fb95e19505e886ac6468098f58eafe009",
+      "bytes": 24304
+    }
+  },
+  "qa": {
+    "single69_registry_count": true,
+    "selected_candidate_ids_exact": true,
+    "component_raw_valid_mismatch": 0,
+    "component_transition_mismatch": 0,
+    "candidate_official_t1_mismatch": 0,
+    "official_t1_application_count": 1,
+    "additional_t1_application_count": 0,
+    "candidate_state_hash_match": true,
+    "candidate_invalid_state_cells": 0,
+    "component_lineage_complete": true,
+    "network_fetch": 0,
+    "combo2_count": 0
+  },
+  "outputs": {
+    "candidate_history.parquet": {
+      "sha256": "4bfc405db57c276eccb5ac43a5b985bbc483f38e71c8d80c39128d0c16fb6df3",
+      "bytes": 64258,
+      "rows": 13884
+    },
+    "component_history.parquet": {
+      "sha256": "07969e7752b717cd90fafc9c8569128bdb824694c3f0f2e9136ddca422d932f1",
+      "bytes": 291335,
+      "rows": 166608
+    },
+    "component_chart_history.parquet": {
+      "sha256": "5ccdd722d8cefdd50d9ac2e8b056b2b44bedf84568ef5e4f8adea2f23d1da4c1",
+      "bytes": 2755602,
+      "rows": 97188
+    },
+    "benchmark_history.parquet": {
+      "sha256": "7acf475f52b467b860965563227479592a914c90293626013abb48e09e97bbab",
+      "bytes": 77130,
+      "rows": 4628
+    },
+    "candidate_metrics.parquet": {
+      "sha256": "382e665183880cf0f43eea945602f1ac5cfaa0946cd074508a1b6b469b588079",
+      "bytes": 19928,
+      "rows": 3
+    }
+  }
+}
