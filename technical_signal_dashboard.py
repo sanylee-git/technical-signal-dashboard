@@ -29,7 +29,7 @@ import traceback
 from zoneinfo import ZoneInfo
 from kosdaq_macro7_ui import render_macro7_kosdaq_section
 from nasdaq_macro8_ui import render_macro8_nasdaq_section
-from spx_macro9_trial_ui import render_snp2_combo1_trial_section
+from spx_macro9_ui import render_macro9_spx_section
 from macro_source_schedule import source_schedule_table_html
 warnings.filterwarnings('ignore')
 
@@ -19132,10 +19132,10 @@ def main(page="signal"):
         _macro8_nasdaq_container = tab9 if page == "market_macro" else tab3
         render_macro8_nasdaq_section(_macro8_nasdaq_container)
 
-    # TAB 3I — S&P 매크로 지표 2 (Proxy-only Final10)
+    # TAB 3I — S&P 매크로 지표 2 (Proxy-only selected Final20)
     if page == "macro9_spx" or (page == "market_macro" and _market_macro_section == "macro9_spx"):
         _macro9_spx_container = tab10 if page == "market_macro" else tab3
-        render_snp2_combo1_trial_section(_macro9_spx_container)
+        render_macro9_spx_section(_macro9_spx_container)
 
         # ═══════════════════════════════════════════════════════════
         # TAB 3 — 매크로 지표

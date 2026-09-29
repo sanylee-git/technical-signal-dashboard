@@ -208,12 +208,17 @@ def _panel_series(panel: pd.DataFrame, column: str, transform: str = "identity")
     return -result if transform == "negate" else result
 
 
-def _core_detail_signal(panel: pd.DataFrame, record: pd.Series) -> pd.DataFrame:
+def _core_detail_signal(
+    panel: pd.DataFrame,
+    record: pd.Series,
+    *,
+    force_previous_threshold: bool = False,
+) -> pd.DataFrame:
     """Return the existing Core15 signal frame for presentation only."""
     params = json.loads(str(record.params_json))
     calendar = pd.DatetimeIndex(panel["date"]).normalize()
     indicator = str(record.indicator_id)
-    use_previous_threshold = str(record.candidate_id) in PREVIOUS_THRESHOLD_COMPONENT_IDS
+    use_previous_threshold = force_previous_threshold or str(record.candidate_id) in PREVIOUS_THRESHOLD_COMPONENT_IDS
     if indicator == "us_10y_nominal_yield_slope":
         signal = _dynamic_signal(-_rolling_slope(_panel_series(panel, "dgs10"), int(params["slope_window"])), params, use_previous_threshold=use_previous_threshold)
     elif indicator == "snp_rsi":
@@ -238,24 +243,44 @@ def _core_detail_signal(panel: pd.DataFrame, record: pd.Series) -> pd.DataFrame:
     return signal
 
 
-def _core_signal(panel: pd.DataFrame, record: pd.Series) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def _core_signal(
+    panel: pd.DataFrame,
+    record: pd.Series,
+    *,
+    force_previous_threshold: bool = False,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     calendar = pd.DatetimeIndex(panel["date"]).normalize()
-    signal = _core_detail_signal(panel, record)
+    signal = _core_detail_signal(panel, record, force_previous_threshold=force_previous_threshold)
     return _align_to_calendar(signal, calendar)
 
 
-def replay_core(panel: pd.DataFrame, registry: pd.DataFrame) -> dict[str, dict[str, np.ndarray]]:
+def replay_core(
+    panel: pd.DataFrame,
+    registry: pd.DataFrame,
+    *,
+    force_previous_threshold: bool = False,
+) -> dict[str, dict[str, np.ndarray]]:
     panel = panel.copy()
     panel["date"] = pd.to_datetime(panel["date"]).dt.normalize()
     panel = panel.sort_values("date", kind="mergesort").drop_duplicates("date", keep="last").reset_index(drop=True)
     result: dict[str, dict[str, np.ndarray]] = {}
     for record in registry.sort_values("candidate_id", kind="mergesort").itertuples(index=False):
-        raw, valid, start, end = _core_signal(panel, pd.Series(record._asdict()))
+        raw, valid, start, end = _core_signal(
+            panel,
+            pd.Series(record._asdict()),
+            force_previous_threshold=force_previous_threshold,
+        )
         result[str(record.candidate_id)] = {"raw": raw, "valid": valid, "start": start, "end": end}
     return result
 
 
-def replay_core_chart_history(panel: pd.DataFrame, registry: pd.DataFrame, core_state: dict[str, dict[str, np.ndarray]] | None = None) -> pd.DataFrame:
+def replay_core_chart_history(
+    panel: pd.DataFrame,
+    registry: pd.DataFrame,
+    core_state: dict[str, dict[str, np.ndarray]] | None = None,
+    *,
+    force_previous_threshold: bool = False,
+) -> pd.DataFrame:
     """Expose precomputed Core15 chart fields without UI-side calculation."""
     frame = panel.copy()
     frame["date"] = pd.to_datetime(frame["date"]).dt.normalize()
@@ -265,7 +290,7 @@ def replay_core_chart_history(panel: pd.DataFrame, registry: pd.DataFrame, core_
     chart_columns = ("value", "ema", "start_line", "end_line", "rsi", "lower", "upper", "close", "high", "low")
     for record in registry.sort_values("candidate_id", kind="mergesort").itertuples(index=False):
         row = pd.Series(record._asdict())
-        detail = _core_detail_signal(frame, row)
+        detail = _core_detail_signal(frame, row, force_previous_threshold=force_previous_threshold)
         raw, valid, start, end = _align_to_calendar(detail, calendar)
         if core_state is not None and str(record.candidate_id) in core_state:
             authoritative = core_state[str(record.candidate_id)]

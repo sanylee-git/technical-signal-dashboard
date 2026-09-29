@@ -205,8 +205,15 @@ def _append_history(frozen_runtime: dict[str, Any], panel: pd.DataFrame, *, core
     return history.sort_values(["candidate_id", "date"], kind="mergesort").reset_index(drop=True)
 
 
-def run_live_runtime(*, as_of: object = None, provider_frames: dict[str, pd.DataFrame] | None = None) -> dict[str, Any]:
-    frozen_runtime = run_frozen_runtime()
+def run_live_runtime(
+    *,
+    as_of: object = None,
+    provider_frames: dict[str, pd.DataFrame] | None = None,
+    frozen_runtime: dict[str, Any] | None = None,
+    force_previous_threshold: bool = False,
+) -> dict[str, Any]:
+    custom_frozen_runtime = frozen_runtime is not None
+    frozen_runtime = run_frozen_runtime() if frozen_runtime is None else frozen_runtime
     frames = provider_frames if provider_frames is not None else fetch_all_sources(as_of=as_of)
     tail, source_status, confirmed_limit = _build_tail(frozen_runtime["panel"], frames)
     panel = _merge(frozen_runtime["panel"], tail)
@@ -218,7 +225,13 @@ def run_live_runtime(*, as_of: object = None, provider_frames: dict[str, pd.Data
         else "PROVISIONAL" if provisional_basis > FROZEN_CUTOFF else "CONFIRMED"
     )
     panel = panel.loc[pd.to_datetime(panel["date"]).le(provisional_basis)].copy()
-    core = _overlay_authoritative_raw(panel, replay_core(panel, frozen_runtime["registry"]), frozen_runtime["raw_seed"])
+    core = replay_core(
+        panel,
+        frozen_runtime["registry"],
+        force_previous_threshold=force_previous_threshold,
+    )
+    if not custom_frozen_runtime:
+        core = _overlay_authoritative_raw(panel, core, frozen_runtime["raw_seed"])
     history = _append_history(frozen_runtime, panel, core=core)
     confirmed_basis = FROZEN_CUTOFF if confirmed_limit is None else min(pd.Timestamp(confirmed_limit).normalize(), provisional_basis)
     confirmed_history = history.loc[pd.to_datetime(history["date"]).le(confirmed_basis)].copy()
@@ -233,4 +246,5 @@ def run_live_runtime(*, as_of: object = None, provider_frames: dict[str, pd.Data
         "panel": panel, "frozen_panel": frozen_runtime["panel"], "source_status": source_status,
         "live_tail_row_count": int(len(panel.loc[pd.to_datetime(panel["date"]).gt(FROZEN_CUTOFF)])), "frozen_rows_overwritten": 0,
         "combo2_input_semantics": "CHILD_COMBO1_RAW_RISK_STATE", "final_t1_application_count": 1,
+        "force_previous_threshold": bool(force_previous_threshold),
     }

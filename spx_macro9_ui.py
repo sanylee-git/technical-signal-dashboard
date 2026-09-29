@@ -10,8 +10,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from spx_macro9_runtime.live_runtime import run_live_runtime
 from spx_macro9_runtime.presentation_payload import build_presentation_payload
+from spx_macro9_runtime.selected_final20_runtime import run_selected_final20_runtime
 
 
 RISK_ON = "#54F2A3"
@@ -24,37 +24,11 @@ STAGE_COLORS = {
 STAGE_SCORES = {"매수심화": -3, "매수": -2, "매수준비": -1, "홀드": 0, "관망": 0, "매도준비": 1, "매도": 2, "매도심화": 3}
 PERIOD_OPTIONS: list[int | str] = [2, 3, 5, 7, 10, 15, "all"]
 
-SPX_OPERATIONAL_ROLE_OVERRIDES = {
-    "1c1c7597686c9e0a92c22342": "Main1 밸런스형",
-    "dc48a38a72c1ed1bb7c35213": "Main2 빠른복귀형",
-    "20a398b847381b5b90486444": "저휩소형",
-    "4851698f11598ca1988458e8": "큰위기방어형",
-    "08cb9a31c7e4e3627e8801a0": "고성과형",
-    "30d59a9bc0660ad8f05022e0": "Main1 밸런스형",
-    "9542e4c75d39ba78d33f1771": "Main2 조기경보형",
-    "9c74969a657d487a21698851": "빠른복귀형",
-    "c793ab337024e4ffd35c3f9c": "저휩소형",
-    "bc255fa19b22198946a3d4cd": "고성과형",
-}
-SPX_OPERATIONAL_DISPLAY_ORDER = {
-    "1c1c7597686c9e0a92c22342": 1,
-    "dc48a38a72c1ed1bb7c35213": 2,
-    "20a398b847381b5b90486444": 3,
-    "4851698f11598ca1988458e8": 4,
-    "08cb9a31c7e4e3627e8801a0": 5,
-    "30d59a9bc0660ad8f05022e0": 1,
-    "9542e4c75d39ba78d33f1771": 2,
-    "9c74969a657d487a21698851": 3,
-    "c793ab337024e4ffd35c3f9c": 4,
-    "bc255fa19b22198946a3d4cd": 5,
-}
-
-
 @st.cache_data(ttl=3600, show_spinner=False)
 def _load_macro9_spx_presentation_payload(live_sync_bucket: str) -> dict[str, Any]:
-    """One S&P-only Live acquisition per sync bucket; UI state is not a key."""
+    """One selected-Final20 S&P Live acquisition per sync bucket."""
     del live_sync_bucket
-    return build_presentation_payload(run_live_runtime())
+    return build_presentation_payload(run_selected_final20_runtime())
 
 
 def _live_sync_bucket(minutes: int = 60) -> str:
@@ -117,7 +91,8 @@ def _on_k_html(active_count: object, k: object, risk_off: object) -> str:
 def _candidate_label(row: pd.Series | dict[str, Any]) -> str:
     family = str(row.get("model_family", ""))
     prefix, unit = ("조합1", "지표") if family == "COMBO1" else ("조합2", "조합1")
-    selection = "성과" if str(row.get("selection_type", "")) == "Performance" else "실전"
+    selection_type = str(row.get("selection_type", ""))
+    selection = {"Performance": "성과", "Practical": "실전", "Selected": "운영"}.get(selection_type, "운영")
     return f"[{prefix} · {selection}] {row.get('display_role', '')} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
 
 
@@ -126,13 +101,11 @@ def _ordered_candidate_ids(final: pd.DataFrame, family: str) -> list[str]:
 
 
 def _display_final(final: pd.DataFrame) -> pd.DataFrame:
-    """Return the fixed S&P Final10 display set without reselection."""
+    """Return the fixed, user-selected S&P Combo1/Combo2 sets without reselection."""
     out = final.copy()
-    out["display_role"] = out["candidate_id"].map(SPX_OPERATIONAL_ROLE_OVERRIDES).fillna(out["display_role"])
-    out["display_order"] = out["candidate_id"].map(SPX_OPERATIONAL_DISPLAY_ORDER).fillna(out["display_order"])
     counts = out["model_family"].value_counts()
-    if len(out) != 10 or counts.get("COMBO1", 0) != 5 or counts.get("COMBO2", 0) != 5:
-        raise RuntimeError("S&P Macro9 Final10 display contract failed")
+    if len(out) != 20 or counts.get("COMBO1", 0) != 10 or counts.get("COMBO2", 0) != 10:
+        raise RuntimeError("S&P Macro9 selected Final20 display contract failed")
     return out.sort_values("display_order", kind="mergesort").reset_index(drop=True)
 
 
@@ -465,7 +438,7 @@ def _render_css() -> None:
 
 
 def render_macro9_spx_section(container: Any, *, payload: dict[str, Any] | None = None, payload_loader: Callable[[str], dict[str, Any]] = _load_macro9_spx_presentation_payload) -> None:
-    """Render the fixed S&P Final10 view from one S&P-only runtime payload."""
+    """Render the fixed S&P selected-Final20 view from one S&P-only runtime payload."""
     with container:
         _render_css()
         if payload is None:
@@ -553,4 +526,4 @@ def render_macro9_spx_section(container: Any, *, payload: dict[str, Any] | None 
             st.write(f"candidate_id: `{candidate_id}`")
             st.write(f"공식 Frozen 백테스트: `2008-04-01 ~ {payload['backtest_windows']['frozen_cutoff']} · T+1 · 0bp · 현금수익 0%`")
             st.write(f"CAGR: `{_fmt_pct(live.cagr)}` · MDD: `{_fmt_pct(live.mdd)}` · Calmar: `{float(live.calmar):.3f}`")
-            st.write("Final10은 재선별하지 않으며, 화면에는 고정된 Combo1·Combo2 각 5개를 표시합니다. HY/IG는 전 기간 Proxy Only입니다.")
+            st.write("사용자 선정 Combo1·Combo2 각 10개를 고정 표시합니다. 공식 T+1은 1회 적용하며, HY/IG는 전 기간 Proxy Only입니다.")

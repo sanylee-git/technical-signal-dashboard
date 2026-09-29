@@ -96,7 +96,12 @@ def _component_history(runtime: dict[str, Any], final: pd.DataFrame) -> tuple[pd
     registry = runtime["registry"].set_index("candidate_id")
     core = runtime["core"]
     children = runtime["children"]
-    core_chart = replay_core_chart_history(panel, runtime["registry"], runtime.get("core"))
+    core_chart = replay_core_chart_history(
+        panel,
+        runtime["registry"],
+        runtime.get("core"),
+        force_previous_threshold=bool(runtime.get("force_previous_threshold", False)),
+    )
     core_states = core_chart[["component_id", "date", "risk_state", "risk_start", "risk_end", "valid_signal"]].copy()
     child_history = replay_combo1_raw_history(panel, children, core, evaluation_end=pd.Timestamp(runtime["basis_date"]))
     parts: list[pd.DataFrame] = []

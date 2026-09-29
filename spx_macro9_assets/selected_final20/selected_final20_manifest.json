@@ -1,0 +1,109 @@
+{
+  "status": "PASS_SNP2_SELECTED_FINAL20_ASSETS_READY",
+  "contract": "snp2_selected_final20_v1",
+  "evaluation_period": {
+    "start": "2008-04-01",
+    "end": "2026-08-21",
+    "trading_sessions": 4628
+  },
+  "candidate_counts": {
+    "Combo1": 10,
+    "Combo2": 10,
+    "total": 20
+  },
+  "default_candidate_id": "c9d4c64e586e2e9f8fb2cff1",
+  "official_t1_application_count": 1,
+  "combo2_input_semantics": "CHILD_COMBO1_RAW_RISK_STATE",
+  "corrected_dynamic_threshold_semantics": "previous EMA vs previous threshold; current EMA vs current threshold for every generic dynamic component",
+  "network_fetch_at_materialization": false,
+  "source_lineage": {
+    "source_panel": {
+      "path": "divergence_analysis/runs/run_20260928T090933Z_snp2_combo1_role72_m2_m4_tier_compression/01_inputs/snp_source_panel.parquet",
+      "sha256": "a9c52bc872f12e965fd43bfa2791d444206807775b2a01ee0eb944ad1d7f2160"
+    },
+    "registry": {
+      "path": "divergence_analysis/runs/run_20260928T090933Z_snp2_combo1_role72_m2_m4_tier_compression/01_inputs/snp_single69_registry.parquet",
+      "sha256": "745c55e7a6465f110f500386e3b32069cdb6fb49b3cd14260897194c9857f558"
+    },
+    "raw_state": {
+      "path": "divergence_analysis/runs/run_20260928T090933Z_snp2_combo1_role72_m2_m4_tier_compression/01_inputs/single_raw_state.parquet",
+      "sha256": "06590b64676672a1097808b05b820a831c9fb65f242f062080aa2a72504eb96c"
+    },
+    "raw_valid": {
+      "path": "divergence_analysis/runs/run_20260928T090933Z_snp2_combo1_role72_m2_m4_tier_compression/01_inputs/single_raw_valid.parquet",
+      "sha256": "7e3cd2ba5a7205e4e245aee81e68351211a37feb27853c3d656fc764f276cce7"
+    },
+    "combo1_role72": {
+      "path": "divergence_analysis/runs/run_20260928T090133Z_snp2_combo1_role72_frozen/snp2_combo1_role72_frozen.csv",
+      "sha256": "1af8e532fe86a57050e0245a42e059165b0a1b5520dcda3f15f4086015b02d6a"
+    },
+    "combo2_review60": {
+      "path": "divergence_analysis/runs/run_20260929T111111Z_snp2_combo2_final_pool_compression_v1/06_selection/review_pool_top60.csv",
+      "sha256": "6e68574a0771bebf8d936f21269ee7bd270a6cf9a0ed300d579bd9f3d385c167"
+    },
+    "combo2_candidate_pool": {
+      "path": "divergence_analysis/runs/run_20260929T111111Z_snp2_combo2_final_pool_compression_v1/01_inputs/m4_m15_candidate_pool.csv",
+      "sha256": "cb06bba9063a6cb124ec03dbacf9aa7177b46766164f92883fd7bf8138ce0d51"
+    },
+    "corrected_formula_source": {
+      "path": "divergence_analysis/runs/run_20260927T131640Z_snp2_ndx_shell_preflight_single/run_single_preflight.py",
+      "sha256": "a452b70054602f17e166a0c40fb09e7fb95e19505e886ac6468098f58eafe009"
+    }
+  },
+  "outputs": {
+    "combo2_child_mapping.csv": {
+      "sha256": "9c8b814dff4d67bbb566fef72195e9c8d7f28fb0cddca9c4eedf8b9e8dbfbdda",
+      "bytes": 52340
+    },
+    "final_candidates.csv": {
+      "sha256": "8d965d16b4820adfd18c774d3b8bb79e6ee7db56500da65fecaff7264e84cc27",
+      "bytes": 11739
+    },
+    "single_raw_state.parquet": {
+      "sha256": "06590b64676672a1097808b05b820a831c9fb65f242f062080aa2a72504eb96c",
+      "bytes": 126921
+    },
+    "single_raw_valid.parquet": {
+      "sha256": "7e3cd2ba5a7205e4e245aee81e68351211a37feb27853c3d656fc764f276cce7",
+      "bytes": 113278
+    },
+    "snp_single69_registry.parquet": {
+      "sha256": "745c55e7a6465f110f500386e3b32069cdb6fb49b3cd14260897194c9857f558",
+      "bytes": 9652
+    },
+    "snp_source_panel.parquet": {
+      "sha256": "a9c52bc872f12e965fd43bfa2791d444206807775b2a01ee0eb944ad1d7f2160",
+      "bytes": 1237479
+    }
+  },
+  "candidate_ids": {
+    "Combo1": [
+      "9b0bf6eb468f0e0f9ead4022",
+      "e4ad56aa66de8a3f2fb7c645",
+      "3cb3f1e1d583f16150bb3f31",
+      "39100770c8e16a06aee67170",
+      "3802b3ffb79163e6e960dd94",
+      "1cb2304e4f83508d7d20b788",
+      "a18c14e3322e95354544ce0d",
+      "5ce143a5e041d5278eeb537c",
+      "c1cc6ea8f2ec0b4f5b9abc0a",
+      "87613cddc0e7cdb24237e423"
+    ],
+    "Combo2": [
+      "c9d4c64e586e2e9f8fb2cff1",
+      "e6d450aa79ca39a713ba2558",
+      "56965121941b6abcf928fe96",
+      "6b4595522bbed808d41be978",
+      "b524905cfdecdc45c5cfc205",
+      "3e58ad167be4bb0aad010eb9",
+      "98ba4dad1278e9013a4a3f38",
+      "1cd298482f996815f2892090",
+      "146a32d0a91c4e8068ff600e",
+      "03b4e0be833b4c67d0ed7cdf"
+    ]
+  },
+  "main_candidate_ids": {
+    "Combo1": "9b0bf6eb468f0e0f9ead4022",
+    "Combo2": "c9d4c64e586e2e9f8fb2cff1"
+  }
+}
