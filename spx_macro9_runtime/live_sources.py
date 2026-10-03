@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from io import StringIO
@@ -35,6 +36,12 @@ SOURCE_SPECS = {
     "dbaa": LiveSourceSpec("dbaa", "fred", "DBAA", 1, "daily"),
     "daaa": LiveSourceSpec("daaa", "fred", "DAAA", 1, "daily"),
     "nfci": LiveSourceSpec("nfci", "fred", "NFCI", 3, "weekly"),
+}
+
+RESOLVER_SOURCE_SPECS = {
+    "resolver_dgs2": LiveSourceSpec("resolver_dgs2", "fred", "DGS2", 1, "daily"),
+    "resolver_dgs3mo": LiveSourceSpec("resolver_dgs3mo", "fred", "DGS3MO", 1, "daily"),
+    "resolver_vxvcls": LiveSourceSpec("resolver_vxvcls", "fred", "VXVCLS", 1, "daily"),
 }
 
 
@@ -196,4 +203,17 @@ def fetch_source(spec: LiveSourceSpec, *, as_of: object = None) -> pd.DataFrame:
 
 
 def fetch_all_sources(*, as_of: object = None, fetcher: Callable[[LiveSourceSpec], pd.DataFrame] | None = None) -> dict[str, pd.DataFrame]:
-    return {name: (fetcher(spec) if fetcher else fetch_source(spec, as_of=as_of)) for name, spec in SOURCE_SPECS.items()}
+    get = fetcher or (lambda spec: fetch_source(spec, as_of=as_of))
+    frames = {name: get(spec) for name, spec in SOURCE_SPECS.items()}
+
+    def fetch_resolver(spec: LiveSourceSpec) -> pd.DataFrame:
+        try:
+            return get(spec)
+        except Exception as exc:
+            return _empty(spec, exc.__class__.__name__, str(exc), as_of=as_of, route=spec.provider)
+
+    with ThreadPoolExecutor(max_workers=len(RESOLVER_SOURCE_SPECS)) as executor:
+        futures = {name: executor.submit(fetch_resolver, spec) for name, spec in RESOLVER_SOURCE_SPECS.items()}
+        for name in RESOLVER_SOURCE_SPECS:
+            frames[name] = futures[name].result()
+    return frames

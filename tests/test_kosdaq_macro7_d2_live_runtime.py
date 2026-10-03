@@ -11,7 +11,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kosdaq_macro7_runtime.live_runtime import _source_availability, normalize_daily_merge_key, run_live_runtime
+from kosdaq_macro7_runtime.live_runtime import _combined_frame, _source_availability, normalize_daily_merge_key, run_live_runtime
 from kosdaq_macro7_runtime.live_sources import SOURCE_SPECS
 from kosdaq_macro7_runtime.market_calendar import latest_allowed_live_session, latest_completed_session, session_status
 from tools.kosdaq_macro7_validate_live_runtime import validate
@@ -121,3 +121,41 @@ def test_live_runtime_accepts_provider_frames_with_second_resolution_dates() -> 
     )
 
     assert validate(live_result=live)["gate"] == "PASS_KOSDAQ_MACRO7_D2_LIVE_RUNTIME_READY"
+
+
+def test_resolver_selected_rate_spreads_reach_live_feature_inputs_without_overwrite() -> None:
+    frames = _frames()
+    frames["resolver_t10y2y"] = frames["us_10y_yield"].copy()
+    frames["resolver_t10y3m"] = frames["us_10y_yield"].copy()
+    frames["resolver_cboe_vix3m"] = frames["vix3m"].copy()
+    frames["resolver_t10y2y"]["value"] = 1.75
+    frames["resolver_t10y3m"]["value"] = 0.80
+    frames["us_10y_yield"]["value"] = 4.0
+    frames["us_2y_yield"]["value"] = 2.0
+    frames["us_3m_yield"]["value"] = 1.0
+    frozen = pd.DataFrame({
+        "date": [pd.Timestamp("2026-07-28")],
+        "performance_calendar_eligible": [True],
+        "hy_proxy": [np.nan],
+        "ig_proxy": [np.nan],
+    })
+
+    combined, _source_status, _merge, resolver_status, resolver_log = _combined_frame(
+        frozen, frames, pd.Timestamp("2026-08-01T08:00:00Z"),
+    )
+    live = combined.loc[combined["date"].gt(pd.Timestamp("2026-07-28"))]
+    selected = pd.DataFrame(resolver_log)
+    selected = selected.loc[selected["logical_series"].isin(["10Y-2Y", "10Y-3M"])]
+    expected = {
+        "10Y-2Y": "us_10y_2y_spread",
+        "10Y-3M": "us_10y_3m_spread",
+    }
+    overwrite_count = 0
+    for logical, target in expected.items():
+        series = selected.loc[selected["logical_series"].eq(logical)].set_index("date")["value"]
+        actual = live.set_index("date")[target]
+        aligned = pd.concat([series.rename("selected"), actual.rename("feature_input")], axis=1).dropna()
+        overwrite_count += int(aligned["selected"].ne(aligned["feature_input"]).sum())
+        assert aligned["selected"].eq(aligned["feature_input"]).all()
+    assert overwrite_count == 0
+    assert len(resolver_status) == 3

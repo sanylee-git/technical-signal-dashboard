@@ -11,6 +11,7 @@ import pandas as pd
 from .frozen_replay import replay_core, replay_final20, replay_final20_history
 from .frozen_runtime import run_frozen_runtime
 from .live_sources import SOURCE_SPECS, fetch_all_sources
+from live_source_resolver import exact_date_spread, resolve_aligned_sources
 
 
 FROZEN_CUTOFF = pd.Timestamp("2026-08-21")
@@ -86,15 +87,15 @@ def _rolling_zscore(series: pd.Series, window: int = 252) -> pd.Series:
     return ((series - mean) / std).clip(-3.0, 3.0)
 
 
-def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, list[dict[str, Any]], pd.Timestamp | None]:
+def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, list[dict[str, Any]], pd.Timestamp | None, list[dict[str, Any]]]:
     ndx = _valid(frames.get("ndx_ohlcv", pd.DataFrame()))
     ndxe = _valid(frames.get("ndxe_close", pd.DataFrame()))
     if ndx.empty or "observation_date" not in ndx.columns:
-        return pd.DataFrame(), [], None
+        return pd.DataFrame(), [], None, []
     market = ndx.loc[ndx["observation_date"].gt(FROZEN_CUTOFF)].copy()
     market_dates = pd.DatetimeIndex(market["observation_date"]).normalize().sort_values().unique()
     if not len(market_dates):
-        return pd.DataFrame(), [], None
+        return pd.DataFrame(), [], None, []
     availability_dates = pd.DatetimeIndex(pd.to_datetime(frozen.loc[frozen["performance_calendar_eligible"].astype(bool), "date"])).normalize().append(market_dates).sort_values().unique()
     source_status: list[dict[str, Any]] = []
     fresh: dict[str, bool] = {}
@@ -105,7 +106,7 @@ def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[
         okay = source_id in ("ndx_ohlcv", "ndxe_close") or _source_is_fresh(valid, source_id, availability_dates)
         fresh[source_id] = bool(okay)
         available = _latest_available_session(frames.get(source_id, pd.DataFrame()), availability_dates, spec.lag_market_sessions)
-        if source_id != "nfci" and available is not None:
+        if source_id not in {"nfci", "vxvcls", "dgs2", "dgs3mo"} and available is not None:
             strict_limits.append(available)
         source_status.append({
             "source_id": source_id,
@@ -133,11 +134,46 @@ def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[
         tail[f"{source_id}_available"] = pd.to_numeric(available["value"], errors="coerce").to_numpy()
         tail[f"{source_id}_source_observation_date"] = pd.to_datetime(available["observation_date"], errors="coerce").dt.normalize().to_numpy()
 
+    derived_2y = exact_date_spread(frames.get("dgs10", pd.DataFrame()), frames.get("dgs2", pd.DataFrame()), "DERIVED_DGS10_MINUS_DGS2")
+    derived_3m = exact_date_spread(frames.get("dgs10", pd.DataFrame()), frames.get("dgs3mo", pd.DataFrame()), "DERIVED_DGS10_MINUS_DGS3MO")
+    resolver_pairs = {
+        "10Y-2Y": {"FRED_T10Y2Y": frames.get("resolver_t10y2y", pd.DataFrame()), "DERIVED_DGS10_MINUS_DGS2": derived_2y},
+        "10Y-3M": {"FRED_T10Y3M": frames.get("resolver_t10y3m", pd.DataFrame()), "DERIVED_DGS10_MINUS_DGS3MO": derived_3m},
+        "VIX3M": {"CBOE_VIX3M": frames.get("resolver_cboe_vix3m", pd.DataFrame()), "FRED_VXVCLS": frames.get("vxvcls", pd.DataFrame())},
+    }
+    primaries = {"10Y-2Y": "FRED_T10Y2Y", "10Y-3M": "FRED_T10Y3M", "VIX3M": "CBOE_VIX3M"}
+    resolver_records: list[dict[str, Any]] = []
+    resolved: dict[str, pd.DataFrame] = {}
+    for logical, candidates in resolver_pairs.items():
+        selected, summary = resolve_aligned_sources(
+            availability_dates, candidates, primary_source=primaries[logical], lag=0 if logical == "VIX3M" else 1,
+            calendar_mode="us_sessions", tolerance=1e-8 if logical.startswith("10Y") else 0.0,
+            after_date=FROZEN_CUTOFF,
+        )
+        selected["logical_series"] = logical
+        summary.update({"tab": "NASDAQ", "logical_series": logical})
+        resolver_records.extend(selected.loc[selected["date"].isin(market_dates)].to_dict("records"))
+        resolver_records.append({"record_type": "STATUS", **summary})
+        resolved[logical] = selected.set_index("date")
+        latest_use = pd.to_datetime(selected.loc[selected["value"].notna(), "date"], errors="coerce").max()
+        if pd.notna(latest_use):
+            strict_limits.append(pd.Timestamp(latest_use).normalize())
+
+    selected_2y = resolved["10Y-2Y"].reindex(market_dates)
+    selected_3m = resolved["10Y-3M"].reindex(market_dates)
+    selected_vix3m = resolved["VIX3M"].reindex(market_dates)
+    tail["resolver_10y2y"] = selected_2y["value"].to_numpy()
+    tail["resolver_10y3m"] = selected_3m["value"].to_numpy()
+    tail["resolver_vix3m"] = selected_vix3m["value"].to_numpy()
+    tail["resolver_10y2y_observation_date"] = selected_2y["observation_date"].to_numpy()
+    tail["resolver_10y3m_observation_date"] = selected_3m["observation_date"].to_numpy()
+    tail["resolver_vix3m_observation_date"] = selected_vix3m["observation_date"].to_numpy()
+
     tail["performance_calendar_eligible"] = tail["ndx_close"].notna() & tail["ndx_close"].gt(0)
     tail["ohlc_signal_eligible"] = tail[["ndx_open", "ndx_high", "ndx_low", "ndx_close"]].notna().all(axis=1)
     tail["breadth_input_eligible"] = tail["ndx_close"].gt(0) & tail["ndxe_close"].gt(0)
     confirmed_basis = min(strict_limits) if strict_limits else None
-    return tail, source_status, confirmed_basis
+    return tail, source_status, confirmed_basis, resolver_records
 
 
 def _merge_frozen_and_tail(frozen: pd.DataFrame, tail: pd.DataFrame) -> pd.DataFrame:
@@ -173,6 +209,11 @@ def _merge_frozen_and_tail(frozen: pd.DataFrame, tail: pd.DataFrame) -> pd.DataF
     out["vix_spread"] = out["vixcls_available"] - out["vxvcls_available"]
     out["us_10y_2y_spread"] = out["dgs10_available"] - out["dgs2_available"]
     out["us_10y_3m_spread"] = out["dgs10_available"] - out["dgs3mo_available"]
+    if "resolver_vix3m" in out:
+        out.loc[tail_mask, "vix_spread"] = out.loc[tail_mask, "vixcls_available"] - out.loc[tail_mask, "resolver_vix3m"]
+    for target, source in (("us_10y_2y_spread", "resolver_10y2y"), ("us_10y_3m_spread", "resolver_10y3m")):
+        if source in out:
+            out.loc[tail_mask, target] = out.loc[tail_mask, source]
     out["credit_stress_raw"] = pd.concat([
         _rolling_zscore(out["hy_proxy"]), _rolling_zscore(out["nfci_available"]), _rolling_zscore(out["vixcls_available"]),
     ], axis=1).mean(axis=1)
@@ -181,10 +222,10 @@ def _merge_frozen_and_tail(frozen: pd.DataFrame, tail: pd.DataFrame) -> pd.DataF
         "ig_available": out["ig_proxy"].notna(),
         "credit_stress_available": out[["hy_proxy", "nfci_available", "vixcls_available"]].notna().all(axis=1),
         "vix_available": out["vixcls_available"].notna(),
-        "vix_spread_available": out[["vixcls_available", "vxvcls_available"]].notna().all(axis=1),
+        "vix_spread_available": out["vixcls_available"].notna() & out.get("resolver_vix3m", out["vxvcls_available"]).notna(),
         "real_yield_10y_available": out["dfii10_available"].notna(),
-        "yield_spread_10y_2y_available": out[["dgs10_available", "dgs2_available"]].notna().all(axis=1),
-        "yield_spread_10y_3m_available": out[["dgs10_available", "dgs3mo_available"]].notna().all(axis=1),
+        "yield_spread_10y_2y_available": out.get("resolver_10y2y", out["dgs10_available"] - out["dgs2_available"]).notna(),
+        "yield_spread_10y_3m_available": out.get("resolver_10y3m", out["dgs10_available"] - out["dgs3mo_available"]).notna(),
         "yield_slope_10y_input_available": out["dgs10_available"].notna(),
     }
     for column, values in available.items():
@@ -198,6 +239,10 @@ def _merge_frozen_and_tail(frozen: pd.DataFrame, tail: pd.DataFrame) -> pd.DataF
     for column in frozen.columns:
         if column != "date" and column in out:
             out.loc[: len(frozen) - 1, column] = frozen[column].to_numpy()
+    out = out.drop(columns=[
+        "resolver_10y2y", "resolver_10y3m", "resolver_vix3m",
+        "resolver_10y2y_observation_date", "resolver_10y3m_observation_date", "resolver_vix3m_observation_date",
+    ], errors="ignore")
     return out
 
 
@@ -248,7 +293,7 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
     frozen = frozen_runtime["panel"].copy()
     frozen["date"] = pd.to_datetime(frozen["date"]).dt.normalize()
     frames = provider_frames if provider_frames is not None else fetch_all_sources(as_of=as_of_utc)
-    tail, source_status, confirmed_limit = _build_tail(frozen, frames)
+    tail, source_status, confirmed_limit, resolver_records = _build_tail(frozen, frames)
     panel = _merge_frozen_and_tail(frozen, tail)
     continuous_basis = _continuous_tail(panel)
     provisional_basis = FROZEN_CUTOFF if continuous_basis is None else continuous_basis
@@ -299,6 +344,7 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
         "children": frozen_runtime["children"],
         "core": core,
         "source_status": source_status,
+        "source_resolver_records": resolver_records,
         "live_tail_row_count": int(len(panel.loc[panel["date"].gt(FROZEN_CUTOFF)])),
         "frozen_rows_overwritten": 0,
         "combo2_input_semantics": "CHILD_COMBO1_RAW_RISK_STATE",

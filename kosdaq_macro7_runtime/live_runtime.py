@@ -14,6 +14,7 @@ from pandas.tseries.offsets import BDay
 from .frozen_replay import _candidate_frame, _combine, _final_t1, _metrics, _performance
 from .live_sources import SOURCE_SPECS, fetch_all_sources
 from .market_calendar import latest_allowed_live_session, latest_completed_session, load_calendar, session_status, sessions_between
+from live_source_resolver import exact_date_spread, resolve_aligned_sources
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,9 +25,9 @@ EVALUATION_START = "2008-04-01"
 FAMILY_SOURCES = {
     "kosdaq_index_level": ("kosdaq_ohlcv",), "kosdaq_bollinger": ("kosdaq_ohlcv",),
     "kosdaq_hv": ("kosdaq_ohlcv",), "kosdaq_natr": ("kosdaq_ohlcv",), "kosdaq_rsi": ("kosdaq_ohlcv",),
-    "usdkrw_level": ("usdkrw",), "vix_level": ("vix",), "vix_spread": ("vix", "vix3m"),
-    "us_10y_real_yield_level": ("us_10y_real_yield",), "us_10y_2y_spread": ("us_10y_yield", "us_2y_yield"),
-    "us_10y_3m_spread": ("us_10y_yield", "us_3m_yield"), "us_10y_slope": ("us_10y_yield",),
+    "usdkrw_level": ("usdkrw",), "vix_level": ("vix",), "vix_spread": ("vix", "resolver_vix3m"),
+    "us_10y_real_yield_level": ("us_10y_real_yield",), "us_10y_2y_spread": ("resolver_us_10y_2y",),
+    "us_10y_3m_spread": ("resolver_us_10y_3m",), "us_10y_slope": ("us_10y_yield",),
     "us_hy_oas_level": ("us_baa_corp_yield", "us_10y_yield"), "us_ig_oas_level": ("us_aaa_corp_yield", "us_10y_yield"),
     "global_credit_stress": ("us_baa_corp_yield", "us_10y_yield", "nfci", "vix"),
 }
@@ -152,7 +153,7 @@ def _same_observation_proxy(frame: pd.DataFrame, left: str, right: str) -> pd.Se
     return raw.ffill()
 
 
-def _combined_frame(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame], as_of: pd.Timestamp) -> tuple[pd.DataFrame, list[dict[str, Any]], dict[str, Any]]:
+def _combined_frame(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame], as_of: pd.Timestamp) -> tuple[pd.DataFrame, list[dict[str, Any]], dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     calendar_asset = load_calendar()
     completed_session = latest_completed_session(as_of, calendar_asset)
     latest_session = latest_allowed_live_session(as_of, calendar_asset)
@@ -191,6 +192,47 @@ def _combined_frame(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame], as_of
         if len(tail_dates):
             out.loc[out["date"].gt(FROZEN_CUTOFF), source_id] = aligned[source_id].to_numpy()
             out.loc[out["date"].gt(FROZEN_CUTOFF), f"{source_id}_observation_date"] = aligned[f"{source_id}_observation_date"].to_numpy()
+    resolver_status: list[dict[str, Any]] = []
+    resolver_log: list[dict[str, Any]] = []
+    if len(tail_dates):
+        candidate_pairs = {
+            "10Y-2Y": {
+                "FRED_T10Y2Y": frames.get("resolver_t10y2y", pd.DataFrame()),
+                "DERIVED_DGS10_MINUS_DGS2": exact_date_spread(
+                    frames.get("us_10y_yield", pd.DataFrame()), frames.get("us_2y_yield", pd.DataFrame()),
+                    "DERIVED_DGS10_MINUS_DGS2",
+                ),
+            },
+            "10Y-3M": {
+                "FRED_T10Y3M": frames.get("resolver_t10y3m", pd.DataFrame()),
+                "DERIVED_DGS10_MINUS_DGS3MO": exact_date_spread(
+                    frames.get("us_10y_yield", pd.DataFrame()), frames.get("us_3m_yield", pd.DataFrame()),
+                    "DERIVED_DGS10_MINUS_DGS3MO",
+                ),
+            },
+            "VIX3M": {
+                "CBOE_VIX3M": frames.get("resolver_cboe_vix3m", pd.DataFrame()),
+                "FRED_VXVCLS": frames.get("vix3m", pd.DataFrame()),
+            },
+        }
+        primary_by_series = {"10Y-2Y": "FRED_T10Y2Y", "10Y-3M": "FRED_T10Y3M", "VIX3M": "CBOE_VIX3M"}
+        resolved: dict[str, pd.DataFrame] = {}
+        for logical, candidates in candidate_pairs.items():
+            output, status = resolve_aligned_sources(
+                tail_dates, candidates, primary_source=primary_by_series[logical], lag=1,
+                calendar_mode="business_day", tolerance=1e-8 if logical.startswith("10Y") else 0.0,
+                after_date=FROZEN_CUTOFF,
+            )
+            output["logical_series"] = logical
+            status.update({"tab": "KOSDAQ", "logical_series": logical})
+            resolver_log.extend(output.to_dict("records"))
+            resolver_status.append(status)
+            resolved[logical] = output.set_index("date")
+        tail_mask = out["date"].gt(FROZEN_CUTOFF)
+        chosen_vix3m = resolved["VIX3M"].reindex(tail_dates)
+        out.loc[tail_mask, "vix3m"] = chosen_vix3m["value"].to_numpy()
+        out.loc[tail_mask, "vix_spread"] = out.loc[tail_mask, "vix"] - out.loc[tail_mask, "vix3m"]
+        out.loc[tail_mask, "vix_spread_safe"] = -out.loc[tail_mask, "vix_spread"]
     if len(tail_dates):
         tail_mask = out["date"].gt(FROZEN_CUTOFF)
         frozen_hy = out["hy_proxy"].copy()
@@ -204,6 +246,11 @@ def _combined_frame(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame], as_of
         out["vix_spread"] = out["vix"] - out["vix3m"]
         out["us_10y_2y_spread"] = out["us_10y_yield"] - out["us_2y_yield"]
         out["us_10y_3m_spread"] = out["us_10y_yield"] - out["us_3m_yield"]
+        # Keep resolver-selected rate spreads as the live feature inputs; the legacy
+        # source-derived values above remain available for the Frozen prefix only.
+        for logical, target in (("10Y-2Y", "us_10y_2y_spread"), ("10Y-3M", "us_10y_3m_spread")):
+            chosen = resolved[logical].reindex(tail_dates)
+            out.loc[tail_mask, target] = chosen["value"].to_numpy()
         out["usdkrw_safe"] = -out["usdkrw"]
         out["vix_safe"] = -out["vix"]
         out["vix_spread_safe"] = -out["vix_spread"]
@@ -229,7 +276,7 @@ def _combined_frame(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame], as_of
     market_info = _freshness("kosdaq_ohlcv", {"source_id": "kosdaq_ohlcv", "observation_date": market_meta["last_valid_close_date"], "available_through_date": market_meta["last_valid_close_date"], "raw_available_date": market_meta["last_valid_close_date"], "reason": ""}, latest_session, as_of)
     source_info.insert(0, market_info)
     merge = {**market_meta, "latest_completed_session": _date(completed_session), "latest_calculation_session": _date(latest_session), "frozen_rows_overwritten": 0, "live_rows_on_or_before_cutoff_used_for_runtime": 0, "duplicate_date_count": int(out["date"].duplicated().sum()), "live_tail_first_date": _date(tail_dates.min() if len(tail_dates) else pd.NaT), "live_tail_last_date": _date(tail_dates.max() if len(tail_dates) else pd.NaT), "live_tail_row_count": int(len(tail_dates))}
-    return out, source_info, merge
+    return out, source_info, merge, resolver_status, resolver_log
 
 
 def _continuous_basis(core: pd.DataFrame, candidate_id: str, source_limit: pd.Timestamp | None) -> tuple[pd.Timestamp | None, str | None]:
@@ -373,11 +420,18 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
     contract = json.loads((ASSETS / "kosdaq_macro7_live_source_contract.json").read_text(encoding="utf-8"))
     frozen = _load_frozen()
     frames = provider_frames if provider_frames is not None else fetch_all_sources(as_of=as_of_utc)
-    combined, source_status, merge = _combined_frame(frozen, frames, as_of_utc)
+    combined, source_status, merge, source_resolver_status, source_resolver_log = _combined_frame(frozen, frames, as_of_utc)
     definitions = pd.read_csv(ASSETS / "kosdaq_macro7_signal_definitions.csv")
     final = pd.read_csv(ASSETS / "kosdaq_macro7_final10.csv")
     children = pd.read_csv(ASSETS / "kosdaq_macro7_combo2_child_mapping.csv")
     strict_source_bases = {item["source_id"]: pd.Timestamp(item["available_through_date"]) if item.get("available_through_date") else None for item in source_status}
+    latest_session = pd.to_datetime(merge.get("latest_calculation_session"), errors="coerce")
+    for status, source_key in zip(source_resolver_status, ("resolver_us_10y_2y", "resolver_us_10y_3m", "resolver_vix3m")):
+        latest_use = pd.to_datetime(status.get("latest_model_use_date"), errors="coerce")
+        latest_observation = pd.to_datetime(status.get("latest_observation_date"), errors="coerce")
+        expected = (pd.Timestamp(latest_session).normalize() - BDay(1)).normalize() if pd.notna(latest_session) else pd.NaT
+        fresh = pd.notna(latest_use) and pd.notna(latest_observation) and (pd.isna(expected) or latest_observation >= expected)
+        strict_source_bases[source_key] = pd.Timestamp(latest_use).normalize() if fresh else None
     strict = _evaluate_final_candidates(
         combined,
         definitions,
@@ -387,7 +441,6 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
         include_performance=False,
         snapshot_status="CONFIRMED",
     )
-    latest_session = pd.to_datetime(merge.get("latest_calculation_session"), errors="coerce")
     provisional_source_bases = {
         source_id: (latest_session.normalize() if pd.notna(latest_session) and basis is not None else None)
         for source_id, basis in strict_source_bases.items()
@@ -410,6 +463,8 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
         "contract": contract,
         "combined": combined,
         "source_status": pd.DataFrame(source_status),
+        "source_resolver_status": pd.DataFrame(source_resolver_status),
+        "source_resolver_log": pd.DataFrame(source_resolver_log),
         "merge": merge,
         **provisional,
         "confirmed_snapshot": strict["snapshot"],

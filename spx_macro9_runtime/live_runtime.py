@@ -11,6 +11,7 @@ import pandas as pd
 from .frozen_runtime import _overlay_authoritative_raw, _snapshot, run_frozen_runtime
 from .live_replay import replay_core
 from .live_sources import SOURCE_SPECS, fetch_all_sources
+from live_source_resolver import exact_date_spread, resolve_aligned_sources
 
 
 FROZEN_CUTOFF = pd.Timestamp("2026-08-21")
@@ -69,26 +70,27 @@ def _latest_available_session(frame: pd.DataFrame, dates: pd.DatetimeIndex, lag:
     return None if len(matches) == 0 else pd.Timestamp(matches[0]).normalize()
 
 
-def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, list[dict[str, Any]], pd.Timestamp | None]:
+def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, list[dict[str, Any]], pd.Timestamp | None, list[dict[str, Any]]]:
     market = _valid(frames.get("spx_ohlcv", pd.DataFrame()))
     if market.empty or "observation_date" not in market.columns:
-        return pd.DataFrame(), [], None
+        return pd.DataFrame(), [], None, []
     market = market.loc[market["observation_date"].gt(FROZEN_CUTOFF)].copy()
     dates = pd.DatetimeIndex(market["observation_date"]).sort_values().unique()
     if not len(dates):
-        return pd.DataFrame(), [], None
+        return pd.DataFrame(), [], None, []
 
     calendar = pd.DatetimeIndex(pd.to_datetime(frozen.loc[frozen["performance_calendar_eligible"].astype(bool), "date"])).append(dates).sort_values().unique()
     status = []
     latest_market = pd.Timestamp(dates.max())
     prior_market = pd.Timestamp(dates[-2]) if len(dates) > 1 else latest_market
     strict_limits: list[pd.Timestamp] = []
+    resolver_sources = {"t10y2y", "t10y3m", "vix3m"}
     for name, spec in SOURCE_SPECS.items():
         valid = _valid(frames.get(name, pd.DataFrame()))
         latest = pd.NaT if valid.empty else pd.Timestamp(valid["observation_date"].max())
         okay = bool(pd.notna(latest)) and (latest >= latest_market - pd.Timedelta(days=12) if name == "nfci" else latest >= prior_market)
         available = _latest_available_session(frames.get(name, pd.DataFrame()), calendar, spec.lag_market_sessions)
-        if name != "nfci" and available is not None:
+        if name != "nfci" and name not in resolver_sources and available is not None:
             strict_limits.append(available)
         status.append({
             "source_id": name,
@@ -106,6 +108,40 @@ def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[
         values, stamps = _available(frames[source], calendar, SOURCE_SPECS[source].lag_market_sessions)
         tail[target] = values.reindex(dates).to_numpy()
         tail[f"{target}_source_observation_date"] = stamps.reindex(dates).to_numpy()
+    derived_2y = exact_date_spread(frames.get("dgs10", pd.DataFrame()), frames.get("resolver_dgs2", pd.DataFrame()), "DERIVED_DGS10_MINUS_DGS2")
+    derived_3m = exact_date_spread(frames.get("dgs10", pd.DataFrame()), frames.get("resolver_dgs3mo", pd.DataFrame()), "DERIVED_DGS10_MINUS_DGS3MO")
+    resolver_pairs = {
+        "10Y-2Y": {"FRED_T10Y2Y": frames.get("t10y2y", pd.DataFrame()), "DERIVED_DGS10_MINUS_DGS2": derived_2y},
+        "10Y-3M": {"FRED_T10Y3M": frames.get("t10y3m", pd.DataFrame()), "DERIVED_DGS10_MINUS_DGS3MO": derived_3m},
+        "VIX3M": {"CBOE_VIX3M": frames.get("vix3m", pd.DataFrame()), "FRED_VXVCLS": frames.get("resolver_vxvcls", pd.DataFrame())},
+    }
+    primaries = {"10Y-2Y": "FRED_T10Y2Y", "10Y-3M": "FRED_T10Y3M", "VIX3M": "CBOE_VIX3M"}
+    resolver_log: list[dict[str, Any]] = []
+    resolver_status: list[dict[str, Any]] = []
+    resolved: dict[str, pd.DataFrame] = {}
+    for logical, candidates in resolver_pairs.items():
+        lag = 0 if logical == "VIX3M" else 1
+        selected, summary = resolve_aligned_sources(
+            calendar, candidates, primary_source=primaries[logical], lag=lag,
+            calendar_mode="us_sessions", tolerance=1e-8 if logical.startswith("10Y") else 0.0,
+            after_date=FROZEN_CUTOFF,
+        )
+        selected["logical_series"] = logical
+        summary.update({"tab": "S&P2", "logical_series": logical})
+        resolver_log.extend(selected.loc[selected["date"].isin(dates)].to_dict("records"))
+        resolver_status.append(summary)
+        resolved[logical] = selected.set_index("date")
+        latest_selected = pd.to_datetime(selected.loc[selected["value"].notna(), "date"], errors="coerce").max()
+        if pd.notna(latest_selected):
+            strict_limits.append(pd.Timestamp(latest_selected).normalize())
+
+    for logical, target in (("10Y-2Y", "spread_10y2y"), ("10Y-3M", "spread_10y3m")):
+        chosen = resolved[logical].reindex(dates)
+        tail[target] = chosen["value"].to_numpy()
+        tail[f"{target}_source_observation_date"] = chosen["observation_date"].to_numpy()
+    chosen_vix3m = resolved["VIX3M"].reindex(dates)
+    tail["vix3m"] = chosen_vix3m["value"].to_numpy()
+    tail["vix3m_source_observation_date"] = chosen_vix3m["observation_date"].to_numpy()
     hy, hy_stamp = _proxy_available(frames["dbaa"], frames["dgs10"], calendar)
     ig, ig_stamp = _proxy_available(frames["daaa"], frames["dgs10"], calendar)
     tail["hy_raw_proxy"] = hy.reindex(dates).to_numpy()
@@ -122,7 +158,7 @@ def _build_tail(frozen: pd.DataFrame, frames: dict[str, pd.DataFrame]) -> tuple[
     tail["ohlc_signal_eligible"] = tail[["open", "high", "low", "close"]].notna().all(axis=1)
     tail["breadth_input_eligible"] = tail["equal_weight_price"].gt(0) & tail["close"].gt(0)
     confirmed_basis = min(strict_limits) if strict_limits else None
-    return tail, status, confirmed_basis
+    return tail, status, confirmed_basis, resolver_status + resolver_log
 
 
 def _merge(frozen: pd.DataFrame, tail: pd.DataFrame) -> pd.DataFrame:
@@ -215,7 +251,7 @@ def run_live_runtime(
     custom_frozen_runtime = frozen_runtime is not None
     frozen_runtime = run_frozen_runtime() if frozen_runtime is None else frozen_runtime
     frames = provider_frames if provider_frames is not None else fetch_all_sources(as_of=as_of)
-    tail, source_status, confirmed_limit = _build_tail(frozen_runtime["panel"], frames)
+    tail, source_status, confirmed_limit, resolver_records = _build_tail(frozen_runtime["panel"], frames)
     panel = _merge(frozen_runtime["panel"], tail)
     valid_tail = panel.loc[panel["date"].gt(FROZEN_CUTOFF) & panel["core15_input_eligible"].eq(True), "date"]
     provisional_basis = FROZEN_CUTOFF if valid_tail.empty else pd.Timestamp(valid_tail.iloc[-1]).normalize()
@@ -244,6 +280,7 @@ def run_live_runtime(
         "proxy_only": True, "direct_oas_used": False, "snapshot": snapshot, "confirmed_snapshot": confirmed_snapshot, "metrics": frozen_runtime["metrics"], "history": history,
         "registry": frozen_runtime["registry"], "final10": frozen_runtime["final10"], "children": frozen_runtime["children"], "core": core,
         "panel": panel, "frozen_panel": frozen_runtime["panel"], "source_status": source_status,
+        "source_resolver_records": resolver_records,
         "live_tail_row_count": int(len(panel.loc[pd.to_datetime(panel["date"]).gt(FROZEN_CUTOFF)])), "frozen_rows_overwritten": 0,
         "combo2_input_semantics": "CHILD_COMBO1_RAW_RISK_STATE", "final_t1_application_count": 1,
         "force_previous_threshold": bool(force_previous_threshold),

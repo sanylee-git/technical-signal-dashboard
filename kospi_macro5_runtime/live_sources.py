@@ -372,4 +372,21 @@ def fetch_source(
         return fetch_yahoo(contract, cache_mode=cache_mode, bypass_token=bypass_token, as_of_utc=as_of_utc)
     if contract.provider == "fred":
         return fetch_fred(contract, cache_mode=cache_mode, bypass_token=bypass_token, as_of_utc=as_of_utc)
+    if contract.provider == "cboe":
+        url = "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX3M_History.csv"
+        try:
+            response = requests.get(url, timeout=20, headers={"Cache-Control": "no-cache"} if cache_mode == "BYPASS" else {})
+            response.raise_for_status()
+            data = pd.read_csv(StringIO(response.text))
+            date_col = next((column for column in ("DATE", "Date", "date") if column in data), None)
+            value_col = next((column for column in ("CLOSE", "Close", "close") if column in data), None)
+            if date_col is None or value_col is None:
+                return _empty_result(contract, "SCHEMA_ERROR", "MISSING_COLUMNS", "CBOE date/close", route="cboe_vix3m_history", as_of_utc=as_of_utc)
+            out = pd.DataFrame({
+                "observation_date": pd.to_datetime(data[date_col], errors="coerce").dt.normalize(),
+                "value": pd.to_numeric(data[value_col], errors="coerce"),
+            })
+            return _finalize(contract, out, url, out["observation_date"].isna() | out["value"].isna(), as_of_utc=as_of_utc)
+        except Exception as exc:  # pragma: no cover - external provider behavior
+            return _empty_result(contract, "TEMPORARY_FETCH_FAILURE", exc.__class__.__name__, str(exc), route="cboe_vix3m_history", as_of_utc=as_of_utc)
     return _empty_result(contract, "CONTRACT_BLOCKED", "UNKNOWN_PROVIDER", contract.provider, as_of_utc=as_of_utc)

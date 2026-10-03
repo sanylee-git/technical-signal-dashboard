@@ -14,12 +14,14 @@ from .freshness_snapshot import final9_required_sources, qualify_candidates
 from .krx_calendar import kospi_completed_sessions, kospi_latest_allowed_live_session, kospi_latest_completed_session
 from .live_availability import build_transformed_frame
 from .live_contracts import SOURCE_CONTRACTS
+from .live_contracts import RESOLVER_SOURCE_CONTRACTS
 from .live_engine import compute_live_tree
 from .live_sources import fetch_naver_kospi_ohlcv, fetch_source
 from .live_tail import source_status_rows
 from .provider_dates import normalize_provider_dates_for_freshness
 from .retry import fetch_with_optional_bypass
 from .snapshot import build_final9_snapshot
+from live_source_resolver import exact_date_spread, resolve_aligned_sources
 
 
 FRED_SOURCE_MAX_WORKERS = 4
@@ -36,7 +38,7 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
     sessions_df = kospi_completed_sessions("2024-01-01", session_end, as_of_utc)
     sessions = pd.DatetimeIndex(pd.to_datetime(sessions_df["session_date"])).normalize()
 
-    selected_frames, source_rows = _load_source_frames(
+    selected_frames, source_rows, resolver_frames = _load_source_frames(
         as_of_utc=as_of_utc,
         sessions=sessions,
         latest_krx=latest_krx,
@@ -48,6 +50,7 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
     consistency = consistency_from_registry(consumers)
     lag_policy = {source_id: contract.lag_bdays for source_id, contract in SOURCE_CONTRACTS.items()}
     transformed, latest_available = build_transformed_frame(frozen, selected_frames, lag_policy)
+    resolver_log, resolver_status = _apply_live_source_resolver(transformed, frozen, selected_frames, resolver_frames)
     live = compute_live_tree(ctx, transformed)
     source_status = source_status_rows(selected_frames, frozen, latest_available)
     snapshot, _ = build_final9_snapshot(ctx, live["final9"], source_status, transformed)
@@ -65,6 +68,8 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
         "sources_reachable_count": int(source_df["fetch_status"].astype(str).str.contains("FETCH_OK|NO_NEW_RELEASE", regex=True).sum()) if not source_df.empty else 0,
         "candidate_rows": _candidate_rows(candidate_freshness),
         "source_rows": source_rows,
+        "source_resolver_status": resolver_status,
+        "source_resolver_log": resolver_log,
         "group_summary": group_summary,
         "core15_component_history": _core15_component_history(live["core15"]),
         "candidate_signal_history": _candidate_signal_history(ctx, live["final9"]),
@@ -83,7 +88,7 @@ def _load_source_frames(
     sessions: pd.DatetimeIndex,
     latest_krx: pd.Timestamp,
     latest_kospi_live: pd.Timestamp | None,
-) -> tuple[dict[str, pd.DataFrame], list[dict[str, Any]]]:
+) -> tuple[dict[str, pd.DataFrame], list[dict[str, Any]], dict[str, pd.DataFrame]]:
     results: dict[str, tuple[pd.DataFrame, dict[str, Any]]] = {}
     fred_items = [(source_id, contract) for source_id, contract in SOURCE_CONTRACTS.items() if contract.provider == "fred"]
     non_fred_items = [(source_id, contract) for source_id, contract in SOURCE_CONTRACTS.items() if contract.provider != "fred"]
@@ -116,7 +121,89 @@ def _load_source_frames(
 
     selected_frames = {source_id: results[source_id][0] for source_id in SOURCE_CONTRACTS}
     source_rows = [results[source_id][1] for source_id in SOURCE_CONTRACTS]
-    return selected_frames, source_rows
+    resolver_results: dict[str, tuple[pd.DataFrame, dict[str, Any]]] = {}
+    with ThreadPoolExecutor(max_workers=FRED_SOURCE_MAX_WORKERS) as executor:
+        future_by_source = {
+            source_id: executor.submit(
+                _load_resolver_source_frame,
+                contract=contract,
+                as_of_utc=as_of_utc,
+            )
+            for source_id, contract in RESOLVER_SOURCE_CONTRACTS.items()
+        }
+        for source_id in RESOLVER_SOURCE_CONTRACTS:
+            resolver_results[source_id] = future_by_source[source_id].result()
+    return selected_frames, source_rows, {source_id: result[0] for source_id, result in resolver_results.items()}
+
+
+def _load_resolver_source_frame(*, contract, as_of_utc: datetime) -> tuple[pd.DataFrame, dict[str, Any]]:
+    frame = fetch_source(contract, cache_mode="NORMAL", as_of_utc=as_of_utc)
+    valid = frame.loc[frame.get("valid", pd.Series(False, index=frame.index)).astype(bool)] if not frame.empty else frame
+    latest = pd.to_datetime(valid["observation_date"], errors="coerce").dropna().max() if not valid.empty else pd.NaT
+    return frame, {
+        "source_id": contract.source_id,
+        "provider": contract.provider,
+        "provider_series_id": contract.provider_series_id,
+        "fetch_status": frame["status"].iloc[0] if not frame.empty and "status" in frame else "FETCH_ERROR",
+        "latest_observation_date": None if pd.isna(latest) else pd.Timestamp(latest).strftime("%Y-%m-%d"),
+    }
+
+
+def _apply_live_source_resolver(
+    transformed: pd.DataFrame,
+    frozen: pd.DataFrame,
+    selected_frames: dict[str, pd.DataFrame],
+    resolver_frames: dict[str, pd.DataFrame],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    dates = pd.DatetimeIndex(pd.to_datetime(transformed["date"]).dt.normalize())
+    cutoff = pd.Timestamp(frozen["date"].max()).normalize()
+    candidates = {
+        "10Y-2Y": {
+            "FRED_T10Y2Y": resolver_frames.get("resolver_t10y2y", pd.DataFrame()),
+            "DERIVED_DGS10_MINUS_DGS2": exact_date_spread(
+                selected_frames.get("us_10y_yield", pd.DataFrame()),
+                selected_frames.get("us_2y_yield", pd.DataFrame()),
+                "DERIVED_DGS10_MINUS_DGS2",
+            ),
+        },
+        "10Y-3M": {
+            "FRED_T10Y3M": resolver_frames.get("resolver_t10y3m", pd.DataFrame()),
+            "DERIVED_DGS10_MINUS_DGS3MO": exact_date_spread(
+                selected_frames.get("us_10y_yield", pd.DataFrame()),
+                selected_frames.get("us_3m_yield", pd.DataFrame()),
+                "DERIVED_DGS10_MINUS_DGS3MO",
+            ),
+        },
+        "VIX3M": {
+            "CBOE_VIX3M": resolver_frames.get("resolver_cboe_vix3m", pd.DataFrame()),
+            "FRED_VXVCLS": selected_frames.get("vix3m", pd.DataFrame()),
+        },
+    }
+    primaries = {"10Y-2Y": "FRED_T10Y2Y", "10Y-3M": "FRED_T10Y3M", "VIX3M": "CBOE_VIX3M"}
+    logs: list[dict[str, Any]] = []
+    statuses: list[dict[str, Any]] = []
+    resolved: dict[str, pd.DataFrame] = {}
+    for logical, pair in candidates.items():
+        output, status = resolve_aligned_sources(
+            dates, pair, primary_source=primaries[logical], lag=1,
+            calendar_mode="business_day", tolerance=1e-8 if logical.startswith("10Y") else 0.0,
+            after_date=cutoff,
+        )
+        output["logical_series"] = logical
+        status.update({"tab": "KOSPI", "logical_series": logical})
+        logs.extend(output.to_dict("records"))
+        statuses.append(status)
+        resolved[logical] = output.set_index("date")
+
+    tail = pd.to_datetime(transformed["date"]).dt.normalize().gt(cutoff)
+    for logical, column in (("10Y-2Y", "us_10y_2y_spread"), ("10Y-3M", "us_10y_3m_spread")):
+        values = resolved[logical]["value"].reindex(dates).to_numpy()
+        transformed.loc[tail, column] = values[tail.to_numpy()]
+    vix3m = resolved["VIX3M"]["value"].reindex(dates).to_numpy()
+    transformed.loc[tail, "vix3m"] = vix3m[tail.to_numpy()]
+    transformed.loc[tail, "vix_spread"] = transformed.loc[tail, "vix"].to_numpy() - transformed.loc[tail, "vix3m"].to_numpy()
+    transformed.loc[tail, "vix_spread_safe"] = -transformed.loc[tail, "vix_spread"].to_numpy()
+    return logs, statuses
 
 
 def _load_one_source_frame(

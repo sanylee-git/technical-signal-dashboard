@@ -32,6 +32,12 @@ SOURCE_CONTRACTS: dict[str, SourceContract] = {
     "nfci": SourceContract("nfci", "fred", "NFCI", 3, "value", ("credit_stress_safe",), frequency="weekly"),
 }
 
+RESOLVER_SOURCE_CONTRACTS: dict[str, SourceContract] = {
+    "resolver_t10y2y": SourceContract("resolver_t10y2y", "fred", "T10Y2Y", 1, "value", ("us_10y_2y_spread",)),
+    "resolver_t10y3m": SourceContract("resolver_t10y3m", "fred", "T10Y3M", 1, "value", ("us_10y_3m_spread",)),
+    "resolver_cboe_vix3m": SourceContract("resolver_cboe_vix3m", "cboe", "VIX3M", 1, "value", ("vix_spread_safe",)),
+}
+
 
 DERIVED_COLUMNS = {
     "vix_spread_safe": "safe = -(VIXCLS - VXVCLS)",

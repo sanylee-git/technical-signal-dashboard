@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from io import StringIO
@@ -39,6 +40,12 @@ SOURCE_SPECS: dict[str, LiveSourceSpec] = {
     "dbaa": LiveSourceSpec("dbaa", "fred", "DBAA", 1, "daily"),
     "daaa": LiveSourceSpec("daaa", "fred", "DAAA", 1, "daily"),
     "nfci": LiveSourceSpec("nfci", "fred", "NFCI", 3, "weekly"),
+}
+
+RESOLVER_SOURCE_SPECS: dict[str, LiveSourceSpec] = {
+    "resolver_t10y2y": LiveSourceSpec("resolver_t10y2y", "fred", "T10Y2Y", 1, "daily"),
+    "resolver_t10y3m": LiveSourceSpec("resolver_t10y3m", "fred", "T10Y3M", 1, "daily"),
+    "resolver_cboe_vix3m": LiveSourceSpec("resolver_cboe_vix3m", "cboe", "VIX3M", 1, "daily"),
 }
 
 
@@ -215,6 +222,17 @@ def fetch_source(spec: LiveSourceSpec, *, as_of: datetime | pd.Timestamp | None 
     try:
         if spec.provider == "yahoo":
             return _fetch_yahoo_with_authorized_retry(spec, as_of=as_of)
+        if spec.provider == "cboe":
+            response = requests.get("https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX3M_History.csv", timeout=20)
+            response.raise_for_status()
+            data = pd.read_csv(StringIO(response.text))
+            date_col = next((column for column in ("DATE", "Date", "date") if column in data), None)
+            value_col = next((column for column in ("CLOSE", "Close", "close") if column in data), None)
+            if date_col is None or value_col is None:
+                return _empty(spec, "SCHEMA_ERROR", "MISSING_COLUMNS", "CBOE date/close", as_of=as_of, route="cboe")
+            frame = pd.DataFrame({"observation_date": data[date_col], "value": pd.to_numeric(data[value_col], errors="coerce")})
+            invalid = pd.to_datetime(frame["observation_date"], errors="coerce").isna() | frame["value"].isna()
+            return _finalize(spec, frame, invalid, as_of=as_of, route="cboe_vix3m_history")
         response = requests.get(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={spec.provider_identifier}", timeout=20)
         response.raise_for_status()
         return normalize_fred(response.text, spec, as_of=as_of, route="fredgraph.csv")
@@ -223,4 +241,17 @@ def fetch_source(spec: LiveSourceSpec, *, as_of: datetime | pd.Timestamp | None 
 
 
 def fetch_all_sources(*, as_of: datetime | pd.Timestamp | None = None, fetcher: Callable[[LiveSourceSpec], pd.DataFrame] | None = None) -> dict[str, pd.DataFrame]:
-    return {source_id: (fetcher(spec) if fetcher is not None else fetch_source(spec, as_of=as_of)) for source_id, spec in SOURCE_SPECS.items()}
+    get = fetcher or (lambda spec: fetch_source(spec, as_of=as_of))
+    frames = {source_id: get(spec) for source_id, spec in SOURCE_SPECS.items()}
+
+    def fetch_resolver(spec: LiveSourceSpec) -> pd.DataFrame:
+        try:
+            return get(spec)
+        except Exception as exc:
+            return _empty(spec, "TEMPORARY_FETCH_FAILURE", exc.__class__.__name__, str(exc), as_of=as_of, route=spec.provider)
+
+    with ThreadPoolExecutor(max_workers=len(RESOLVER_SOURCE_SPECS)) as executor:
+        futures = {source_id: executor.submit(fetch_resolver, spec) for source_id, spec in RESOLVER_SOURCE_SPECS.items()}
+        for source_id in RESOLVER_SOURCE_SPECS:
+            frames[source_id] = futures[source_id].result()
+    return frames
