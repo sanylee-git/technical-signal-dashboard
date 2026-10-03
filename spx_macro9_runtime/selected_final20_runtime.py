@@ -84,7 +84,7 @@ def _read_frozen_inputs() -> tuple[
             raise RuntimeError(f"S&P2 selected Final10 {family} frozen ID/order mismatch")
     expected_main_ids = {
         "Combo1": {
-            "Main1": "39100770c8e16a06aee67170",
+            "Main1": "da862ec08d016b6f056c71d4",
             "Main2": "e4ad56aa66de8a3f2fb7c645",
         },
         "Combo2": {

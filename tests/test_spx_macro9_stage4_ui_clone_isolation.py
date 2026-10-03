@@ -16,11 +16,11 @@ from spx_macro9_ui import _candidate_label, _display_final
 
 
 EXPECTED_COMBO1 = [
-    "39100770c8e16a06aee67170",
+    "da862ec08d016b6f056c71d4",
     "e4ad56aa66de8a3f2fb7c645",
-    "3802b3ffb79163e6e960dd94",
-    "3cb3f1e1d583f16150bb3f31",
-    "9b0bf6eb468f0e0f9ead4022",
+    "d347f67c803b8c70ccf93c53",
+    "3b836baf07044098ee443d40",
+    "cc58a67d98a9db7b6228a5b6",
 ]
 EXPECTED_COMBO2 = [
     "6b4595522bbed808d41be978",
@@ -43,6 +43,13 @@ def test_spx_selected_final10_payload_uses_pinned_models_and_lineage(payload: di
     assert _display_final(final).shape[0] == 10
     assert final.loc[final["model_family"].eq("COMBO1")].sort_values("display_order")["candidate_id"].tolist() == EXPECTED_COMBO1
     assert final.loc[final["model_family"].eq("COMBO2")].sort_values("display_order")["candidate_id"].tolist() == EXPECTED_COMBO2
+    assert final.loc[final["model_family"].eq("COMBO1")].sort_values("display_order")["display_role"].tolist() == [
+        "Main1 · 효율적 밸런스형",
+        "Main2 · 고성과·저오경보형",
+        "고성과·빠른복귀형",
+        "조기경보·빠른복귀형",
+        "위기경보·저오경보형",
+    ]
     assert payload["proxy_only"] is True
     assert payload["direct_oas_used"] is False
     assert payload["combo2_input_semantics"] == "CHILD_COMBO1_RAW_RISK_STATE"
@@ -70,10 +77,12 @@ def test_spx_combo2_main1_is_the_default_and_tab_uses_operator_ui(payload: dict[
     combo2 = final.loc[final["model_family"].eq("COMBO2")].sort_values("display_order")
     combo1_main1, combo1_main2 = combo1.iloc[0], combo1.iloc[1]
     combo2_main1, combo2_main2 = combo2.iloc[0], combo2.iloc[1]
-    assert combo1_main1["candidate_id"] == "39100770c8e16a06aee67170"
+    assert combo1_main1["candidate_id"] == "da862ec08d016b6f056c71d4"
     assert "Main1" in _candidate_label(combo1_main1)
+    assert combo1_main1["display_role"] == "Main1 · 효율적 밸런스형"
     assert combo1_main2["candidate_id"] == "e4ad56aa66de8a3f2fb7c645"
     assert "Main2" in _candidate_label(combo1_main2)
+    assert combo1_main2["display_role"] == "Main2 · 고성과·저오경보형"
     assert combo2_main1["candidate_id"] == "6b4595522bbed808d41be978"
     assert "Main1" in _candidate_label(combo2_main1)
     assert combo2_main2["candidate_id"] == "c9d4c64e586e2e9f8fb2cff1"
