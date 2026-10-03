@@ -1,17 +1,17 @@
 {
-  "status": "PASS_SNP2_SELECTED_FINAL20_ASSETS_READY",
-  "contract": "snp2_selected_final20_v1",
+  "status": "PASS_SNP2_SELECTED_FINAL10_ASSETS_READY",
+  "contract": "snp2_selected_final10_v1",
   "evaluation_period": {
     "start": "2008-04-01",
     "end": "2026-08-21",
     "trading_sessions": 4628
   },
   "candidate_counts": {
-    "Combo1": 10,
-    "Combo2": 10,
-    "total": 20
+    "Combo1": 5,
+    "Combo2": 5,
+    "total": 10
   },
-  "default_candidate_id": "c9d4c64e586e2e9f8fb2cff1",
+  "default_candidate_id": "6b4595522bbed808d41be978",
   "official_t1_application_count": 1,
   "combo2_input_semantics": "CHILD_COMBO1_RAW_RISK_STATE",
   "corrected_dynamic_threshold_semantics": "previous EMA vs previous threshold; current EMA vs current threshold for every generic dynamic component",
@@ -52,12 +52,12 @@
   },
   "outputs": {
     "combo2_child_mapping.csv": {
-      "sha256": "9c8b814dff4d67bbb566fef72195e9c8d7f28fb0cddca9c4eedf8b9e8dbfbdda",
-      "bytes": 52340
+      "sha256": "7fb9afcbb63d9636c129279aac134c667c054455548de2fd3495284e88f9538e",
+      "bytes": 23299
     },
     "final_candidates.csv": {
-      "sha256": "8d965d16b4820adfd18c774d3b8bb79e6ee7db56500da65fecaff7264e84cc27",
-      "bytes": 11739
+      "sha256": "8e83c201fb10b58868476c899348e1c0b6ee8f80288a8ad4a1093733907d0fcb",
+      "bytes": 5827
     },
     "single_raw_state.parquet": {
       "sha256": "06590b64676672a1097808b05b820a831c9fb65f242f062080aa2a72504eb96c",
@@ -78,32 +78,37 @@
   },
   "candidate_ids": {
     "Combo1": [
-      "9b0bf6eb468f0e0f9ead4022",
-      "e4ad56aa66de8a3f2fb7c645",
-      "3cb3f1e1d583f16150bb3f31",
       "39100770c8e16a06aee67170",
+      "e4ad56aa66de8a3f2fb7c645",
       "3802b3ffb79163e6e960dd94",
-      "1cb2304e4f83508d7d20b788",
-      "a18c14e3322e95354544ce0d",
-      "5ce143a5e041d5278eeb537c",
-      "c1cc6ea8f2ec0b4f5b9abc0a",
-      "87613cddc0e7cdb24237e423"
+      "3cb3f1e1d583f16150bb3f31",
+      "9b0bf6eb468f0e0f9ead4022"
     ],
     "Combo2": [
-      "c9d4c64e586e2e9f8fb2cff1",
-      "e6d450aa79ca39a713ba2558",
-      "56965121941b6abcf928fe96",
       "6b4595522bbed808d41be978",
-      "b524905cfdecdc45c5cfc205",
-      "3e58ad167be4bb0aad010eb9",
-      "98ba4dad1278e9013a4a3f38",
-      "1cd298482f996815f2892090",
+      "c9d4c64e586e2e9f8fb2cff1",
       "146a32d0a91c4e8068ff600e",
-      "03b4e0be833b4c67d0ed7cdf"
+      "56965121941b6abcf928fe96",
+      "b524905cfdecdc45c5cfc205"
     ]
   },
   "main_candidate_ids": {
-    "Combo1": "9b0bf6eb468f0e0f9ead4022",
-    "Combo2": "c9d4c64e586e2e9f8fb2cff1"
+    "Combo1": {
+      "Main1": "39100770c8e16a06aee67170",
+      "Main2": "e4ad56aa66de8a3f2fb7c645"
+    },
+    "Combo2": {
+      "Main1": "6b4595522bbed808d41be978",
+      "Main2": "c9d4c64e586e2e9f8fb2cff1"
+    }
+  },
+  "selection_revision": {
+    "previous_manifest_sha256": "e18f992a1e1125994890e6722c3068725d7582413f5257b1a3fd1b392a87a13d",
+    "previous_candidate_counts": {
+      "Combo1": 10,
+      "Combo2": 10,
+      "total": 20
+    },
+    "method": "USER_APPROVED_SUBSET_OF_EXISTING_SELECTED_CANDIDATES; no reselection or backtest"
   }
 }

@@ -1,4 +1,4 @@
-"""S&P2 selected Final20 runtime using the corrected Single69 bank."""
+"""S&P2 selected 5+5 runtime using the corrected Single69 bank."""
 
 from __future__ import annotations
 
@@ -38,15 +38,15 @@ def _read_frozen_inputs() -> tuple[
 ]:
     manifest_path = ASSETS / "selected_final20_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("status") != "PASS_SNP2_SELECTED_FINAL20_ASSETS_READY":
-        raise RuntimeError("S&P2 selected Final20 asset gate is not PASS")
-    if manifest.get("contract") != "snp2_selected_final20_v1":
-        raise RuntimeError("S&P2 selected Final20 contract mismatch")
+    if manifest.get("status") != "PASS_SNP2_SELECTED_FINAL10_ASSETS_READY":
+        raise RuntimeError("S&P2 selected Final10 asset gate is not PASS")
+    if manifest.get("contract") != "snp2_selected_final10_v1":
+        raise RuntimeError("S&P2 selected Final10 contract mismatch")
     for name in OUTPUTS:
         path = ASSETS / name
         pin = manifest.get("outputs", {}).get(name, {})
         if not path.is_file() or asset_sha256(path) != pin.get("sha256"):
-            raise RuntimeError(f"S&P2 selected Final20 asset SHA mismatch: {name}")
+            raise RuntimeError(f"S&P2 selected Final10 asset SHA mismatch: {name}")
 
     panel = pd.read_parquet(ASSETS / "snp_source_panel.parquet")
     registry = pd.read_parquet(ASSETS / "snp_single69_registry.parquet")
@@ -74,25 +74,36 @@ def _read_frozen_inputs() -> tuple[
 
     counts = final.groupby("family").size().to_dict()
     expected_ids = manifest.get("candidate_ids", {})
-    if counts != {"Combo1": 10, "Combo2": 10} or len(final) != 20:
-        raise RuntimeError("S&P2 selected Final20 candidate-count contract mismatch")
+    if counts != {"Combo1": 5, "Combo2": 5} or len(final) != 10:
+        raise RuntimeError("S&P2 selected Final10 candidate-count contract mismatch")
     if final.candidate_id.astype(str).duplicated().any():
-        raise RuntimeError("S&P2 selected Final20 has duplicate candidate IDs")
+        raise RuntimeError("S&P2 selected Final10 has duplicate candidate IDs")
     for family in ("Combo1", "Combo2"):
         actual = final.loc[final.family.eq(family)].sort_values("display_order").candidate_id.astype(str).tolist()
         if actual != expected_ids.get(family):
-            raise RuntimeError(f"S&P2 selected {family} frozen ID/order mismatch")
+            raise RuntimeError(f"S&P2 selected Final10 {family} frozen ID/order mismatch")
     expected_main_ids = {
-        "Combo1": "9b0bf6eb468f0e0f9ead4022",
-        "Combo2": "c9d4c64e586e2e9f8fb2cff1",
+        "Combo1": {
+            "Main1": "39100770c8e16a06aee67170",
+            "Main2": "e4ad56aa66de8a3f2fb7c645",
+        },
+        "Combo2": {
+            "Main1": "6b4595522bbed808d41be978",
+            "Main2": "c9d4c64e586e2e9f8fb2cff1",
+        },
     }
     if manifest.get("main_candidate_ids") != expected_main_ids:
-        raise RuntimeError("S&P2 selected Main1 candidate contract mismatch")
-    for family, candidate_id in expected_main_ids.items():
-        main = final.loc[final.family.eq(family)].sort_values("display_order").iloc[0]
-        if str(main.candidate_id) != candidate_id or not str(main.display_role).startswith("Main1"):
-            raise RuntimeError(f"S&P2 selected {family} Main1 display contract mismatch")
-    if manifest.get("default_candidate_id") != expected_main_ids["Combo2"]:
+        raise RuntimeError("S&P2 selected Main1/Main2 candidate contract mismatch")
+    for family, slots in expected_main_ids.items():
+        family_rows = final.loc[final.family.eq(family)]
+        for slot, candidate_id in slots.items():
+            main = family_rows.loc[family_rows.candidate_id.eq(candidate_id)]
+            if len(main) != 1 or not str(main.iloc[0].display_role).startswith(slot):
+                raise RuntimeError(f"S&P2 selected {family} {slot} display contract mismatch")
+        ordered_ids = family_rows.sort_values("display_order").candidate_id.astype(str).tolist()
+        if ordered_ids[:2] != [slots["Main1"], slots["Main2"]]:
+            raise RuntimeError(f"S&P2 selected {family} main display order mismatch")
+    if manifest.get("default_candidate_id") != expected_main_ids["Combo2"]["Main1"]:
         raise RuntimeError("S&P2 selected default candidate must be Combo2 Main1")
 
     for row in final.itertuples(index=False):
@@ -120,7 +131,7 @@ def _read_frozen_inputs() -> tuple[
         or dates[start].strftime("%Y-%m-%d") != period.get("start")
         or dates[end].strftime("%Y-%m-%d") != period.get("end")
     ):
-        raise RuntimeError("S&P2 selected Final20 evaluation calendar contract mismatch")
+        raise RuntimeError("S&P2 selected Final10 evaluation calendar contract mismatch")
     return manifest, panel, registry, raw_reference, valid_reference, final, children
 
 
@@ -183,7 +194,7 @@ def _frozen_runtime() -> dict[str, Any]:
 
 
 def run_selected_final20_runtime(*, as_of: object = None, provider_frames: dict[str, pd.DataFrame] | None = None) -> dict[str, Any]:
-    """Use the selected frozen Final20 source, then append the standard live tail."""
+    """Use the selected frozen 5+5 source, then append the standard live tail."""
     return run_live_runtime(
         as_of=as_of,
         provider_frames=provider_frames,

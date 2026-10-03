@@ -26,7 +26,7 @@ PERIOD_OPTIONS: list[int | str] = [2, 3, 5, 7, 10, 15, "all"]
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _load_macro9_spx_presentation_payload(live_sync_bucket: str) -> dict[str, Any]:
-    """One selected-Final20 S&P Live acquisition per sync bucket."""
+    """One selected 5+5 S&P Live acquisition per sync bucket."""
     del live_sync_bucket
     return build_presentation_payload(run_selected_final20_runtime())
 
@@ -101,11 +101,11 @@ def _ordered_candidate_ids(final: pd.DataFrame, family: str) -> list[str]:
 
 
 def _display_final(final: pd.DataFrame) -> pd.DataFrame:
-    """Return the fixed, user-selected S&P Combo1/Combo2 sets without reselection."""
+    """Return the fixed, user-selected S&P Combo1/Combo2 5+5 set without reselection."""
     out = final.copy()
     counts = out["model_family"].value_counts()
-    if len(out) != 20 or counts.get("COMBO1", 0) != 10 or counts.get("COMBO2", 0) != 10:
-        raise RuntimeError("S&P Macro9 selected Final20 display contract failed")
+    if len(out) != 10 or counts.get("COMBO1", 0) != 5 or counts.get("COMBO2", 0) != 5:
+        raise RuntimeError("S&P Macro9 selected Final10 display contract failed")
     return out.sort_values("display_order", kind="mergesort").reset_index(drop=True)
 
 
@@ -429,8 +429,8 @@ def _render_css() -> None:
     .macro2-helper-text {font-size:11.5px;line-height:1.45;color:rgba(255,255,255,0.56);margin:2px 0 14px 0}
     .macro2-control-label {font-size:11.5px;color:rgba(255,255,255,0.72);font-weight:600;line-height:1.2;margin-bottom:.7rem}
     .macro2-control-spacer {height:18px}
-    .st-key-macro9_spx_preset div[data-baseweb="select"] > div,.st-key-macro9_spx_benchmark div[data-baseweb="select"] > div,.st-key-macro9_spx_selected_components div[data-baseweb="select"] > div {min-height:2.55rem;border-color:rgba(95,86,214,.72)!important;background:rgba(52,44,112,.22)!important}
-    .st-key-macro9_spx_preset div[data-baseweb="select"] > div,.st-key-macro9_spx_benchmark div[data-baseweb="select"] > div,.st-key-macro9_spx_selected_components div[data-baseweb="select"] > div,.st-key-macro9_spx_years div[data-baseweb="slider"] + div,.st-key-macro9_spx_show_raw label,.st-key-macro9_spx_show_raw span,.st-key-macro9_spx_show_raw p {font-size:13.5px!important;color:rgba(255,255,255,.92)!important}
+    .st-key-macro9_spx_preset_5x5 div[data-baseweb="select"] > div,.st-key-macro9_spx_benchmark div[data-baseweb="select"] > div,.st-key-macro9_spx_selected_components div[data-baseweb="select"] > div {min-height:2.55rem;border-color:rgba(95,86,214,.72)!important;background:rgba(52,44,112,.22)!important}
+    .st-key-macro9_spx_preset_5x5 div[data-baseweb="select"] > div,.st-key-macro9_spx_benchmark div[data-baseweb="select"] > div,.st-key-macro9_spx_selected_components div[data-baseweb="select"] > div,.st-key-macro9_spx_years div[data-baseweb="slider"] + div,.st-key-macro9_spx_show_raw label,.st-key-macro9_spx_show_raw span,.st-key-macro9_spx_show_raw p {font-size:13.5px!important;color:rgba(255,255,255,.92)!important}
     .st-key-macro9_spx_selected_components [data-baseweb="tag"] {background:rgba(92,79,214,.96)!important;color:#F6F4FF!important;min-height:24px!important;height:24px!important;padding:2px 8px!important;border-radius:6px!important;line-height:1.2!important;gap:4px!important;align-items:center!important}
     .st-key-macro9_spx_selected_components [data-baseweb="tag"] span {font-size:11.5px!important;line-height:1.2!important}
     .st-key-macro9_spx_show_raw [data-baseweb="checkbox"] > div {border-color:rgba(95,86,214,.78)!important}
@@ -438,7 +438,7 @@ def _render_css() -> None:
 
 
 def render_macro9_spx_section(container: Any, *, payload: dict[str, Any] | None = None, payload_loader: Callable[[str], dict[str, Any]] = _load_macro9_spx_presentation_payload) -> None:
-    """Render the fixed S&P selected-Final20 view from one S&P-only runtime payload."""
+    """Render the fixed S&P selected 5+5 view from one S&P-only runtime payload."""
     with container:
         _render_css()
         if payload is None:
@@ -454,8 +454,8 @@ def render_macro9_spx_section(container: Any, *, payload: dict[str, Any] | None 
         combo2, combo1 = _ordered_candidate_ids(final, "COMBO2"), _ordered_candidate_ids(final, "COMBO1")
         ordered, separator = combo2 + combo1, "__macro9_spx_combo1_separator__"
         default = combo2[0]
-        if st.session_state.get("macro9_spx_preset") == separator or st.session_state.get("macro9_spx_preset") not in ordered:
-            st.session_state["macro9_spx_preset"] = default
+        if st.session_state.get("macro9_spx_preset_5x5") == separator or st.session_state.get("macro9_spx_preset_5x5") not in ordered:
+            st.session_state["macro9_spx_preset_5x5"] = default
         labels = {str(row.candidate_id): _candidate_label(row._asdict()) for row in final.itertuples(index=False)}
         st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
         st.markdown(_group_summary(payload, final), unsafe_allow_html=True)
@@ -467,7 +467,7 @@ def render_macro9_spx_section(container: Any, *, payload: dict[str, Any] | None 
         st.markdown('<div class="macro2-control-spacer"></div>', unsafe_allow_html=True)
         c1, c2, c3, c4 = st.columns([1.8, 1.0, 2.2, 1.0], vertical_alignment="bottom")
         with c1:
-            candidate_id = st.selectbox("조합 프리셋", combo2 + [separator] + combo1, format_func=lambda value: "──────── 조합1 ────────" if value == separator else labels[value], key="macro9_spx_preset", label_visibility="collapsed")
+            candidate_id = st.selectbox("조합 프리셋", combo2 + [separator] + combo1, format_func=lambda value: "──────── 조합1 ────────" if value == separator else labels[value], key="macro9_spx_preset_5x5", label_visibility="collapsed")
         if candidate_id == separator:
             candidate_id = combo1[0]
         state = _snapshot_row(payload, candidate_id)
@@ -526,4 +526,4 @@ def render_macro9_spx_section(container: Any, *, payload: dict[str, Any] | None 
             st.write(f"candidate_id: `{candidate_id}`")
             st.write(f"공식 Frozen 백테스트: `2008-04-01 ~ {payload['backtest_windows']['frozen_cutoff']} · T+1 · 0bp · 현금수익 0%`")
             st.write(f"CAGR: `{_fmt_pct(live.cagr)}` · MDD: `{_fmt_pct(live.mdd)}` · Calmar: `{float(live.calmar):.3f}`")
-            st.write("사용자 선정 Combo1·Combo2 각 10개를 고정 표시합니다. 공식 T+1은 1회 적용하며, HY/IG는 전 기간 Proxy Only입니다.")
+            st.write("사용자 선정 Combo1·Combo2 각 5개를 고정 표시합니다. 공식 T+1은 1회 적용하며, HY/IG는 전 기간 Proxy Only입니다.")
