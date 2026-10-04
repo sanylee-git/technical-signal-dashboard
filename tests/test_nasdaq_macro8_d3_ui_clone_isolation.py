@@ -38,15 +38,11 @@ def payload() -> dict:
 
 
 def _default_candidate(payload: dict) -> str:
-    return str(
-        _practical_final(payload["final20"]).loc[lambda frame: frame["model_family"].eq("COMBO2")]
-        .sort_values("display_order")
-        .iloc[0]["candidate_id"]
-    )
+    return str(_operational_display_final(payload).loc[lambda frame: frame["model_family"].eq("COMBO2")].iloc[0]["candidate_id"])
 
 
 def test_payload_is_frozen_only_and_preserves_final20_runtime_state(payload: dict) -> None:
-    assert payload["presentation_contract"] == "nasdaq_macro8_frozen_presentation_payload_v1"
+    assert payload["presentation_contract"] == "nasdaq_macro8_frozen_presentation_payload_v2"
     assert payload["runtime_mode"] == "FROZEN_ONLY"
     assert payload["network_access"] is False
     assert payload["proxy_only"] is True
@@ -61,57 +57,55 @@ def test_payload_is_frozen_only_and_preserves_final20_runtime_state(payload: dic
     assert (live.loc[full.index, "mdd"] - full["mdd"]).abs().max() < 1e-12
 
 
-def test_practical10_is_the_fixed_operational_view(payload: dict) -> None:
+def test_selected_final10_is_the_fixed_operational_view(payload: dict) -> None:
     practical = _practical_final(payload["final20"])
     assert len(payload["final20"]) == 20
     assert len(practical) == 10
     assert practical["selection_type"].eq("Practical").all()
     assert practical["model_family"].value_counts().to_dict() == {"COMBO1": 5, "COMBO2": 5}
-    summary = _group_summary(payload, practical)
+    display = _operational_display_final(payload)
+    assert len(display) == 10
+    assert display["model_family"].value_counts().to_dict() == {"COMBO1": 5, "COMBO2": 5}
+    summary = _group_summary(payload, display)
     assert "조합2 계산 가능 5 / 5" in summary
     assert "조합1 계산 가능 5 / 5" in summary
     assert "/ 10" not in summary
 
 
-def test_old_candidates_are_preserved_and_new_ten_are_appended(payload: dict) -> None:
+def test_user_final_five_per_combo_are_the_only_display_candidates(payload: dict) -> None:
     display = _operational_display_final(payload)
     assert len(payload["final20"]) == 20
-    assert len(display) == 20
-    assert display["model_family"].value_counts().to_dict() == {"COMBO2": 10, "COMBO1": 10}
+    assert len(display) == 10
+    assert display["model_family"].value_counts().to_dict() == {"COMBO2": 5, "COMBO1": 5}
     assert display.groupby(["model_family", "display_vintage"]).size().to_dict() == {
-        ("COMBO1", "New"): 5, ("COMBO1", "Old"): 5,
-        ("COMBO2", "New"): 5, ("COMBO2", "Old"): 5,
+        ("COMBO1", "New"): 4, ("COMBO1", "Old"): 1,
+        ("COMBO2", "New"): 3, ("COMBO2", "Old"): 2,
     }
-    new_c1 = display.loc[display["model_family"].eq("COMBO1") & display["display_vintage"].eq("New")]
-    new_c2 = display.loc[display["model_family"].eq("COMBO2") & display["display_vintage"].eq("New")]
-    assert new_c1["candidate_id"].tolist() == [
-        "n10|nq5e10_c7a79e5c0e3bd870", "n12|nq5e12_592f820a65512321",
+    combo1 = display.loc[display["model_family"].eq("COMBO1")]
+    combo2 = display.loc[display["model_family"].eq("COMBO2")]
+    assert combo1["candidate_id"].tolist() == [
+        "n10|nq5e10_c7a79e5c0e3bd870", "n8|nq5e8_6f60d9e268c12ef1",
         "n12|nq5e12_d972a9f173c64587", "n8|nq5e8_2bd44048f58e2fcd",
         "n12|nq5e12_02afb347b4b9eaf8",
     ]
-    assert new_c2["candidate_id"].tolist() == [
-        "nq_c2_d492140aad8feafa", "nq_c2_e03c993a14c2dfe8",
-        "nq_c2_6230b4f4492e3e15", "nq_c2_478558562d45356d",
-        "nq_c2_f02f07116cee57d3",
+    assert combo2["candidate_id"].tolist() == [
+        "m5|n6|nq5e6_2c78a53ac6e928f8|n7|nq5e7_934189464a0ef2f2|n8|nq5e8_be766ae57cfa9042|n8|nq5e8_d2cd70973210bf4d|n8|nq5e8_f2b2eadb0bc3f323|K3|L1",
+        "m7|n10|nq5e10_9bd42da1c1a6841b|n5|nq5e5_6194c950c7d8e169|n6|nq5e6_2c78a53ac6e928f8|n6|nq5e6_ec1d4faea1cff3e8|n7|nq5e7_2b2edceb8bbeb2b4|n8|nq5e8_f2b2eadb0bc3f323|n9|nq5e9_c796e1a7980688d2|K4|L2",
+        "nq_c2_e03c993a14c2dfe8", "nq_c2_478558562d45356d", "nq_c2_6230b4f4492e3e15",
     ]
-    assert _candidate_label(new_c1.iloc[0]).startswith("[New] [T1]")
-    old_main1 = display.loc[display["model_family"].eq("COMBO2") & display["display_vintage"].eq("Old")].iloc[0]
-    assert old_main1["candidate_id"].startswith("m5|")
+    assert combo1["display_designation"].tolist() == ["MAIN", "Confirm", "Confirm", "Confirm", "Confirm"]
+    assert combo2["display_designation"].tolist() == ["MAIN", "Confirm", "Confirm", "Confirm", "Confirm"]
+    assert _candidate_label(combo1.iloc[0]).startswith("[조합1 · MAIN] 균형형 + 추세지속형")
+    assert _candidate_label(combo2.iloc[0]).startswith("[조합2 · MAIN] 균형형 + 추세지속형")
 
 
-def test_operational_main_roles_are_display_only(payload: dict) -> None:
-    practical = _practical_final(payload["final20"])
-    combo1 = practical.loc[practical["model_family"].eq("COMBO1")]
-    combo2 = practical.loc[practical["model_family"].eq("COMBO2")]
-    assert combo1.iloc[0]["candidate_id"] == "n8|nq5e8_6f60d9e268c12ef1"
-    assert combo1.iloc[0]["display_role"] == "Main1 Whipsaw / 방어"
-    assert combo1.iloc[1]["candidate_id"] == "n7|nq5e7_fc87283b72f8a856"
-    assert combo1.iloc[1]["display_role"] == "Main2 K/L 강건성"
+def test_combo2_main_defaults_to_selected_existing_candidate(payload: dict) -> None:
+    display = _operational_display_final(payload)
+    combo2 = display.loc[display["model_family"].eq("COMBO2")]
     assert combo2.iloc[0]["candidate_id"].startswith("m5|")
-    assert combo2.iloc[0]["display_role"] == "Main1 균형형"
-    assert combo2.iloc[1]["candidate_id"].startswith("m8|")
-    assert combo2.iloc[1]["display_role"] == "Main2 고성과 Practical"
-    assert set(practical["candidate_id"]) == set(payload["final20"].loc[payload["final20"]["selection_type"].eq("Practical"), "candidate_id"])
+    assert combo2.iloc[0]["display_name"] == "균형형 + 추세지속형"
+    assert combo2.iloc[0]["display_designation"] == "MAIN"
+    assert set(display["candidate_id"]).issubset(set(payload["snapshot"]["candidate_id"]))
 
 
 def test_ui_isolated_from_other_market_runtimes_and_network() -> None:
@@ -166,9 +160,9 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     assert "min-width:1280px" in table
     assert "시장단계(1주 전)" in table
     assert table.count("<tbody><tr") == 1
-    assert table.count("<tr style=") == 10
+    assert table.count("<tr style=") == 5
     assert "Return / Calmar" not in table
-    assert "Whipsaw 최소화" in table
+    assert "균형형 + 추세지속형" in table
     dashboard = (ROOT / "technical_signal_dashboard.py").read_text(encoding="utf-8")
     assert '"macro8_nasdaq": ("NASDAQ MACRO INDICATORS", "🇺🇸 나스닥지표")' in dashboard
     assert "render_macro8_nasdaq_section(_macro8_nasdaq_container)" in dashboard
@@ -186,8 +180,8 @@ def test_mixed_group_stage_is_valid_and_not_unavailable(payload: dict) -> None:
     assert "조합1+2:" in summary
     assert "조합1+2: <span style='color:#FF8C69;font-weight:700'>계산 불가" not in summary
     operating = _group_summary(payload, _operational_display_final(payload))
-    assert "조합2 계산 가능 10 / 10" in operating
-    assert "조합1 계산 가능 10 / 10" in operating
+    assert "조합2 계산 가능 5 / 5" in operating
+    assert "조합1 계산 가능 5 / 5" in operating
 
 
 def test_nasdaq_default_page_smoke_renders_without_exception() -> None:

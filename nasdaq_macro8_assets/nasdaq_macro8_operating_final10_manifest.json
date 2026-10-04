@@ -1,0 +1,15 @@
+{
+  "gate": "PASS_NASDAQ_OPERATING_FINAL10_SELECTION",
+  "contract": "nasdaq_operating_final10_manifest_v1",
+  "asset": {
+    "path": "nasdaq_macro8_assets/nasdaq_macro8_operating_final10.json",
+    "sha256": "d27b10c0ba5a657227bade5bb0327f958120b8732d3fa662ef2787969ebcf281",
+    "bytes": 3164
+  },
+  "candidate_count": 10,
+  "combo_counts": {
+    "Combo1": 5,
+    "Combo2": 5
+  },
+  "selection_policy": "DISPLAY_ONLY; Frozen candidate definitions and evaluation artifacts unchanged"
+}

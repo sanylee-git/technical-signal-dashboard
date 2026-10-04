@@ -19,6 +19,7 @@ from .frozen_replay import (
     replay_combo1_raw_history,
     replay_core_chart_history,
 )
+from .operating_selection import load_operating_selection
 
 
 def _date(value: object) -> str | None:
@@ -205,14 +206,36 @@ def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
     additions = runtime.get("operating_additions")
     if not isinstance(additions, dict):
         raise RuntimeError("NASDAQ operating additions replay is unavailable")
-    old_display = final.loc[final["selection_type"].eq("Practical")].copy()
-    old_display["display_vintage"] = "Old"
+    final["display_vintage"] = "Old"
     new_display = _final20(additions["final"])
     new_display["display_vintage"] = "New"
-    display_final = pd.concat([old_display, new_display], ignore_index=True, sort=False)
+    candidate_universe = pd.concat([final, new_display], ignore_index=True, sort=False)
+    if candidate_universe["candidate_id"].duplicated().any():
+        raise RuntimeError("NASDAQ Frozen/addition candidate IDs overlap")
+
+    selection = pd.DataFrame(load_operating_selection())
+    universe = candidate_universe.set_index("candidate_id", drop=False)
+    missing = set(selection["candidate_id"].astype(str)) - set(universe.index.astype(str))
+    if missing:
+        raise RuntimeError(f"NASDAQ selected Final10 candidates are unavailable: {sorted(missing)}")
+    selected_rows = universe.loc[selection["candidate_id"].astype(str)].reset_index(drop=True)
+    for actual, expected in (("family", "family"), ("n_or_m", "expected_n_or_m"), ("K", "expected_K"), ("L", "expected_L")):
+        values = selected_rows[actual].astype(str).to_numpy()
+        expected_values = selection[expected].astype(str).to_numpy()
+        if not np.array_equal(values, expected_values):
+            raise RuntimeError(f"NASDAQ selected Final10 {actual} metadata mismatch")
+    display_final = selected_rows.copy()
+    display_final["display_order"] = selection["display_order"].astype(int).to_numpy()
+    display_final["display_slot"] = display_final["display_order"]
+    display_final["display_role"] = selection["display_name"].astype(str).to_numpy()
+    display_final["display_designation"] = selection["designation"].astype(str).to_numpy()
+    display_final["display_name"] = selection["display_name"].astype(str).to_numpy()
+    display_final["model_family"] = display_final["family"].str.upper()
+    display_final["display_family_order"] = display_final["model_family"].map({"COMBO2": 0, "COMBO1": 1})
+    display_final = display_final.sort_values(["display_family_order", "display_order"], kind="mergesort").reset_index(drop=True)
     family_counts = display_final.groupby("model_family")["candidate_id"].nunique().to_dict()
-    if len(display_final) != 20 or family_counts != {"COMBO1": 10, "COMBO2": 10}:
-        raise RuntimeError("NASDAQ Old/New display set must contain ten models per combo")
+    if len(display_final) != 10 or family_counts != {"COMBO1": 5, "COMBO2": 5}:
+        raise RuntimeError("NASDAQ selected operating display must contain five models per combo")
 
     def decorate_snapshot(frame: pd.DataFrame, definitions: pd.DataFrame) -> pd.DataFrame:
         out = frame.copy().set_index("candidate_id").reindex(definitions["candidate_id"]).reset_index()
@@ -231,15 +254,22 @@ def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
         return out
 
     snapshot = pd.concat([
-        decorate_snapshot(runtime["snapshot"], old_display),
+        decorate_snapshot(runtime["snapshot"], final),
         decorate_snapshot(additions["snapshot"], new_display),
     ], ignore_index=True, sort=False)
     confirmed_source = runtime.get("confirmed_snapshot", runtime["snapshot"])
     additions_confirmed = additions.get("confirmed_snapshot", additions["snapshot"])
     confirmed_snapshot = pd.concat([
-        decorate_snapshot(confirmed_source, old_display),
+        decorate_snapshot(confirmed_source, final),
         decorate_snapshot(additions_confirmed, new_display),
     ], ignore_index=True, sort=False)
+    display_metadata = display_final.set_index("candidate_id")
+    for frame in (snapshot, confirmed_snapshot):
+        frame_indexed = frame.set_index("candidate_id", drop=False).reindex(display_final["candidate_id"])
+        for column in ("model_family", "display_slot", "display_role", "display_vintage", "tier", "display_designation", "display_name", "display_order"):
+            frame_indexed[column] = display_metadata.loc[display_final["candidate_id"], column].to_numpy()
+        frame.drop(frame.index, inplace=True)
+        frame[frame_indexed.columns] = frame_indexed.reset_index(drop=True)
     confirmed_basis_by_candidate = dict(zip(confirmed_snapshot["candidate_id"].astype(str), confirmed_snapshot["basis_date"].map(_date)))
     provisional_basis_by_candidate = dict(zip(snapshot["candidate_id"].astype(str), snapshot["basis_date"].map(_date)))
     candidate_history = pd.concat([
@@ -260,7 +290,7 @@ def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
     metrics, hold, windows = _display_metrics(display_runtime, display_final)
     official_addition_metrics = frozen_additions["metrics"]
     return {
-        "presentation_contract": "nasdaq_macro8_live_presentation_payload_v1" if runtime.get("runtime_mode") == "LIVE_TAIL" else "nasdaq_macro8_frozen_presentation_payload_v1",
+        "presentation_contract": "nasdaq_macro8_live_presentation_payload_v2" if runtime.get("runtime_mode") == "LIVE_TAIL" else "nasdaq_macro8_frozen_presentation_payload_v2",
         "runtime_mode": runtime["runtime_mode"],
         "network_access": bool(runtime.get("network_access")),
         "proxy_only": True,

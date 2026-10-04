@@ -81,13 +81,15 @@ def test_live_payload_keeps_official_backtest_metrics_frozen_and_extends_charts(
     live_payload = build_presentation_payload(live)
 
     assert live_payload["runtime_mode"] == "LIVE_TAIL"
-    assert live_payload["presentation_contract"] == "nasdaq_macro8_live_presentation_payload_v1"
+    assert live_payload["presentation_contract"] == "nasdaq_macro8_live_presentation_payload_v2"
     assert live_payload["benchmark_history"]["date"].max().strftime("%Y-%m-%d") == "2026-08-25"
     assert live_payload["candidate_history"]["date"].max().strftime("%Y-%m-%d") == "2026-08-25"
-    assert live_payload["display_final"]["model_family"].value_counts().to_dict() == {"COMBO2": 10, "COMBO1": 10}
-    new_ids = set(live["operating_additions"]["final"]["candidate_id"].astype(str))
-    new_snapshot = live_payload["snapshot"].loc[live_payload["snapshot"]["candidate_id"].isin(new_ids)]
-    assert len(new_snapshot) == 10
+    assert live_payload["display_final"]["model_family"].value_counts().to_dict() == {"COMBO2": 5, "COMBO1": 5}
+    all_addition_ids = set(live["operating_additions"]["final"]["candidate_id"].astype(str))
+    displayed_addition_ids = set(live_payload["display_final"].loc[live_payload["display_final"]["display_vintage"].eq("New"), "candidate_id"].astype(str))
+    new_snapshot = live_payload["snapshot"].loc[live_payload["snapshot"]["candidate_id"].isin(displayed_addition_ids)]
+    assert len(displayed_addition_ids) == len(new_snapshot) == 7
+    assert displayed_addition_ids.issubset(all_addition_ids)
     assert new_snapshot["basis_date"].eq("2026-08-25").all()
     frozen_prefix = frozen["operating_additions"]["history"].sort_values(["candidate_id", "date"]).reset_index(drop=True)
     live_prefix = live["operating_additions"]["history"].loc[

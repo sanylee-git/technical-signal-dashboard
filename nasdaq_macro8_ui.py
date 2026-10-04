@@ -24,34 +24,10 @@ STAGE_COLORS = {
 STAGE_SCORES = {"매수심화": -3, "매수": -2, "매수준비": -1, "홀드": 0, "관망": 0, "매도준비": 1, "매도": 2, "매도심화": 3}
 PERIOD_OPTIONS: list[int | str] = [2, 3, 5, 7, 10, 15, "all"]
 
-# Operational labels/order are presentation-only. The frozen Final20 candidate
-# definitions, component membership, and metrics remain unchanged.
-NASDAQ_OPERATIONAL_ROLE_OVERRIDES = {
-    "m5|n6|nq5e6_2c78a53ac6e928f8|n7|nq5e7_934189464a0ef2f2|n8|nq5e8_be766ae57cfa9042|n8|nq5e8_d2cd70973210bf4d|n8|nq5e8_f2b2eadb0bc3f323|K3|L1": "Main1 균형형",
-    "m8|n10|nq5e10_9bd42da1c1a6841b|n6|nq5e6_2c78a53ac6e928f8|n6|nq5e6_415194320e4754e5|n6|nq5e6_8b7fdbbd5d8db54a|n7|nq5e7_fc8f0fc4e97ae2e8|n8|nq5e8_be766ae57cfa9042|n8|nq5e8_f2b2eadb0bc3f323|n9|nq5e9_c796e1a7980688d2|K4|L2": "Main2 고성과 Practical",
-    "m6|n5|nq5e5_cb6d451a1c972e70|n6|nq5e6_8b7fdbbd5d8db54a|n7|nq5e7_07dba2edc2d519a1|n8|nq5e8_be766ae57cfa9042|n8|nq5e8_f2b2eadb0bc3f323|n9|nq5e9_c796e1a7980688d2|K4|L1": "K/L 강건성",
-    "n8|nq5e8_a6feb39063ce3ac4": "시대 안정성",
-    "n8|nq5e8_6f60d9e268c12ef1": "Main1 Whipsaw / 방어",
-    "n7|nq5e7_fc87283b72f8a856": "Main2 K/L 강건성",
-}
-NASDAQ_OPERATIONAL_DISPLAY_ORDER = {
-    "m5|n6|nq5e6_2c78a53ac6e928f8|n7|nq5e7_934189464a0ef2f2|n8|nq5e8_be766ae57cfa9042|n8|nq5e8_d2cd70973210bf4d|n8|nq5e8_f2b2eadb0bc3f323|K3|L1": 1,
-    "m8|n10|nq5e10_9bd42da1c1a6841b|n6|nq5e6_2c78a53ac6e928f8|n6|nq5e6_415194320e4754e5|n6|nq5e6_8b7fdbbd5d8db54a|n7|nq5e7_fc8f0fc4e97ae2e8|n8|nq5e8_be766ae57cfa9042|n8|nq5e8_f2b2eadb0bc3f323|n9|nq5e9_c796e1a7980688d2|K4|L2": 2,
-    "m6|n5|nq5e5_cb6d451a1c972e70|n6|nq5e6_8b7fdbbd5d8db54a|n7|nq5e7_07dba2edc2d519a1|n8|nq5e8_be766ae57cfa9042|n8|nq5e8_f2b2eadb0bc3f323|n9|nq5e9_c796e1a7980688d2|K4|L1": 3,
-    "m7|n10|nq5e10_9bd42da1c1a6841b|n5|nq5e5_6194c950c7d8e169|n6|nq5e6_2c78a53ac6e928f8|n6|nq5e6_ec1d4faea1cff3e8|n7|nq5e7_2b2edceb8bbeb2b4|n8|nq5e8_f2b2eadb0bc3f323|n9|nq5e9_c796e1a7980688d2|K4|L2": 4,
-    "m7|n10|nq5e10_c7dcb13d40794ed8|n12|nq5e12_10aa36a8dd29d82c|n12|nq5e12_6c99b08fcbf3f930|n6|nq5e6_18e02fabf8c4cfad|n6|nq5e6_cfe958901d9c70d4|n8|nq5e8_be766ae57cfa9042|n8|nq5e8_f2b2eadb0bc3f323|K4|L2": 5,
-    "n8|nq5e8_6f60d9e268c12ef1": 1,
-    "n7|nq5e7_fc87283b72f8a856": 2,
-    "n8|nq5e8_a6feb39063ce3ac4": 3,
-    "n8|nq5e8_8325c2bcedbdd951": 4,
-    "n6|nq5e6_10b44c52f07a1b52": 5,
-}
-
-
 @st.cache_data(ttl=3600, show_spinner=False)
-def _load_macro8_nasdaq_presentation_payload(live_sync_bucket: str) -> dict[str, Any]:
+def _load_macro8_nasdaq_presentation_payload(live_sync_bucket: str, selection_revision: str) -> dict[str, Any]:
     """One NASDAQ-only Live acquisition per sync bucket; UI state is not a key."""
-    del live_sync_bucket
+    del live_sync_bucket, selection_revision
     return build_presentation_payload(run_live_runtime())
 
 
@@ -115,11 +91,8 @@ def _on_k_html(active_count: object, k: object, risk_off: object) -> str:
 def _candidate_label(row: pd.Series | dict[str, Any]) -> str:
     family = str(row.get("model_family", ""))
     prefix, unit = ("조합1", "지표") if family == "COMBO1" else ("조합2", "조합1")
-    selection = "성과" if str(row.get("selection_type", "")) == "Performance" else "실전"
-    vintage = str(row.get("display_vintage", ""))
-    tier = str(row.get("tier", ""))
-    vintage_label = f"[New] [{tier}] " if vintage == "New" and tier else f"[{vintage}] " if vintage else ""
-    return f"{vintage_label}[{prefix} · {selection}] {row.get('display_role', '')} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
+    designation = str(row.get("display_designation", "Confirm"))
+    return f"[{prefix} · {designation}] {row.get('display_role', '')} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
 
 
 def _ordered_candidate_ids(final: pd.DataFrame, family: str) -> list[str]:
@@ -127,38 +100,22 @@ def _ordered_candidate_ids(final: pd.DataFrame, family: str) -> list[str]:
 
 
 def _practical_final(final: pd.DataFrame) -> pd.DataFrame:
-    """Return the fixed operational view without changing the Final20 contract."""
+    """Return the historical Practical10 slice for read-only comparisons."""
     out = final.loc[final["selection_type"].eq("Practical")].copy()
     counts = out["model_family"].value_counts()
     if len(out) != 10 or counts.get("COMBO1", 0) != 5 or counts.get("COMBO2", 0) != 5:
         raise RuntimeError("NASDAQ Macro8 Practical10 display contract failed")
-    out["display_role"] = out.apply(
-        lambda row: NASDAQ_OPERATIONAL_ROLE_OVERRIDES.get(str(row["candidate_id"]), str(row["display_role"])),
-        axis=1,
-    )
-    out["display_order"] = out.apply(
-        lambda row: NASDAQ_OPERATIONAL_DISPLAY_ORDER.get(str(row["candidate_id"]), int(row["display_order"])),
-        axis=1,
-    )
     return out.sort_values("display_order", kind="mergesort").reset_index(drop=True)
 
 
 def _operational_display_final(payload: dict[str, Any]) -> pd.DataFrame:
-    old = _practical_final(payload["final20"])
-    old["display_vintage"] = "Old"
-    new = payload["display_final"].loc[payload["display_final"]["display_vintage"].eq("New")].copy()
-    parts = []
-    for family in ("COMBO2", "COMBO1"):
-        old_group = old.loc[old["model_family"].eq(family)].sort_values("display_order", kind="mergesort")
-        new_group = new.loc[new["model_family"].eq(family)].sort_values("display_order", kind="mergesort")
-        group = pd.concat([old_group, new_group], ignore_index=True, sort=False)
-        group["display_order"] = np.arange(1, len(group) + 1)
-        parts.append(group)
-    result = pd.concat(parts, ignore_index=True, sort=False)
+    result = payload["display_final"].copy()
     counts = result.groupby("model_family")["candidate_id"].nunique().to_dict()
-    if len(result) != 20 or counts != {"COMBO1": 10, "COMBO2": 10}:
-        raise RuntimeError("NASDAQ Old/New operating display contract failed")
-    return result
+    if len(result) != 10 or result["candidate_id"].duplicated().any() or counts != {"COMBO1": 5, "COMBO2": 5}:
+        raise RuntimeError("NASDAQ selected operating display must contain five unique models per combo")
+    if result.groupby("model_family")["display_designation"].apply(lambda values: values.eq("MAIN").sum()).to_dict() != {"COMBO1": 1, "COMBO2": 1}:
+        raise RuntimeError("NASDAQ selected operating display must contain one MAIN per combo")
+    return result.sort_values(["display_family_order", "display_order"], kind="mergesort").reset_index(drop=True)
 
 
 def _view(frame: pd.DataFrame, *, candidate_id: str | None = None, parent_id: str | None = None, start: object = None, end: object = None, years: int | str = "all") -> pd.DataFrame:
@@ -490,13 +447,13 @@ def _render_css() -> None:
     </style>""", unsafe_allow_html=True)
 
 
-def render_macro8_nasdaq_section(container: Any, *, payload: dict[str, Any] | None = None, payload_loader: Callable[[str], dict[str, Any]] = _load_macro8_nasdaq_presentation_payload) -> None:
-    """Render the existing NASDAQ candidates alongside ten pinned challengers."""
+def render_macro8_nasdaq_section(container: Any, *, payload: dict[str, Any] | None = None, payload_loader: Callable[[str, str], dict[str, Any]] = _load_macro8_nasdaq_presentation_payload) -> None:
+    """Render the selected five operating candidates for each NASDAQ combo."""
     with container:
         _render_css()
         if payload is None:
             try:
-                payload = payload_loader(_live_sync_bucket())
+                payload = payload_loader(_live_sync_bucket(), "nasdaq-final10-20261004")
             except Exception as exc:
                 st.error(f"NASDAQ Macro8 Live 데이터를 준비하지 못했습니다: {exc}")
                 return
@@ -579,4 +536,4 @@ def render_macro8_nasdaq_section(container: Any, *, payload: dict[str, Any] | No
             st.write(f"candidate_id: `{candidate_id}`")
             st.write(f"공식 Frozen 백테스트: `2008-04-01 ~ {payload['backtest_windows']['frozen_cutoff']} · T+1 · 10bp · 현금수익 미적용`")
             st.write(f"CAGR: `{_fmt_pct(live.cagr)}` · MDD: `{_fmt_pct(live.mdd)}` · Calmar: `{float(live.calmar):.3f}`")
-            st.write("[Old] 기존 후보 5개와 [New] 추가 후보 5개를 조합별로 함께 표시합니다. 기본 선택은 기존 Combo2 Main1이며, HY/IG는 전 기간 Proxy Only입니다.")
+            st.write("확정된 Combo1/Combo2 운영 후보 각 5개를 표시합니다. 기본 선택은 Combo2 Main1이며, HY/IG는 전 기간 Proxy Only입니다.")
