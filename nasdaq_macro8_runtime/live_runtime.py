@@ -10,6 +10,7 @@ import pandas as pd
 
 from .frozen_replay import replay_core, replay_final20, replay_final20_history
 from .frozen_runtime import run_frozen_runtime
+from .operating_additions import replay_operating_additions
 from .live_sources import SOURCE_SPECS, fetch_all_sources
 from live_source_resolver import exact_date_spread, resolve_aligned_sources
 
@@ -306,6 +307,7 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
     core = replay_core(panel, frozen_runtime["registry"])
     current_metrics = replay_final20(panel, frozen_runtime["final20"], frozen_runtime["children"], core, evaluation_end=provisional_basis)
     history = replay_final20_history(panel, frozen_runtime["final20"], frozen_runtime["children"], core, evaluation_end=provisional_basis)
+    additions = replay_operating_additions(panel, frozen_runtime["registry"], core, evaluation_end=provisional_basis)
     confirmed_basis = FROZEN_CUTOFF if confirmed_limit is None else min(pd.Timestamp(confirmed_limit).normalize(), provisional_basis)
     snapshot = _snapshot(
         frozen_runtime["final20"], history, panel, provisional_basis,
@@ -313,6 +315,14 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
     )
     confirmed_snapshot = _snapshot(
         frozen_runtime["final20"], history, panel, confirmed_basis,
+        availability_status="CONFIRMED",
+    )
+    additions["snapshot"] = _snapshot(
+        additions["final"], additions["history"], panel, provisional_basis,
+        availability_status=provisional_status,
+    )
+    additions["confirmed_snapshot"] = _snapshot(
+        additions["final"], additions["history"], panel, confirmed_basis,
         availability_status="CONFIRMED",
     )
     return {
@@ -343,6 +353,8 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
         "final20": frozen_runtime["final20"],
         "children": frozen_runtime["children"],
         "core": core,
+        "operating_additions": additions,
+        "frozen_operating_additions": frozen_runtime["operating_additions"],
         "source_status": source_status,
         "source_resolver_records": resolver_records,
         "live_tail_row_count": int(len(panel.loc[panel["date"].gt(FROZEN_CUTOFF)])),

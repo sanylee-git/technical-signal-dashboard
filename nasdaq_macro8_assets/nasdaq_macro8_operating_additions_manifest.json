@@ -1,0 +1,22 @@
+{
+  "gate": "PASS_NASDAQ_OPERATING_ADDITIONS_FROZEN_PARITY",
+  "contract": "nasdaq_macro8_operating_additions_manifest_v1",
+  "asset": {
+    "path": "nasdaq_macro8_assets/nasdaq_macro8_operating_additions.json",
+    "sha256": "1ebdde2c40de9c17550e31d2861e0b2f7ac78e6476007c32645ce9a9a4007844",
+    "bytes": 49050
+  },
+  "source_run": "divergence_analysis/runs/run_20261003T183133Z_nasdaq_native_v22_top50_step2c",
+  "new_candidate_count": 10,
+  "combo_counts": {
+    "Combo1": 5,
+    "Combo2": 5
+  },
+  "combo2_child_mapping_count": 38,
+  "missing_core_component_count": 1,
+  "frozen_state_hash_period": {
+    "start": "2008-04-01",
+    "end": "2026-08-21"
+  },
+  "state_hash_parity": "10/10 PASS against Step2C saved Official T+1 states"
+}

@@ -116,7 +116,10 @@ def _candidate_label(row: pd.Series | dict[str, Any]) -> str:
     family = str(row.get("model_family", ""))
     prefix, unit = ("조합1", "지표") if family == "COMBO1" else ("조합2", "조합1")
     selection = "성과" if str(row.get("selection_type", "")) == "Performance" else "실전"
-    return f"[{prefix} · {selection}] {row.get('display_role', '')} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
+    vintage = str(row.get("display_vintage", ""))
+    tier = str(row.get("tier", ""))
+    vintage_label = f"[New] [{tier}] " if vintage == "New" and tier else f"[{vintage}] " if vintage else ""
+    return f"{vintage_label}[{prefix} · {selection}] {row.get('display_role', '')} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
 
 
 def _ordered_candidate_ids(final: pd.DataFrame, family: str) -> list[str]:
@@ -138,6 +141,24 @@ def _practical_final(final: pd.DataFrame) -> pd.DataFrame:
         axis=1,
     )
     return out.sort_values("display_order", kind="mergesort").reset_index(drop=True)
+
+
+def _operational_display_final(payload: dict[str, Any]) -> pd.DataFrame:
+    old = _practical_final(payload["final20"])
+    old["display_vintage"] = "Old"
+    new = payload["display_final"].loc[payload["display_final"]["display_vintage"].eq("New")].copy()
+    parts = []
+    for family in ("COMBO2", "COMBO1"):
+        old_group = old.loc[old["model_family"].eq(family)].sort_values("display_order", kind="mergesort")
+        new_group = new.loc[new["model_family"].eq(family)].sort_values("display_order", kind="mergesort")
+        group = pd.concat([old_group, new_group], ignore_index=True, sort=False)
+        group["display_order"] = np.arange(1, len(group) + 1)
+        parts.append(group)
+    result = pd.concat(parts, ignore_index=True, sort=False)
+    counts = result.groupby("model_family")["candidate_id"].nunique().to_dict()
+    if len(result) != 20 or counts != {"COMBO1": 10, "COMBO2": 10}:
+        raise RuntimeError("NASDAQ Old/New operating display contract failed")
+    return result
 
 
 def _view(frame: pd.DataFrame, *, candidate_id: str | None = None, parent_id: str | None = None, start: object = None, end: object = None, years: int | str = "all") -> pd.DataFrame:
@@ -209,7 +230,8 @@ def _main_chart(payload: dict[str, Any], candidate_id: str, basis: object, years
         if not events.empty:
             points = benchmark.merge(events[["date"]], on="date", how="inner")
             fig.add_trace(go.Scatter(x=points["date"], y=points["ndx_close"], name=name, mode="markers", marker=dict(color=color, size=10, symbol=symbol)))
-    row = payload["final20"].loc[payload["final20"]["candidate_id"].eq(candidate_id)].iloc[0]
+    display = _operational_display_final(payload)
+    row = display.loc[display["candidate_id"].eq(candidate_id)].iloc[0]
     return _layout(fig, _candidate_label(row), x_start, x_end)
 
 
@@ -288,7 +310,7 @@ def _stage_change_html(previous: str, current: str) -> str:
 def _group_summary(payload: dict[str, Any], final: pd.DataFrame | None = None) -> str:
     summary: dict[str, dict[str, str]] = {}
     snapshot = payload["snapshot"]
-    final = _practical_final(payload["final20"]) if final is None else final
+    final = _operational_display_final(payload) if final is None and "display_final" in payload else _practical_final(payload["final20"]) if final is None else final
     for family, label in (("COMBO2", "조합2"), ("COMBO1", "조합1")):
         candidate_ids = final.loc[final["model_family"].eq(family), "candidate_id"]
         rows = snapshot.loc[snapshot["candidate_id"].isin(candidate_ids)]
@@ -386,7 +408,7 @@ def _full_asset_header(windows: dict[str, Any]) -> str:
 
 
 def _backtest_table(payload: dict[str, Any], family: str, selected_id: str, final: pd.DataFrame | None = None) -> str:
-    final = _practical_final(payload["final20"]) if final is None else final
+    final = _operational_display_final(payload) if final is None and "display_final" in payload else _practical_final(payload["final20"]) if final is None else final
     final = final.loc[final["model_family"].eq(family)].sort_values("display_order")
     snapshot = payload["snapshot"].set_index("candidate_id")
     metrics = payload["frozen_display_metrics"]
@@ -469,7 +491,7 @@ def _render_css() -> None:
 
 
 def render_macro8_nasdaq_section(container: Any, *, payload: dict[str, Any] | None = None, payload_loader: Callable[[str], dict[str, Any]] = _load_macro8_nasdaq_presentation_payload) -> None:
-    """Render the fixed Practical10 view from one NASDAQ-only runtime payload."""
+    """Render the existing NASDAQ candidates alongside ten pinned challengers."""
     with container:
         _render_css()
         if payload is None:
@@ -481,7 +503,7 @@ def render_macro8_nasdaq_section(container: Any, *, payload: dict[str, Any] | No
         if not isinstance(payload, dict) or payload.get("ui_side_model_calculation_count") != 0:
             st.error("NASDAQ Macro8 presentation contract 검증 실패")
             return
-        final = _practical_final(payload["final20"])
+        final = _operational_display_final(payload)
         combo2, combo1 = _ordered_candidate_ids(final, "COMBO2"), _ordered_candidate_ids(final, "COMBO1")
         ordered, separator = combo2 + combo1, "__macro8_nasdaq_combo1_separator__"
         default = combo2[0]
@@ -557,4 +579,4 @@ def render_macro8_nasdaq_section(container: Any, *, payload: dict[str, Any] | No
             st.write(f"candidate_id: `{candidate_id}`")
             st.write(f"공식 Frozen 백테스트: `2008-04-01 ~ {payload['backtest_windows']['frozen_cutoff']} · T+1 · 10bp · 현금수익 미적용`")
             st.write(f"CAGR: `{_fmt_pct(live.cagr)}` · MDD: `{_fmt_pct(live.mdd)}` · Calmar: `{float(live.calmar):.3f}`")
-            st.write("Final20은 재선별하지 않으며, 화면에는 실전 후보 10개만 표시합니다. HY/IG는 전 기간 Proxy Only입니다.")
+            st.write("[Old] 기존 후보 5개와 [New] 추가 후보 5개를 조합별로 함께 표시합니다. 기본 선택은 기존 Combo2 Main1이며, HY/IG는 전 기간 Proxy Only입니다.")

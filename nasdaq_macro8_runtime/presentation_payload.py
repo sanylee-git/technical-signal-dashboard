@@ -202,28 +202,63 @@ def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
     if runtime.get("runtime_mode") not in {"FROZEN_ONLY", "LIVE_TAIL"}:
         raise RuntimeError("NASDAQ Macro8 presentation runtime contract failed")
     final = _final20(runtime["final20"])
-    snapshot = runtime["snapshot"].copy().set_index("candidate_id").reindex(final["candidate_id"]).reset_index()
-    snapshot["model_family"] = final["model_family"].to_numpy()
-    snapshot["display_slot"] = final["display_slot"].to_numpy()
-    snapshot["display_role"] = final["display_role"].to_numpy()
-    snapshot["status"] = np.where(snapshot["calculable"], "USABLE", "UNAVAILABLE")
-    snapshot["raw_risk_state"] = snapshot["strategy_risk_state"].astype("Int64")
-    snapshot["week_ago_raw_risk_state"] = snapshot["week_ago_strategy_risk_state"].astype("Int64")
-    snapshot["invest_position"] = 1 - snapshot["raw_risk_state"].fillna(1).astype(int)
-    snapshot["current_risk_start_date"] = snapshot["current_state_start_date"]
-    confirmed_snapshot = runtime.get("confirmed_snapshot", runtime["snapshot"]).copy().set_index("candidate_id").reindex(final["candidate_id"]).reset_index()
-    confirmed_snapshot["model_family"] = final["model_family"].to_numpy()
-    confirmed_snapshot["display_slot"] = final["display_slot"].to_numpy()
-    confirmed_snapshot["display_role"] = final["display_role"].to_numpy()
-    confirmed_snapshot["status"] = np.where(confirmed_snapshot["calculable"], "USABLE", "UNAVAILABLE")
-    confirmed_snapshot["raw_risk_state"] = confirmed_snapshot["strategy_risk_state"].astype("Int64")
-    confirmed_snapshot["invest_position"] = 1 - confirmed_snapshot["raw_risk_state"].fillna(1).astype(int)
+    additions = runtime.get("operating_additions")
+    if not isinstance(additions, dict):
+        raise RuntimeError("NASDAQ operating additions replay is unavailable")
+    old_display = final.loc[final["selection_type"].eq("Practical")].copy()
+    old_display["display_vintage"] = "Old"
+    new_display = _final20(additions["final"])
+    new_display["display_vintage"] = "New"
+    display_final = pd.concat([old_display, new_display], ignore_index=True, sort=False)
+    family_counts = display_final.groupby("model_family")["candidate_id"].nunique().to_dict()
+    if len(display_final) != 20 or family_counts != {"COMBO1": 10, "COMBO2": 10}:
+        raise RuntimeError("NASDAQ Old/New display set must contain ten models per combo")
+
+    def decorate_snapshot(frame: pd.DataFrame, definitions: pd.DataFrame) -> pd.DataFrame:
+        out = frame.copy().set_index("candidate_id").reindex(definitions["candidate_id"]).reset_index()
+        out["model_family"] = definitions["model_family"].to_numpy()
+        out["display_slot"] = definitions["display_slot"].to_numpy()
+        out["display_role"] = definitions["display_role"].to_numpy()
+        out["display_vintage"] = definitions["display_vintage"].to_numpy()
+        out["tier"] = definitions["tier"].to_numpy()
+        out["status"] = np.where(out["calculable"], "USABLE", "UNAVAILABLE")
+        out["raw_risk_state"] = out["strategy_risk_state"].astype("Int64")
+        if "week_ago_strategy_risk_state" in out:
+            out["week_ago_raw_risk_state"] = out["week_ago_strategy_risk_state"].astype("Int64")
+        out["invest_position"] = 1 - out["raw_risk_state"].fillna(1).astype(int)
+        if "current_state_start_date" in out:
+            out["current_risk_start_date"] = out["current_state_start_date"]
+        return out
+
+    snapshot = pd.concat([
+        decorate_snapshot(runtime["snapshot"], old_display),
+        decorate_snapshot(additions["snapshot"], new_display),
+    ], ignore_index=True, sort=False)
+    confirmed_source = runtime.get("confirmed_snapshot", runtime["snapshot"])
+    additions_confirmed = additions.get("confirmed_snapshot", additions["snapshot"])
+    confirmed_snapshot = pd.concat([
+        decorate_snapshot(confirmed_source, old_display),
+        decorate_snapshot(additions_confirmed, new_display),
+    ], ignore_index=True, sort=False)
     confirmed_basis_by_candidate = dict(zip(confirmed_snapshot["candidate_id"].astype(str), confirmed_snapshot["basis_date"].map(_date)))
     provisional_basis_by_candidate = dict(zip(snapshot["candidate_id"].astype(str), snapshot["basis_date"].map(_date)))
-    candidate_history = _candidate_history(runtime)
-    component_history, component_chart_history = _component_history(runtime, final)
-    component_provenance = _component_provenance(runtime, component_history)
-    metrics, hold, windows = _display_metrics(runtime, final)
+    candidate_history = pd.concat([
+        _candidate_history(runtime),
+        _candidate_history({"history": additions["history"]}),
+    ], ignore_index=True, sort=False)
+    display_runtime = dict(runtime)
+    display_runtime["registry"] = pd.concat([runtime["registry"], additions["registry"]], ignore_index=True)
+    display_runtime["children"] = pd.concat([runtime["children"], additions["children"]], ignore_index=True)
+    display_runtime["core"] = {**runtime["core"], **additions["core"]}
+    component_history, component_chart_history = _component_history(display_runtime, display_final)
+    component_provenance = _component_provenance(display_runtime, component_history)
+    frozen_additions = runtime.get("frozen_operating_additions", additions)
+    display_runtime["frozen_history"] = pd.concat([
+        runtime.get("frozen_history", runtime["history"]),
+        frozen_additions["history"],
+    ], ignore_index=True, sort=False)
+    metrics, hold, windows = _display_metrics(display_runtime, display_final)
+    official_addition_metrics = frozen_additions["metrics"]
     return {
         "presentation_contract": "nasdaq_macro8_live_presentation_payload_v1" if runtime.get("runtime_mode") == "LIVE_TAIL" else "nasdaq_macro8_frozen_presentation_payload_v1",
         "runtime_mode": runtime["runtime_mode"],
@@ -245,12 +280,13 @@ def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
         "candidate_history": candidate_history,
         "component_history": component_history,
         "component_chart_history": component_chart_history,
-        "benchmark_history": _benchmark_history(runtime["panel"], final, runtime["basis_date"]),
+        "benchmark_history": _benchmark_history(runtime["panel"], display_final, runtime["basis_date"]),
         "frozen_display_metrics": metrics,
         "benchmark_display_metrics": hold,
         "backtest_windows": windows,
-        "live_metrics": runtime["metrics"].copy(),
+        "live_metrics": pd.concat([runtime["metrics"], official_addition_metrics], ignore_index=True, sort=False),
         "final20": final,
+        "display_final": display_final,
         "combo2_input_semantics": "CHILD_COMBO1_RAW_RISK_STATE",
         "final_t1_application_count": 1,
         "ui_side_model_calculation_count": 0,

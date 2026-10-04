@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 
 from nasdaq_macro8_runtime.frozen_runtime import run_frozen_runtime
 from nasdaq_macro8_runtime.presentation_payload import build_presentation_payload
-from nasdaq_macro8_ui import STAGE_COLORS, _backtest_table, _component_chart, _group_stage, _group_summary, _main_chart, _practical_final, _snapshot_row
+from nasdaq_macro8_ui import STAGE_COLORS, _backtest_table, _candidate_label, _component_chart, _group_stage, _group_summary, _main_chart, _operational_display_final, _practical_final, _snapshot_row
 
 
 def _macro8_smoke_app() -> None:
@@ -73,6 +73,32 @@ def test_practical10_is_the_fixed_operational_view(payload: dict) -> None:
     assert "/ 10" not in summary
 
 
+def test_old_candidates_are_preserved_and_new_ten_are_appended(payload: dict) -> None:
+    display = _operational_display_final(payload)
+    assert len(payload["final20"]) == 20
+    assert len(display) == 20
+    assert display["model_family"].value_counts().to_dict() == {"COMBO2": 10, "COMBO1": 10}
+    assert display.groupby(["model_family", "display_vintage"]).size().to_dict() == {
+        ("COMBO1", "New"): 5, ("COMBO1", "Old"): 5,
+        ("COMBO2", "New"): 5, ("COMBO2", "Old"): 5,
+    }
+    new_c1 = display.loc[display["model_family"].eq("COMBO1") & display["display_vintage"].eq("New")]
+    new_c2 = display.loc[display["model_family"].eq("COMBO2") & display["display_vintage"].eq("New")]
+    assert new_c1["candidate_id"].tolist() == [
+        "n10|nq5e10_c7a79e5c0e3bd870", "n12|nq5e12_592f820a65512321",
+        "n12|nq5e12_d972a9f173c64587", "n8|nq5e8_2bd44048f58e2fcd",
+        "n12|nq5e12_02afb347b4b9eaf8",
+    ]
+    assert new_c2["candidate_id"].tolist() == [
+        "nq_c2_d492140aad8feafa", "nq_c2_e03c993a14c2dfe8",
+        "nq_c2_6230b4f4492e3e15", "nq_c2_478558562d45356d",
+        "nq_c2_f02f07116cee57d3",
+    ]
+    assert _candidate_label(new_c1.iloc[0]).startswith("[New] [T1]")
+    old_main1 = display.loc[display["model_family"].eq("COMBO2") & display["display_vintage"].eq("Old")].iloc[0]
+    assert old_main1["candidate_id"].startswith("m5|")
+
+
 def test_operational_main_roles_are_display_only(payload: dict) -> None:
     practical = _practical_final(payload["final20"])
     combo1 = practical.loc[practical["model_family"].eq("COMBO1")]
@@ -118,7 +144,7 @@ def test_combo_chart_contracts_and_ranges(payload: dict) -> None:
     assert child_fig is not None
     assert [trace.name for trace in child_fig.data] == ["NASDAQ 100"]
 
-    combo1 = str(payload["final20"].loc[payload["final20"]["model_family"].eq("COMBO1")].sort_values("display_order").iloc[0]["candidate_id"])
+    combo1 = str(_operational_display_final(payload).loc[lambda frame: frame["model_family"].eq("COMBO1")].iloc[0]["candidate_id"])
     core = payload["component_history"].loc[payload["component_history"]["parent_candidate_id"].eq(combo1)].sort_values("component_order").iloc[0]
     core_fig = _component_chart(payload, combo1, core.component_id, core.component_kind, state.basis_date, 5, show_aux=True)
     assert core.component_kind == "CORE_INDICATOR"
@@ -140,7 +166,7 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     assert "min-width:1280px" in table
     assert "시장단계(1주 전)" in table
     assert table.count("<tbody><tr") == 1
-    assert table.count("<tr style=") == 5
+    assert table.count("<tr style=") == 10
     assert "Return / Calmar" not in table
     assert "Whipsaw 최소화" in table
     dashboard = (ROOT / "technical_signal_dashboard.py").read_text(encoding="utf-8")
@@ -159,6 +185,9 @@ def test_mixed_group_stage_is_valid_and_not_unavailable(payload: dict) -> None:
     summary = _group_summary(payload)
     assert "조합1+2:" in summary
     assert "조합1+2: <span style='color:#FF8C69;font-weight:700'>계산 불가" not in summary
+    operating = _group_summary(payload, _operational_display_final(payload))
+    assert "조합2 계산 가능 10 / 10" in operating
+    assert "조합1 계산 가능 10 / 10" in operating
 
 
 def test_nasdaq_default_page_smoke_renders_without_exception() -> None:

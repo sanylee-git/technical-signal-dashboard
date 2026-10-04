@@ -84,6 +84,20 @@ def test_live_payload_keeps_official_backtest_metrics_frozen_and_extends_charts(
     assert live_payload["presentation_contract"] == "nasdaq_macro8_live_presentation_payload_v1"
     assert live_payload["benchmark_history"]["date"].max().strftime("%Y-%m-%d") == "2026-08-25"
     assert live_payload["candidate_history"]["date"].max().strftime("%Y-%m-%d") == "2026-08-25"
+    assert live_payload["display_final"]["model_family"].value_counts().to_dict() == {"COMBO2": 10, "COMBO1": 10}
+    new_ids = set(live["operating_additions"]["final"]["candidate_id"].astype(str))
+    new_snapshot = live_payload["snapshot"].loc[live_payload["snapshot"]["candidate_id"].isin(new_ids)]
+    assert len(new_snapshot) == 10
+    assert new_snapshot["basis_date"].eq("2026-08-25").all()
+    frozen_prefix = frozen["operating_additions"]["history"].sort_values(["candidate_id", "date"]).reset_index(drop=True)
+    live_prefix = live["operating_additions"]["history"].loc[
+        live["operating_additions"]["history"]["date"].le(FROZEN_CUTOFF)
+    ].sort_values(["candidate_id", "date"]).reset_index(drop=True)
+    assert_frame_equal(
+        live_prefix[["candidate_id", "date", "strategy_risk_state", "active_count", "risk_start", "risk_end"]],
+        frozen_prefix[["candidate_id", "date", "strategy_risk_state", "active_count", "risk_start", "risk_end"]],
+        check_dtype=False,
+    )
     assert_frame_equal(
         live_payload["frozen_display_metrics"].sort_values(["candidate_id", "window"]).reset_index(drop=True),
         frozen_payload["frozen_display_metrics"].sort_values(["candidate_id", "window"]).reset_index(drop=True),

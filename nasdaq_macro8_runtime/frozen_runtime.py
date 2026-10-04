@@ -13,6 +13,7 @@ from typing import Any
 import pandas as pd
 
 from .frozen_replay import asset_sha256, replay_core, replay_final20, replay_final20_history
+from .operating_additions import replay_operating_additions
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -86,6 +87,8 @@ def run_frozen_runtime() -> dict[str, Any]:
     metrics = replay_final20(panel, final20, children, core)
     history = replay_final20_history(panel, final20, children, core)
     snapshot = _snapshot(final20, history, panel)
+    additions = replay_operating_additions(panel, registry, core)
+    additions["snapshot"] = _snapshot(additions["final"], additions["history"], panel)
     cutoff = pd.Timestamp(pd.to_datetime(panel["date"]).max()).normalize()
     if snapshot["basis_date"].nunique() != 1 or snapshot["basis_date"].iloc[0] != cutoff.strftime("%Y-%m-%d"):
         raise RuntimeError("Frozen Final20 basis date contract failed")
@@ -105,4 +108,5 @@ def run_frozen_runtime() -> dict[str, Any]:
         "final20": final20,
         "children": children,
         "core": core,
+        "operating_additions": additions,
     }
