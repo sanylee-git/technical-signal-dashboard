@@ -52,12 +52,12 @@
   },
   "outputs": {
     "combo2_child_mapping.csv": {
-      "sha256": "7fb9afcbb63d9636c129279aac134c667c054455548de2fd3495284e88f9538e",
-      "bytes": 23299
+      "sha256": "70b2805300d963a0470dff5a365353811aba3342b0cad353d50b8324208a543f",
+      "bytes": 25156
     },
     "final_candidates.csv": {
-      "sha256": "154cf4bf4ed8163eb2c0901a5721c8dd577d901df16ead4ca00bd5b9c15b11d1",
-      "bytes": 5909
+      "sha256": "429c77a9db84df8843ca24b235c4f81cd1b45ea4f4d41a1cd0974acd6cf3c060",
+      "bytes": 5908
     },
     "single_raw_state.parquet": {
       "sha256": "06590b64676672a1097808b05b820a831c9fb65f242f062080aa2a72504eb96c",
@@ -80,42 +80,35 @@
     "Combo1": [
       "da862ec08d016b6f056c71d4",
       "e4ad56aa66de8a3f2fb7c645",
-      "d347f67c803b8c70ccf93c53",
+      "f4d9115064635c283f9f04d5",
       "3b836baf07044098ee443d40",
       "cc58a67d98a9db7b6228a5b6"
     ],
     "Combo2": [
       "6b4595522bbed808d41be978",
-      "c9d4c64e586e2e9f8fb2cff1",
-      "146a32d0a91c4e8068ff600e",
       "56965121941b6abcf928fe96",
-      "b524905cfdecdc45c5cfc205"
+      "e6d450aa79ca39a713ba2558",
+      "b524905cfdecdc45c5cfc205",
+      "3e58ad167be4bb0aad010eb9"
     ]
   },
   "main_candidate_ids": {
     "Combo1": {
-      "Main1": "da862ec08d016b6f056c71d4",
-      "Main2": "e4ad56aa66de8a3f2fb7c645"
+      "Main1": "da862ec08d016b6f056c71d4"
     },
     "Combo2": {
-      "Main1": "6b4595522bbed808d41be978",
-      "Main2": "c9d4c64e586e2e9f8fb2cff1"
+      "Main1": "6b4595522bbed808d41be978"
     }
   },
   "selection_revision": {
-    "previous_manifest_sha256": "bab0fead01e483f9f2ab83d5ddd796dd416a462a7ebcf900409c2512a67f3b6d",
-    "previous_candidate_counts": {
-      "Combo1": 5,
-      "Combo2": 5,
-      "total": 10
-    },
+    "previous_manifest_sha256": "7e4fd8913873d8723a2af30ea7d7d158148ce4b942f8a80e8a1124642c33c004",
     "previous_candidate_ids": {
       "Combo1": [
-        "39100770c8e16a06aee67170",
+        "da862ec08d016b6f056c71d4",
         "e4ad56aa66de8a3f2fb7c645",
-        "3802b3ffb79163e6e960dd94",
-        "3cb3f1e1d583f16150bb3f31",
-        "9b0bf6eb468f0e0f9ead4022"
+        "d347f67c803b8c70ccf93c53",
+        "3b836baf07044098ee443d40",
+        "cc58a67d98a9db7b6228a5b6"
       ],
       "Combo2": [
         "6b4595522bbed808d41be978",
@@ -125,20 +118,105 @@
         "b524905cfdecdc45c5cfc205"
       ]
     },
+    "previous_main_candidate_ids": {
+      "Combo1": {
+        "Main1": "da862ec08d016b6f056c71d4",
+        "Main2": "e4ad56aa66de8a3f2fb7c645"
+      },
+      "Combo2": {
+        "Main1": "6b4595522bbed808d41be978",
+        "Main2": "c9d4c64e586e2e9f8fb2cff1"
+      }
+    },
+    "candidate_ids": {
+      "Combo1": [
+        "da862ec08d016b6f056c71d4",
+        "e4ad56aa66de8a3f2fb7c645",
+        "f4d9115064635c283f9f04d5",
+        "3b836baf07044098ee443d40",
+        "cc58a67d98a9db7b6228a5b6"
+      ],
+      "Combo2": [
+        "6b4595522bbed808d41be978",
+        "56965121941b6abcf928fe96",
+        "e6d450aa79ca39a713ba2558",
+        "b524905cfdecdc45c5cfc205",
+        "3e58ad167be4bb0aad010eb9"
+      ]
+    },
+    "main_candidate_ids": {
+      "Combo1": {
+        "Main1": "da862ec08d016b6f056c71d4"
+      },
+      "Combo2": {
+        "Main1": "6b4595522bbed808d41be978"
+      }
+    },
     "changed_families": [
-      "Combo1"
-    ],
-    "unchanged_families": [
+      "Combo1",
       "Combo2"
     ],
-    "method": "USER_APPROVED_COMBO1_FINAL5_REPLACEMENT; Combo1 metadata sourced from the approved Final5 audit; Combo2 candidate rows and child mapping retained unchanged; no reselection or backtest",
-    "source_selection_audit": {
+    "unchanged_families": [],
+    "method": "USER_APPROVED_SNP2_FINAL5_CANDIDATE_AND_DISPLAY_ROLE_UPDATE; supplied IDs and names applied without reselection or backtest",
+    "source_evidence": [
+      {
+        "path": "divergence_analysis/runs/run_20261003T120230Z_snp2_v22_top50/combo1_ranked_eligible.csv",
+        "candidate_id": "f4d9115064635c283f9f04d5",
+        "purpose": "Combo1 replacement component/N-K-L/performance/Official T+1 state hash"
+      },
+      {
+        "path": "spx_macro9_assets/selected_final20/final_candidates.csv@771702b",
+        "candidate_ids": [
+          "e6d450aa79ca39a713ba2558",
+          "3e58ad167be4bb0aad010eb9"
+        ],
+        "purpose": "Combo2 replacement definitions and child mappings"
+      }
+    ],
+    "previous_final5_selection_audit": {
       "path": "divergence_analysis/runs/run_20261003T133535Z_snp2_final5_selection_audit/combo1_recommended_final5.csv",
       "sha256": "ebf83af16a3e8943e2b7b70c8794cbd5546143d42fa023944fcfad56a2e3bdf4"
-    },
-    "current_replay_audit": {
-      "path": "divergence_analysis/runs/run_20261003T143839Z_snp2_final10_current_replay/report.md",
-      "sha256": "510d49ad01b184a7854b159b553d8f739079e6d9e736d099f425d8b343ffb107"
     }
-  }
+  },
+  "selection_history": [
+    {
+      "previous_manifest_sha256": "bab0fead01e483f9f2ab83d5ddd796dd416a462a7ebcf900409c2512a67f3b6d",
+      "previous_candidate_counts": {
+        "Combo1": 5,
+        "Combo2": 5,
+        "total": 10
+      },
+      "previous_candidate_ids": {
+        "Combo1": [
+          "39100770c8e16a06aee67170",
+          "e4ad56aa66de8a3f2fb7c645",
+          "3802b3ffb79163e6e960dd94",
+          "3cb3f1e1d583f16150bb3f31",
+          "9b0bf6eb468f0e0f9ead4022"
+        ],
+        "Combo2": [
+          "6b4595522bbed808d41be978",
+          "c9d4c64e586e2e9f8fb2cff1",
+          "146a32d0a91c4e8068ff600e",
+          "56965121941b6abcf928fe96",
+          "b524905cfdecdc45c5cfc205"
+        ]
+      },
+      "changed_families": [
+        "Combo1"
+      ],
+      "unchanged_families": [
+        "Combo2"
+      ],
+      "method": "USER_APPROVED_COMBO1_FINAL5_REPLACEMENT; Combo1 metadata sourced from the approved Final5 audit; Combo2 candidate rows and child mapping retained unchanged; no reselection or backtest",
+      "source_selection_audit": {
+        "path": "divergence_analysis/runs/run_20261003T133535Z_snp2_final5_selection_audit/combo1_recommended_final5.csv",
+        "sha256": "ebf83af16a3e8943e2b7b70c8794cbd5546143d42fa023944fcfad56a2e3bdf4"
+      },
+      "current_replay_audit": {
+        "path": "divergence_analysis/runs/run_20261003T143839Z_snp2_final10_current_replay/report.md",
+        "sha256": "510d49ad01b184a7854b159b553d8f739079e6d9e736d099f425d8b343ffb107"
+      }
+    }
+  ]
 }

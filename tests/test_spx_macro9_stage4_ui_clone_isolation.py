@@ -18,16 +18,16 @@ from spx_macro9_ui import _candidate_label, _display_final
 EXPECTED_COMBO1 = [
     "da862ec08d016b6f056c71d4",
     "e4ad56aa66de8a3f2fb7c645",
-    "d347f67c803b8c70ccf93c53",
+    "f4d9115064635c283f9f04d5",
     "3b836baf07044098ee443d40",
     "cc58a67d98a9db7b6228a5b6",
 ]
 EXPECTED_COMBO2 = [
     "6b4595522bbed808d41be978",
-    "c9d4c64e586e2e9f8fb2cff1",
-    "146a32d0a91c4e8068ff600e",
     "56965121941b6abcf928fe96",
+    "e6d450aa79ca39a713ba2558",
     "b524905cfdecdc45c5cfc205",
+    "3e58ad167be4bb0aad010eb9",
 ]
 
 
@@ -44,11 +44,18 @@ def test_spx_selected_final10_payload_uses_pinned_models_and_lineage(payload: di
     assert final.loc[final["model_family"].eq("COMBO1")].sort_values("display_order")["candidate_id"].tolist() == EXPECTED_COMBO1
     assert final.loc[final["model_family"].eq("COMBO2")].sort_values("display_order")["candidate_id"].tolist() == EXPECTED_COMBO2
     assert final.loc[final["model_family"].eq("COMBO1")].sort_values("display_order")["display_role"].tolist() == [
-        "Main1 · 효율적 밸런스형",
-        "Main2 · 고성과·저오경보형",
-        "고성과·빠른복귀형",
-        "조기경보·빠른복귀형",
-        "위기경보·저오경보형",
+        "Main1 · 균형형 + 추세지속형",
+        "보수방어형 + 추세지속형",
+        "공격진입형",
+        "보수방어형 + 민감감지형",
+        "공격진입형 + 민감감지형",
+    ]
+    assert final.loc[final["model_family"].eq("COMBO2")].sort_values("display_order")["display_role"].tolist() == [
+        "Main1 · 균형형 + 추세지속형",
+        "균형형 + 추세지속형",
+        "보수방어형 + 민감감지형",
+        "균형형",
+        "공격진입형 + 민감감지형",
     ]
     assert payload["proxy_only"] is True
     assert payload["direct_oas_used"] is False
@@ -75,18 +82,18 @@ def test_spx_combo2_main1_is_the_default_and_tab_uses_operator_ui(payload: dict[
     final = _display_final(payload["final10"])
     combo1 = final.loc[final["model_family"].eq("COMBO1")].sort_values("display_order")
     combo2 = final.loc[final["model_family"].eq("COMBO2")].sort_values("display_order")
-    combo1_main1, combo1_main2 = combo1.iloc[0], combo1.iloc[1]
-    combo2_main1, combo2_main2 = combo2.iloc[0], combo2.iloc[1]
+    combo1_main1, combo1_confirm = combo1.iloc[0], combo1.iloc[2]
+    combo2_main1, combo2_confirm = combo2.iloc[0], combo2.iloc[2]
     assert combo1_main1["candidate_id"] == "da862ec08d016b6f056c71d4"
     assert "Main1" in _candidate_label(combo1_main1)
-    assert combo1_main1["display_role"] == "Main1 · 효율적 밸런스형"
-    assert combo1_main2["candidate_id"] == "e4ad56aa66de8a3f2fb7c645"
-    assert "Main2" in _candidate_label(combo1_main2)
-    assert combo1_main2["display_role"] == "Main2 · 고성과·저오경보형"
+    assert combo1_main1["display_role"] == "Main1 · 균형형 + 추세지속형"
+    assert combo1_confirm["candidate_id"] == "f4d9115064635c283f9f04d5"
+    assert _candidate_label(combo1_confirm).endswith("공격진입형 (지표 11개/K7/L5)")
     assert combo2_main1["candidate_id"] == "6b4595522bbed808d41be978"
     assert "Main1" in _candidate_label(combo2_main1)
-    assert combo2_main2["candidate_id"] == "c9d4c64e586e2e9f8fb2cff1"
-    assert "Main2" in _candidate_label(combo2_main2)
+    assert combo2_main1["display_role"] == "Main1 · 균형형 + 추세지속형"
+    assert combo2_confirm["candidate_id"] == "e6d450aa79ca39a713ba2558"
+    assert _candidate_label(combo2_confirm).endswith("보수방어형 + 민감감지형 (조합1 8개/K5/L4)")
     assert combo2.iloc[0]["candidate_id"] == "6b4595522bbed808d41be978"
 
     ui = (ROOT / "spx_macro9_ui.py").read_text(encoding="utf-8")

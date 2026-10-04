@@ -85,15 +85,13 @@ def _read_frozen_inputs() -> tuple[
     expected_main_ids = {
         "Combo1": {
             "Main1": "da862ec08d016b6f056c71d4",
-            "Main2": "e4ad56aa66de8a3f2fb7c645",
         },
         "Combo2": {
             "Main1": "6b4595522bbed808d41be978",
-            "Main2": "c9d4c64e586e2e9f8fb2cff1",
         },
     }
     if manifest.get("main_candidate_ids") != expected_main_ids:
-        raise RuntimeError("S&P2 selected Main1/Main2 candidate contract mismatch")
+        raise RuntimeError("S&P2 selected Main1 candidate contract mismatch")
     for family, slots in expected_main_ids.items():
         family_rows = final.loc[final.family.eq(family)]
         for slot, candidate_id in slots.items():
@@ -101,8 +99,8 @@ def _read_frozen_inputs() -> tuple[
             if len(main) != 1 or not str(main.iloc[0].display_role).startswith(slot):
                 raise RuntimeError(f"S&P2 selected {family} {slot} display contract mismatch")
         ordered_ids = family_rows.sort_values("display_order").candidate_id.astype(str).tolist()
-        if ordered_ids[:2] != [slots["Main1"], slots["Main2"]]:
-            raise RuntimeError(f"S&P2 selected {family} main display order mismatch")
+        if ordered_ids[0] != slots["Main1"]:
+            raise RuntimeError(f"S&P2 selected {family} Main1 display order mismatch")
     if manifest.get("default_candidate_id") != expected_main_ids["Combo2"]["Main1"]:
         raise RuntimeError("S&P2 selected default candidate must be Combo2 Main1")
 
