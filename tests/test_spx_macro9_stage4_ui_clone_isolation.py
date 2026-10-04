@@ -85,15 +85,15 @@ def test_spx_combo2_main1_is_the_default_and_tab_uses_operator_ui(payload: dict[
     combo1_main1, combo1_confirm = combo1.iloc[0], combo1.iloc[2]
     combo2_main1, combo2_confirm = combo2.iloc[0], combo2.iloc[2]
     assert combo1_main1["candidate_id"] == "da862ec08d016b6f056c71d4"
-    assert "Main1" in _candidate_label(combo1_main1)
+    assert _candidate_label(combo1_main1).startswith("[조합1 · main] 균형형 + 추세지속형")
     assert combo1_main1["display_role"] == "Main1 · 균형형 + 추세지속형"
     assert combo1_confirm["candidate_id"] == "f4d9115064635c283f9f04d5"
-    assert _candidate_label(combo1_confirm).endswith("공격진입형 (지표 11개/K7/L5)")
+    assert _candidate_label(combo1_confirm).endswith("[조합1 · Confirm] 공격진입형 (지표 11개/K7/L5)")
     assert combo2_main1["candidate_id"] == "6b4595522bbed808d41be978"
-    assert "Main1" in _candidate_label(combo2_main1)
+    assert _candidate_label(combo2_main1).startswith("[조합2 · main] 균형형 + 추세지속형")
     assert combo2_main1["display_role"] == "Main1 · 균형형 + 추세지속형"
     assert combo2_confirm["candidate_id"] == "e6d450aa79ca39a713ba2558"
-    assert _candidate_label(combo2_confirm).endswith("보수방어형 + 민감감지형 (조합1 8개/K5/L4)")
+    assert _candidate_label(combo2_confirm).endswith("[조합2 · Confirm] 보수방어형 + 민감감지형 (조합1 8개/K5/L4)")
     assert combo2.iloc[0]["candidate_id"] == "6b4595522bbed808d41be978"
 
     ui = (ROOT / "spx_macro9_ui.py").read_text(encoding="utf-8")

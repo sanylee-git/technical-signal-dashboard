@@ -95,8 +95,10 @@ def test_user_final_five_per_combo_are_the_only_display_candidates(payload: dict
     ]
     assert combo1["display_designation"].tolist() == ["MAIN", "Confirm", "Confirm", "Confirm", "Confirm"]
     assert combo2["display_designation"].tolist() == ["MAIN", "Confirm", "Confirm", "Confirm", "Confirm"]
-    assert _candidate_label(combo1.iloc[0]).startswith("[조합1 · MAIN] 균형형 + 추세지속형")
-    assert _candidate_label(combo2.iloc[0]).startswith("[조합2 · MAIN] 균형형 + 추세지속형")
+    assert _candidate_label(combo1.iloc[0]).startswith("[조합1 · main] 균형형 + 추세지속형")
+    assert _candidate_label(combo2.iloc[0]).startswith("[조합2 · main] 균형형 + 추세지속형")
+    assert _candidate_label(combo1.iloc[1]).startswith("[조합1 · Confirm] 보수방어형 + 추세지속형")
+    assert _candidate_label(combo2.iloc[1]).startswith("[조합2 · Confirm] 균형형 + 추세지속형")
 
 
 def test_combo2_main_defaults_to_selected_existing_candidate(payload: dict) -> None:
