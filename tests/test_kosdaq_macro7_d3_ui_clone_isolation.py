@@ -141,8 +141,8 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     assert "KOSDAQ 홀드" in table
     assert "전체 자산" in table
     assert "전체 자산 (18Y)" in table
-    assert "min-width:1693.02px" in table
-    assert "width:214.02px" in table
+    assert "min-width:1709px" in table
+    assert "width:230px" in table
     assert table.count("<col style=") == 17
     assert table.count("<col style='width:87px'>") == 2
     assert table.count("<col style='width:104.4px'>") == 8

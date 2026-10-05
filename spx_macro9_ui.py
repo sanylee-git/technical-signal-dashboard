@@ -427,7 +427,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str, fina
     metrics = payload["frozen_display_metrics"]
     hold = payload["benchmark_display_metrics"].set_index("window")
     base_headers = ["역할 / 후보", "10Y 자산", _full_asset_header(payload["backtest_windows"]), "전체 CAGR", "10Y MDD", "전체 MDD", "전체 Risk-off", "전체 Cycle", "짧은 Cycle"]
-    widths = ["214.02px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["104.4px"] * 8
+    widths = ["230px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["104.4px"] * 8
     colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in widths) + "</colgroup>"
     numeric = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
     ten_hold, full_hold = hold.loc["10Y"], hold.loc["FULL"]
@@ -481,7 +481,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str, fina
         f"<th style='text-align:center;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>{label}</th>"
         for _ in range(4) for label in ("신호", "시장단계")
     )
-    return f"<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:1693.02px;min-width:1693.02px;table-layout:fixed;border-collapse:collapse;font-size:11px'>{colgroup}<thead><tr>{base_head}{groups}</tr><tr>{subheaders}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
+    return f"<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:1709px;min-width:1709px;table-layout:fixed;border-collapse:collapse;font-size:11px'>{colgroup}<thead><tr>{base_head}{groups}</tr><tr>{subheaders}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
 
 
 def _component_status_table(payload: dict[str, Any], candidate_id: str) -> str:

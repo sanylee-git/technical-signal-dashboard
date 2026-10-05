@@ -3,7 +3,7 @@
   "contract": "nasdaq_operating_final10_manifest_v1",
   "asset": {
     "path": "nasdaq_macro8_assets/nasdaq_macro8_operating_final10.json",
-    "sha256": "d27b10c0ba5a657227bade5bb0327f958120b8732d3fa662ef2787969ebcf281",
+    "sha256": "b6e7efed8909662b0a74ae61ab122ae340eb1fdba5bba254e2f66b8f9009c575",
     "bytes": 3164
   },
   "candidate_count": 10,

@@ -99,6 +99,7 @@ def test_user_final_five_per_combo_are_the_only_display_candidates(payload: dict
     assert _candidate_label(combo2.iloc[0]).startswith("[조합2 · main] 균형형 + 추세지속형")
     assert _candidate_label(combo1.iloc[1]).startswith("[조합1 · Confirm] 보수방어형 + 추세지속형")
     assert _candidate_label(combo2.iloc[1]).startswith("[조합2 · Confirm] 균형형 + 추세지속형")
+    assert _candidate_label(combo1.iloc[4]) == "[조합1 · Confirm] 공격진입형 + 민감감지형 (지표 12개/K7/L5)"
 
 
 def test_combo2_main_defaults_to_selected_existing_candidate(payload: dict) -> None:
@@ -159,8 +160,8 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     table = _backtest_table(payload, "COMBO2", candidate_id)
     assert "NASDAQ 100 홀드" in table
     assert "전체 자산 (18Y)" in table
-    assert "min-width:1693.02px" in table
-    assert "width:214.02px" in table
+    assert "min-width:1709px" in table
+    assert "width:230px" in table
     assert table.count("<col style='width:87px'>") == 2
     assert table.count("<col style='width:104.4px'>") == 8
     assert all(label in table for label in ("1개월 전", "2주 전", "1주 전", "오늘", "신호", "시장단계"))
