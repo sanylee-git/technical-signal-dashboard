@@ -10,6 +10,12 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from dashboard_timepoints import candidate_history_rows_at_offsets, risk_state_short_label
+from dashboard_role_aware_market_stage import (
+    TIMEPOINTS as ROLE_TIMEPOINTS,
+    compute_role_aware_market_outputs,
+    format_role_stage_sequence,
+)
 from spx_macro9_runtime.presentation_payload import build_presentation_payload
 from spx_macro9_runtime.selected_final20_runtime import run_selected_final20_runtime
 
@@ -78,6 +84,13 @@ def _stage(active_count: object, k: object, l: object, risk_off: object) -> str:
 
 def _stage_html(label: str) -> str:
     return f"<span style='color:{STAGE_COLORS.get(label, '#AFAFAF')};font-weight:700'>{escape(label)}</span>"
+
+
+def _stage_with_risk_html(active_count: object, k: object, l: object, risk_off: object) -> str:
+    stage = _stage(active_count, k, l, risk_off)
+    state_label = risk_state_short_label(risk_off)
+    state_color = RISK_OFF if state_label == "R-off" else RISK_ON if state_label == "R-on" else "#AFAFAF"
+    return f"{_stage_html(stage)} <span style='color:{state_color};font-weight:700'>({escape(state_label)})</span>"
 
 
 def _on_k_html(active_count: object, k: object, risk_off: object) -> str:
@@ -262,27 +275,71 @@ def _stage_change_html(previous: str, current: str) -> str:
     return f"{_stage_html(previous)}<span style='color:rgba(255,255,255,.36);padding:0 4px'>→</span>{_stage_html(current)}"
 
 
-def _group_summary(payload: dict[str, Any], final: pd.DataFrame | None = None) -> str:
+def _group_summary(
+    payload: dict[str, Any],
+    final: pd.DataFrame | None = None,
+    *,
+    role_outputs: list[dict[str, Any]] | None = None,
+    output_capture: dict[str, Any] | None = None,
+) -> str:
     summary: dict[str, dict[str, str]] = {}
     snapshot = payload["snapshot"]
+    history = payload.get("candidate_history")
     final = _display_final(payload["final10"]) if final is None else final
+    offsets = (21, 10, 5, 0)
     for family, label in (("COMBO2", "조합2"), ("COMBO1", "조합1")):
         candidate_ids = final.loc[final["model_family"].eq(family), "candidate_id"]
         rows = snapshot.loc[snapshot["candidate_id"].isin(candidate_ids)]
         usable = rows.loc[rows["status"].eq("USABLE") & rows["availability_status"].ne("PROVISIONAL_UNAVAILABLE")]
         risk_off = int(usable["raw_risk_state"].astype(bool).sum())
-        stage = [_stage(row.active_count, row.K, row.L, row.raw_risk_state) for row in usable.itertuples(index=False)]
-        previous = [_stage(row.week_ago_active_count, row.K, row.L, row.week_ago_raw_risk_state) for row in usable.itertuples(index=False)]
+        stages_by_offset = {offset: [] for offset in offsets}
+        for row in usable.itertuples(index=False):
+            historical = candidate_history_rows_at_offsets(
+                history,
+                row.candidate_id,
+                row.basis_date,
+                offsets=(21, 10),
+                valid_col="valid_signal",
+            )
+            for offset in (21, 10):
+                state = historical[offset]
+                stages_by_offset[offset].append(
+                    "계산 불가" if state is None else _stage(state.get("active_count"), row.K, row.L, state.get("raw_risk_state"))
+                )
+            stages_by_offset[5].append(_stage(row.week_ago_active_count, row.K, row.L, row.week_ago_raw_risk_state))
+            stages_by_offset[0].append(_stage(row.active_count, row.K, row.L, row.raw_risk_state))
         summary[label] = {
             "availability": f"<span style='color:{RISK_ON};font-weight:700'>{label} 계산 가능 {len(usable)} / {len(rows)}</span><span style='color:rgba(255,255,255,.55)'> · 계산 불가 {len(rows) - len(usable)}</span>",
             "risk": f"<span style='color:{RISK_OFF if risk_off else RISK_ON};font-weight:700'>{label} Risk-off(위험회피) {risk_off}/{len(rows)}</span><span style='color:rgba(255,255,255,.55)'> · 기준일 {_date(usable['basis_date'].max()) if not usable.empty else '계산 불가'}</span>",
-            "stage": _group_stage(stage), "previous": _group_stage(previous),
+            "stages": {offset: _group_stage(stages_by_offset[offset]) for offset in offsets},
         }
     separator = "<span style='color:rgba(255,255,255,.36);padding:0 10px'>|</span>"
     c2, c1 = summary["조합2"], summary["조합1"]
-    combined_now = _group_stage([c1["stage"], c2["stage"]])
-    combined_prev = _group_stage([c1["previous"], c2["previous"]])
-    stages = f"<b>시장단계</b> · 조합1+2: {_stage_change_html(combined_prev, combined_now)}{separator}조합2: {_stage_change_html(c2['previous'], c2['stage'])}{separator}조합1: {_stage_change_html(c1['previous'], c1['stage'])}"
+    combined = {offset: _group_stage([c1["stages"][offset], c2["stages"][offset]]) for offset in offsets}
+
+    legacy_outputs = []
+    for offset, code, label in ROLE_TIMEPOINTS:
+        legacy_outputs.extend((
+            {"timepoint_code": code, "timepoint": label, "combination": "COMBO1", "stage_label": c1["stages"][offset]},
+            {"timepoint_code": code, "timepoint": label, "combination": "COMBO2", "stage_label": c2["stages"][offset]},
+            {"timepoint_code": code, "timepoint": label, "combination": "OVERALL", "stage_label": combined[offset]},
+        ))
+    if role_outputs is None:
+        role_outputs = compute_role_aware_market_outputs(
+            "S&P2", final, snapshot, history
+        )
+    if output_capture is not None:
+        output_capture["legacy_market_stage"] = legacy_outputs
+        output_capture["role_aware_market_stage"] = role_outputs
+
+    stages = (
+        "<div><b>시장단계 (1개월 전 → 2주 전 → 1주 전 → 오늘)</b></div>"
+        "<div class='role-aware-stage-lines'>"
+        f"<div class='role-aware-stage-line'><b>조합1</b> {format_role_stage_sequence(role_outputs, 'COMBO1')}</div>"
+        f"<div class='role-aware-stage-line'><b>조합2</b> {format_role_stage_sequence(role_outputs, 'COMBO2')}</div>"
+        f"<div class='role-aware-stage-line'><b>조합1+2</b> {format_role_stage_sequence(role_outputs, 'OVERALL')}</div>"
+        "</div>"
+    )
     return f"<div class='macro2-helper-text' style='margin-top:6px;line-height:1.55'><div>{c2['availability']}{separator}{c1['availability']}</div><div style='margin-top:2px'>{c2['risk']}{separator}{c1['risk']}</div><div style='margin-top:2px'>{stages}</div></div>"
 
 
@@ -366,10 +423,11 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str, fina
     final = _display_final(payload["final10"]) if final is None else final
     final = final.loc[final["model_family"].eq(family)].sort_values("display_order")
     snapshot = payload["snapshot"].set_index("candidate_id")
+    history = payload.get("candidate_history")
     metrics = payload["frozen_display_metrics"]
     hold = payload["benchmark_display_metrics"].set_index("window")
-    headers = ["역할 / 후보", "10Y 자산", _full_asset_header(payload["backtest_windows"]), "전체 CAGR", "10Y MDD", "전체 MDD", "전체 Risk-off", "전체 Cycle", "짧은 Cycle", "1주 전", "시장단계(1주 전)", "현재", "시장단계"]
-    widths = ["12.3%", "5.3%", "5.3%", "4.5%", "5.0%", "5.0%", "4.5%", "3.7%", "3.7%", "3.2%", "4.6%", "3.2%", "4.6%"]
+    base_headers = ["역할 / 후보", "10Y 자산", _full_asset_header(payload["backtest_windows"]), "전체 CAGR", "10Y MDD", "전체 MDD", "전체 Risk-off", "전체 Cycle", "짧은 Cycle"]
+    widths = ["12.3%", "5.3%", "5.3%", "4.5%", "5.0%", "5.0%", "4.5%", "3.7%", "3.7%"] + ["6.3375%"] * 8
     colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in widths) + "</colgroup>"
     numeric = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
     ten_hold, full_hold = hold.loc["10Y"], hold.loc["FULL"]
@@ -377,28 +435,53 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str, fina
         "<td style='padding:7px 8px;color:#EDEDED;font-weight:700;text-align:left;white-space:nowrap'>S&P 500 홀드</td>",
         f"<td style='{numeric}'>{_fmt_asset(ten_hold.asset)}</td>", f"<td style='{numeric}'>{_fmt_asset(full_hold.asset)}</td>", f"<td style='{numeric}'>{_fmt_pct(full_hold.cagr)}</td>",
         f"<td style='{numeric}'>{_fmt_pct(ten_hold.mdd)}</td>", f"<td style='{numeric}'>{_fmt_pct(full_hold.mdd)}</td>", f"<td style='{numeric}'>{_fmt_pct(full_hold.risk_off_ratio)}</td>",
-        "<td style='padding:7px 8px;text-align:center'>-</td>" * 6,
+        "<td style='padding:7px 8px;text-align:center'>-</td>" * 8,
     ]) + "</tr>"]
     for _, candidate in final.iterrows():
         candidate_id = str(candidate.candidate_id)
         state = snapshot.loc[candidate_id]
         stats = metrics.loc[metrics["candidate_id"].eq(candidate_id)].set_index("window")
         ten, full = stats.loc["10Y"], stats.loc["FULL"]
-        previous_stage = _stage(state.week_ago_active_count, state.K, state.L, state.week_ago_raw_risk_state)
-        current_stage = _stage(state.active_count, state.K, state.L, state.raw_risk_state)
+        historical = candidate_history_rows_at_offsets(
+            history,
+            candidate_id,
+            state.basis_date,
+            offsets=(21, 10),
+            valid_col="valid_signal",
+        )
         selected = "background:rgba(120,126,231,.16);border-top:1px solid rgba(120,126,231,.34);border-bottom:1px solid rgba(120,126,231,.34);" if candidate_id == selected_id else ""
         cells = [
             f"<td title='{escape(_candidate_label(candidate))}' style='padding:7px 8px;color:#EDEDED;font-weight:700;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{escape(_candidate_label(candidate))}</td>",
             f"<td style='{numeric}'>{_metric_html(ten.asset, ten_hold.asset, _fmt_asset, higher_is_better=True)}</td>", f"<td style='{numeric}'>{_metric_html(full.asset, full_hold.asset, _fmt_asset, higher_is_better=True)}</td>", f"<td style='{numeric}'>{_metric_html(full.cagr, full_hold.cagr, _fmt_pct, higher_is_better=True)}</td>",
             f"<td style='{numeric}'>{_metric_html(ten.mdd, ten_hold.mdd, _fmt_pct, higher_is_better=False)}</td>", f"<td style='{numeric}'>{_metric_html(full.mdd, full_hold.mdd, _fmt_pct, higher_is_better=False)}</td>", f"<td style='{numeric}'>{_fmt_pct(full.risk_off_ratio)}</td>",
             f"<td style='{numeric}'>{int(full.completed_cycle_count)}</td>", f"<td style='{numeric}'>{int(full.short_cycle_20d_ratio * full.completed_cycle_count)}</td>",
-            f"<td style='padding:7px 8px;text-align:center'>{_on_k_html(state.week_ago_active_count, state.K, state.week_ago_raw_risk_state)}</td>", f"<td style='padding:7px 8px;text-align:center'>{_stage_html(previous_stage)}</td>",
-            f"<td style='padding:7px 8px;text-align:center'>{_on_k_html(state.active_count, state.K, state.raw_risk_state)}</td>", f"<td style='padding:7px 8px;text-align:center'>{_stage_html(current_stage)}</td>",
         ]
+        time_states = [
+            (historical[21], None, None),
+            (historical[10], None, None),
+            (None, state.week_ago_active_count, state.week_ago_raw_risk_state),
+            (None, state.active_count, state.raw_risk_state),
+        ]
+        for historical_row, legacy_active, legacy_risk in time_states:
+            active = historical_row.get("active_count") if historical_row is not None else legacy_active
+            risk = historical_row.get("raw_risk_state") if historical_row is not None else legacy_risk
+            cells.append(f"<td style='padding:7px 8px;text-align:center'>{_on_k_html(active, state.K, risk)}</td>")
+            cells.append(f"<td style='padding:7px 8px;text-align:center'>{_stage_with_risk_html(active, state.K, state.L, risk)}</td>")
         rows.append(f"<tr style='{selected}'>" + "".join(cells) + "</tr>")
-    alignments = ["left"] + ["right"] * 8 + ["center"] * 4
-    head = "".join(f"<th style='text-align:{alignment};padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>{header}</th>" for header, alignment in zip(headers, alignments, strict=True))
-    return f"<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:100%;min-width:1280px;table-layout:fixed;border-collapse:collapse;font-size:11px'>{colgroup}<thead><tr>{head}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
+    base_alignments = ["left"] + ["right"] * 8
+    base_head = "".join(
+        f"<th rowspan='2' style='text-align:{alignment};padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>{header}</th>"
+        for header, alignment in zip(base_headers, base_alignments, strict=True)
+    )
+    groups = "".join(
+        f"<th colspan='2' style='text-align:center;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>{label}</th>"
+        for label in ("1개월 전", "2주 전", "1주 전", "오늘")
+    )
+    subheaders = "".join(
+        f"<th style='text-align:center;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>{label}</th>"
+        for _ in range(4) for label in ("신호", "시장단계")
+    )
+    return f"<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:100%;min-width:1740px;table-layout:fixed;border-collapse:collapse;font-size:11px'>{colgroup}<thead><tr>{base_head}{groups}</tr><tr>{subheaders}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
 
 
 def _component_status_table(payload: dict[str, Any], candidate_id: str) -> str:
@@ -459,6 +542,9 @@ def render_macro9_spx_section(container: Any, *, payload: dict[str, Any] | None 
             st.error("S&P Macro9 presentation contract 검증 실패")
             return
         final = _display_final(payload["final10"])
+        market_stage_capture: dict[str, Any] = {}
+        summary_html = _group_summary(payload, final, output_capture=market_stage_capture)
+        payload = {**payload, "market_stage_outputs": market_stage_capture}
         combo2, combo1 = _ordered_candidate_ids(final, "COMBO2"), _ordered_candidate_ids(final, "COMBO1")
         ordered, separator = combo2 + combo1, "__macro9_spx_combo1_separator__"
         default = combo2[0]
@@ -466,7 +552,7 @@ def render_macro9_spx_section(container: Any, *, payload: dict[str, Any] | None 
             st.session_state["macro9_spx_preset_5x5"] = default
         labels = {str(row.candidate_id): _candidate_label(row._asdict()) for row in final.itertuples(index=False)}
         st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
-        st.markdown(_group_summary(payload, final), unsafe_allow_html=True)
+        st.markdown(summary_html, unsafe_allow_html=True)
         st.markdown('<div class="macro2-divider"></div>', unsafe_allow_html=True)
         c1, c2, c3, c4 = st.columns([1.8, 1.0, 2.2, 1.0], vertical_alignment="bottom")
         for column, label in zip((c1, c2, c3, c4), ("조합 프리셋", "기준지수", "기간", "보조선 표시"), strict=True):

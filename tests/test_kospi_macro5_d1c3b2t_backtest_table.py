@@ -110,22 +110,26 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
         "전체 Risk-off",
         "전체 Cycle",
         "짧은 Cycle",
+        "1개월 전",
+        "2주 전",
         "1주 전",
-        "시장단계(1주 전)",
-        "현재",
+        "오늘",
+        "신호",
         "시장단계",
     ]
     for html in (combo2, combo1):
         for column in required:
             assert column in html
+        assert html.count("<th colspan='2'") == 4
+        assert html.count("<th rowspan='2'") == 9
         assert "전체 자산 (18Y)" in html
         assert "20Y" not in html
         assert "연 전환" not in html
         assert "KOSPI 홀드" in html
         assert "(2." in html or "(1." in html or "(0." in html
 
-    assert combo2.count("<tr") == 7
-    assert combo1.count("<tr") == 6
+    assert combo2.count("<tr") == 8
+    assert combo1.count("<tr") == 7
     assert combo2.find("KOSPI 홀드") < combo2.find("[조합2]")
     assert combo1.find("KOSPI 홀드") < combo1.find("[조합1]")
 
@@ -231,7 +235,7 @@ def test_b2t_macro5_group_summary_adds_third_market_stage_line() -> None:
         {"candidate_id": "c1b", "calculable": True, "active_count": 1, "raw_risk_state": 1, "basis_date": "2026-08-10"},
     ]
     html = dash._macro5_kospi_group_summary_html(rows, metrics)
-    assert "<b>시장단계</b> · 조합1+2:" in html
+    assert "<b>시장단계 (1개월 전 → 2주 전 → 1주 전 → 오늘)</b> · 조합1+2:" in html
     assert html.find("계산 가능") < html.find("Risk-off") < html.find("시장단계")
     assert html.count("margin-top:2px;") == 2
 
@@ -260,7 +264,7 @@ def test_b2t_week_ago_individual_stage_uses_historical_risk_state() -> None:
 
 def test_b2t_chart_and_runtime_functions_are_unchanged_except_macro4_backtest_table() -> None:
     assert _function_hash("_macro5_kospi_build_main_chart") == "6f04019fc3b22922fcb7ba892003f0411fdf24b6d24ee436a9e890bb305f9034"
-    assert _function_hash("_macro5_kospi_build_component_chart") == "b45e95a1ab04b261261446f4d3ff9d8dd05265e2ed0f181fd03aed8ce3e7b185"
-    assert _function_hash("render_macro6_proxy_final_section") == "88cf84c8847528c71a9569f761750d79ab5c37ea377eb3422559ad96faeb42fa"
+    assert _function_hash("_macro5_kospi_build_component_chart") == "3a594f1e60bfaa537cf9116b483d720bbf17305897ffced26155ab72c87bfbe6"
+    assert _function_hash("render_macro6_proxy_final_section") == "bb3b9792c2773c38547e4b53420506dec555190b8b8d741c0fb32c55707b819c"
     assert _function_hash("_build_macro6_backtest_panel") == "2c9fea51aae5e2805b1eac93356d2b19344474ab0b73190da7d4e0e464f2ee5b"
     assert _function_hash("_make_macro6_combo_chart_from_snapshot") == "b20008ba521082938df09881c1b048aa7cce260547f71041e88c9ec66dcc48fd"

@@ -141,10 +141,12 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     assert "KOSDAQ 홀드" in table
     assert "전체 자산" in table
     assert "전체 자산 (18Y)" in table
-    assert "min-width:1280px" in table
+    assert "min-width:1740px" in table
     assert "width:12.3%" in table
-    for width in ("5.3%", "4.5%", "5.0%", "3.7%", "3.2%", "4.6%"):
-        assert table.count(f"width:{width}") == 2
+    assert table.count("<col style=") == 17
+    assert "width:6.3375%" in table
+    assert table.count("<th colspan='2'") == 4
+    assert table.count("<th rowspan='2'") == 9
     assert "전체 CAGR" in table
     assert "x)</span>" in table
     assert table.index("KOSDAQ 홀드") < table.index("Main1 MDD 방어형") < table.index("Main2 안정적 균형형") < table.index("성과 대표")
@@ -201,5 +203,6 @@ def test_kosdaq_table_headers_follow_macro5_alignment_contract() -> None:
     status = _component_status_table(payload, DEFAULT_CANDIDATE)
 
     assert "text-align:center;padding:6px 8px" in backtest
-    assert "시장단계(1주 전)" in backtest
+    assert "1개월 전" in backtest and "2주 전" in backtest and "1주 전" in backtest and "오늘" in backtest
+    assert backtest.count(">시장단계</th>") == 4
     assert "text-align:center;padding:6px 8px" in status

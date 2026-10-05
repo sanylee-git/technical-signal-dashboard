@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "authority": "user_explicitly_confirmed",
+  "confirmed_on": "2026-10-05",
+  "source_note": "Candidate IDs, Combo membership, Main/Confirm designation, and canonical roles were explicitly supplied by the user for Phase 2b. No UI label or candidate-name inference is used.",
+  "markets": {
+    "S&P2": {
+      "COMBO1": [
+        {"candidate_id": "da862ec08d016b6f056c71d4", "designation": "MAIN", "role_1": "균형형", "role_2": "추세지속형"},
+        {"candidate_id": "e4ad56aa66de8a3f2fb7c645", "designation": "CONFIRM", "role_1": "보수방어형", "role_2": "추세지속형"},
+        {"candidate_id": "f4d9115064635c283f9f04d5", "designation": "CONFIRM", "role_1": "공격진입형"},
+        {"candidate_id": "3b836baf07044098ee443d40", "designation": "CONFIRM", "role_1": "보수방어형", "role_2": "민감감지형"},
+        {"candidate_id": "cc58a67d98a9db7b6228a5b6", "designation": "CONFIRM", "role_1": "공격진입형", "role_2": "민감감지형"}
+      ],
+      "COMBO2": [
+        {"candidate_id": "6b4595522bbed808d41be978", "designation": "MAIN", "role_1": "균형형", "role_2": "추세지속형"},
+        {"candidate_id": "56965121941b6abcf928fe96", "designation": "CONFIRM", "role_1": "균형형", "role_2": "추세지속형"},
+        {"candidate_id": "e6d450aa79ca39a713ba2558", "designation": "CONFIRM", "role_1": "보수방어형", "role_2": "민감감지형"},
+        {"candidate_id": "b524905cfdecdc45c5cfc205", "designation": "CONFIRM", "role_1": "균형형"},
+        {"candidate_id": "3e58ad167be4bb0aad010eb9", "designation": "CONFIRM", "role_1": "공격진입형", "role_2": "민감감지형"}
+      ]
+    },
+    "NASDAQ": {
+      "COMBO1": [
+        {"candidate_id": "n10|nq5e10_c7a79e5c0e3bd870", "designation": "MAIN", "role_1": "균형형", "role_2": "추세지속형"},
+        {"candidate_id": "n8|nq5e8_6f60d9e268c12ef1", "designation": "CONFIRM", "role_1": "보수방어형", "role_2": "추세지속형"},
+        {"candidate_id": "n12|nq5e12_d972a9f173c64587", "designation": "CONFIRM", "role_1": "공격진입형", "role_2": "추세지속형"},
+        {"candidate_id": "n8|nq5e8_2bd44048f58e2fcd", "designation": "CONFIRM", "role_1": "공격진입형", "role_2": "추세지속형"},
+        {"candidate_id": "n12|nq5e12_02afb347b4b9eaf8", "designation": "CONFIRM", "role_1": "공격진입형", "role_2": "민감감지형"}
+      ],
+      "COMBO2": [
+        {"candidate_id": "m5|n6|nq5e6_2c78a53ac6e928f8|n7|nq5e7_934189464a0ef2f2|n8|nq5e8_be766ae57cfa9042|n8|nq5e8_d2cd70973210bf4d|n8|nq5e8_f2b2eadb0bc3f323|K3|L1", "designation": "MAIN", "role_1": "균형형", "role_2": "추세지속형"},
+        {"candidate_id": "m7|n10|nq5e10_9bd42da1c1a6841b|n5|nq5e5_6194c950c7d8e169|n6|nq5e6_2c78a53ac6e928f8|n6|nq5e6_ec1d4faea1cff3e8|n7|nq5e7_2b2edceb8bbeb2b4|n8|nq5e8_f2b2eadb0bc3f323|n9|nq5e9_c796e1a7980688d2|K4|L2", "designation": "CONFIRM", "role_1": "균형형", "role_2": "추세지속형"},
+        {"candidate_id": "nq_c2_e03c993a14c2dfe8", "designation": "CONFIRM", "role_1": "보수방어형", "role_2": "추세지속형"},
+        {"candidate_id": "nq_c2_478558562d45356d", "designation": "CONFIRM", "role_1": "공격진입형"},
+        {"candidate_id": "nq_c2_6230b4f4492e3e15", "designation": "CONFIRM", "role_1": "공격진입형", "role_2": "민감감지형"}
+      ]
+    }
+  }
+}

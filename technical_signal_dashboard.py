@@ -27,6 +27,7 @@ import copy
 import warnings
 import traceback
 from zoneinfo import ZoneInfo
+from dashboard_timepoints import candidate_history_rows_at_offsets, risk_state_short_label
 from kosdaq_macro7_ui import render_macro7_kosdaq_section
 from nasdaq_macro8_ui import render_macro8_nasdaq_section
 from spx_macro9_ui import render_macro9_spx_section
@@ -6242,6 +6243,12 @@ def _macro_historical_market_stage_html(row: dict | None, start_k: int, end_l: i
             bool(int(risk_state)),
         )
     )
+
+
+def _macro5_kospi_stage_with_risk_html(stage_html: str, risk_state: object) -> str:
+    state_label = risk_state_short_label(risk_state)
+    color = _MACRO_STATUS_RISK_OFF_COLOR if state_label == "R-off" else _MACRO_STATUS_RISK_ON_COLOR if state_label == "R-on" else "rgba(255,255,255,0.72)"
+    return f"{stage_html} <span style='color:{color};font-weight:700;'>({state_label})</span>"
 
 
 def _build_macro_combo_status_panel(
@@ -14467,6 +14474,7 @@ def _macro5_kospi_group_summary_html(
     candidate_rows = candidate_rows or []
     by_id = {str(row.get("candidate_id")): row for row in candidate_rows}
     summary = {}
+    offsets = (21, 10, 5, 0)
     for label, model_type in [("조합2", "combo2"), ("조합1", "combo1")]:
         group = metrics[metrics["model_type"].map(_macro5_kospi_model_type).eq(model_type)]
         total = int(group["candidate_id"].nunique())
@@ -14474,33 +14482,41 @@ def _macro5_kospi_group_summary_html(
         calculable = sum(1 for row in rows if bool(row.get("calculable")))
         unavailable = max(0, total - calculable)
         risk_off = sum(1 for row in rows if bool(row.get("calculable")) and int(row.get("raw_risk_state") or 0) == 1)
-        stage_labels = []
-        week_ago_stage_labels = []
+        stage_labels_by_offset = {offset: [] for offset in offsets}
         for _, metric_row in group.iterrows():
             candidate_id = str(metric_row.get("candidate_id"))
             live_row = by_id.get(candidate_id, {})
             if not live_row or not live_row.get("calculable"):
-                stage_labels.append("계산 불가")
-                week_ago_stage_labels.append("계산 불가")
+                for offset in offsets:
+                    stage_labels_by_offset[offset].append("계산 불가")
                 continue
-            stage_labels.append(
-                _macro_market_stage_label(
-                    live_row.get("active_count"),
-                    metric_row.get("K"),
-                    metric_row.get("L"),
-                    int(live_row.get("raw_risk_state") or 0) == 1,
-                )
+            stage_labels_by_offset[0].append(
+                _macro_market_stage_label(live_row.get("active_count"), metric_row.get("K"), metric_row.get("L"), int(live_row.get("raw_risk_state") or 0) == 1)
             )
             week_ago_row = _macro_week_ago_state_row(candidate_history, candidate_id)
-            if not week_ago_row:
-                week_ago_stage_labels.append("계산 불가")
-            else:
-                week_ago_stage_labels.append(
-                    _macro_market_stage_label(
-                        week_ago_row.get("active_count", week_ago_row.get("on_count", 0)),
+            stage_labels_by_offset[5].append(
+                "계산 불가" if not week_ago_row else _macro_market_stage_label(
+                    week_ago_row.get("active_count", week_ago_row.get("on_count", 0)),
+                    metric_row.get("K"),
+                    metric_row.get("L"),
+                    int(week_ago_row.get("raw_risk_state") or 0) == 1,
+                )
+            )
+            historical = candidate_history_rows_at_offsets(
+                candidate_history,
+                candidate_id,
+                live_row.get("basis_date"),
+                offsets=(21, 10),
+                valid_col="valid_signal",
+            )
+            for offset in (21, 10):
+                state = historical[offset]
+                stage_labels_by_offset[offset].append(
+                    "계산 불가" if state is None else _macro_market_stage_label(
+                        state.get("active_count", state.get("on_count", 0)),
                         metric_row.get("K"),
                         metric_row.get("L"),
-                        int(week_ago_row.get("raw_risk_state") or 0) == 1,
+                        int(state.get("raw_risk_state") or 0) == 1,
                     )
                 )
         basis_dates = [row.get("basis_date") for row in rows if row.get("basis_date")]
@@ -14518,10 +14534,19 @@ def _macro5_kospi_group_summary_html(
                 f"<span style='color:{risk_color};font-weight:700;'>{label} {_macro_risk_state_display_text(True)} {risk_off}/{total}</span>"
                 f"<span style='color:rgba(255,255,255,0.55);'> · 기준일 {_macro5_kospi_escape(basis)}</span>"
             ),
-            "stage": _macro_group_market_stage_label(stage_labels),
-            "week_ago_stage": _macro_group_market_stage_label(week_ago_stage_labels),
+            "stages": {offset: _macro_group_market_stage_label(stage_labels_by_offset[offset]) for offset in offsets},
         }
     sep = "<span style='color:rgba(255,255,255,0.36);padding:0 10px;'>|</span>"
+    combo1, combo2 = summary.get("조합1", {}), summary.get("조합2", {})
+    combined = {
+        offset: _macro_combined_group_market_stage_label(combo1.get("stages", {}).get(offset, "계산 불가"), combo2.get("stages", {}).get(offset, "계산 불가"))
+        for offset in offsets
+    }
+
+    def sequence(values: list[str]) -> str:
+        arrow = "<span style='color:rgba(255,255,255,0.36);padding:0 4px;'>→</span>"
+        return arrow.join(_macro_market_stage_value_html(value) for value in values)
+
     return (
         "<div class='macro2-helper-text' style='margin-top:6px;line-height:1.55;'>"
         "<div>"
@@ -14533,12 +14558,17 @@ def _macro5_kospi_group_summary_html(
         + sep
         + summary.get("조합1", {}).get("risk", "")
         + "</div><div style='margin-top:2px;'>"
-        + _macro_group_market_stage_summary_html(
-            summary.get("조합2", {}).get("stage", "계산 불가"),
-            summary.get("조합1", {}).get("stage", "계산 불가"),
-            summary.get("조합2", {}).get("week_ago_stage", "계산 불가"),
-            summary.get("조합1", {}).get("week_ago_stage", "계산 불가"),
-        )
+        + "<span><b>시장단계 (1개월 전 → 2주 전 → 1주 전 → 오늘)</b> · 조합1+2: "
+        + sequence([combined[offset] for offset in offsets])
+        + "</span>"
+        + sep
+        + "<span>조합2: "
+        + sequence([combo2.get("stages", {}).get(offset, "계산 불가") for offset in offsets])
+        + "</span>"
+        + sep
+        + "<span>조합1: "
+        + sequence([combo1.get("stages", {}).get(offset, "계산 불가") for offset in offsets])
+        + "</span>"
         + "</div></div>"
     )
 
@@ -14932,6 +14962,19 @@ def _macro5_kospi_build_backtest_panel(
     backtest_stats = backtest_stats or {}
     hold_metrics = backtest_stats.get("hold", {})
     candidate_stats = backtest_stats.get("candidate", {})
+    base_labels = [
+        ("역할 / 후보", "left"),
+        ("10Y 자산", "right"),
+        (_macro5_kospi_full_asset_header(backtest_stats), "right"),
+        ("전체 CAGR", "right"),
+        ("10Y MDD", "right"),
+        ("전체 MDD", "right"),
+        ("전체 Risk-off", "right"),
+        ("전체 Cycle", "right"),
+        ("짧은 Cycle", "right"),
+    ]
+    widths = ["12.3%", "5.3%", "5.3%", "4.5%", "5.0%", "5.0%", "4.5%", "3.7%", "3.7%"] + ["6.3375%"] * 8
+    colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in widths) + "</colgroup>"
     subset = _macro5_kospi_sort_metrics(metrics[metrics["model_type"].map(_macro5_kospi_model_type).eq(model_type)])
     if len(subset):
         rows_html.append(
@@ -14945,10 +14988,8 @@ def _macro5_kospi_build_backtest_panel(
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('전체 Risk-off', '0.0%')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('전체 Cycle', '-')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{hold_metrics.get('짧은 Cycle', '-')}</td>"
-            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>-</td>"
-            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>-</td>"
-            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>-</td>"
-            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>-</td></tr>"
+            + f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>-</td>" * 8
+            + "</tr>"
         )
     for _, row in subset.iterrows():
         candidate_id = str(row["candidate_id"])
@@ -14988,15 +15029,46 @@ def _macro5_kospi_build_backtest_panel(
             "cagr",
         )
         current_chip = _macro5_kospi_current_chip(candidate_id, live_row_map, int(row.get("K", 1)))
-        market_stage = _macro5_kospi_market_stage_chip(candidate_id, live_row_map, row.get("K"), row.get("L"))
         week_ago_row = _macro_week_ago_state_row(candidate_history, candidate_id)
-        week_ago_chip = _macro_historical_current_chip(week_ago_row, int(row.get("K", 1)), "raw_risk_state")
-        week_ago_market_stage = _macro_historical_market_stage_html(
-            week_ago_row,
-            int(row.get("K", 1)),
-            int(row.get("L", 0)),
-            "raw_risk_state",
+        live_row = live_row_map.get(candidate_id, {})
+        market_stage = _macro5_kospi_market_stage_chip(candidate_id, live_row_map, row.get("K"), row.get("L"))
+        historical = candidate_history_rows_at_offsets(
+            candidate_history,
+            candidate_id,
+            live_row.get("basis_date"),
+            offsets=(21, 10),
+            valid_col="valid_signal",
         )
+        time_states = [
+            historical[21],
+            historical[10],
+            week_ago_row,
+            live_row if live_row.get("calculable") else None,
+        ]
+        time_cells = []
+        for point_index, state in enumerate(time_states):
+            if state is None:
+                signal_cell = _macro_market_stage_value_html("계산 불가")
+                stage_cell = _macro_market_stage_value_html("계산 불가")
+                risk_state = None
+            elif point_index == 3:
+                risk_state = live_row.get("raw_risk_state")
+                signal_cell = current_chip
+                stage_cell = _macro5_kospi_stage_with_risk_html(market_stage, risk_state)
+            else:
+                risk_state = state.get("raw_risk_state")
+                signal_cell = _macro_historical_current_chip(state, int(row.get("K", 1)), "raw_risk_state")
+                stage_cell = _macro_historical_market_stage_html(
+                    state,
+                    int(row.get("K", 1)),
+                    int(row.get("L", 0)),
+                    "raw_risk_state",
+                )
+                stage_cell = _macro5_kospi_stage_with_risk_html(stage_cell, risk_state)
+            time_cells.extend([
+                f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{signal_cell}</td>",
+                f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{stage_cell}</td>",
+            ])
         rows_html.append(
             f"<tr style='background:{bg};border-top:{border};border-bottom:{border};'>"
             f"<td title='{label}' style='{_MACRO_BACKTEST_CELL_LEFT}'>{label}</td>"
@@ -15008,32 +15080,30 @@ def _macro5_kospi_build_backtest_panel(
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{stats.get('전체 Risk-off', '-')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{stats.get('전체 Cycle', '-')}</td>"
             f"<td style='{_MACRO_BACKTEST_CELL_NUM}'>{stats.get('짧은 Cycle', '-')}</td>"
-            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{week_ago_chip}</td>"
-            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{week_ago_market_stage}</td>"
-            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{current_chip}</td>"
-            f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{market_stage}</td></tr>"
+            + "".join(time_cells)
+            + "</tr>"
         )
     if not rows_html:
         return ""
     return (
         _MACRO_BACKTEST_TABLE_WRAP_OPEN
-        + f"<table style='{_MACRO_BACKTEST_TABLE_STYLE}'>"
-        + _MACRO_BACKTEST_COLGROUP
-        + _macro_backtest_header_html([
-            ("역할 / 후보", "left"),
-            ("10Y 자산", "right"),
-            (_macro5_kospi_full_asset_header(backtest_stats), "right"),
-            ("전체 CAGR", "right"),
-            ("10Y MDD", "right"),
-            ("전체 MDD", "right"),
-            ("전체 Risk-off", "right"),
-            ("전체 Cycle", "right"),
-            ("짧은 Cycle", "right"),
-            ("1주 전", "center"),
-            ("시장단계(1주 전)", "center"),
-            ("현재", "center"),
-            ("시장단계", "center"),
-        ])
+        + "<table style='width:100%;min-width:1740px;table-layout:fixed;border-collapse:collapse;font-size:11px;'>"
+        + colgroup
+        + "<thead><tr>"
+        + "".join(
+            f"<th rowspan='2' style='text-align:{align};padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap;'>{label}</th>"
+            for label, align in base_labels
+        )
+        + "".join(
+            f"<th colspan='2' style='text-align:center;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap;'>{label}</th>"
+            for label in ("1개월 전", "2주 전", "1주 전", "오늘")
+        )
+        + "</tr><tr>"
+        + "".join(
+            f"<th style='text-align:center;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap;'>{label}</th>"
+            for _ in range(4) for label in ("신호", "시장단계")
+        )
+        + "</tr></thead>"
         + f"<tbody>{''.join(rows_html)}</tbody></table></div>"
     )
 

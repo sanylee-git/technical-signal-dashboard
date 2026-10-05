@@ -12,7 +12,7 @@ if str(ROOT) not in sys.path:
 
 from spx_macro9_runtime.presentation_payload import build_presentation_payload
 from spx_macro9_runtime.selected_final20_runtime import run_selected_final20_runtime
-from spx_macro9_ui import _candidate_label, _display_final
+from spx_macro9_ui import _backtest_table, _candidate_label, _display_final, _on_k_html
 
 
 EXPECTED_COMBO1 = [
@@ -102,3 +102,21 @@ def test_spx_combo2_main1_is_the_default_and_tab_uses_operator_ui(payload: dict[
     assert "macro9_spx_preset_5x5" in ui
     assert "render_macro9_spx_section" in app
     assert "render_snp2_combo1_trial_section" not in app
+
+
+def test_spx_backtest_table_adds_four_grouped_timepoints_and_keeps_today_week_values(payload: dict[str, object]) -> None:
+    final = _display_final(payload["final10"])
+    combo2 = final.loc[final["model_family"].eq("COMBO2")].sort_values("display_order")
+    candidate = combo2.iloc[0]
+    state = payload["snapshot"].set_index("candidate_id").loc[candidate["candidate_id"]]
+
+    html = _backtest_table(payload, "COMBO2", str(candidate["candidate_id"]), final)
+
+    assert "min-width:1740px" in html
+    assert all(label in html for label in ("1개월 전", "2주 전", "1주 전", "오늘"))
+    assert html.count("<th colspan='2'") == 4
+    assert html.count("<th rowspan='2'") == 9
+    assert _on_k_html(state.week_ago_active_count, state.K, state.week_ago_raw_risk_state) in html
+    assert _on_k_html(state.active_count, state.K, state.raw_risk_state) in html
+    expected_r = "R-off" if int(state.raw_risk_state) == 1 else "R-on"
+    assert f"({expected_r})" in html

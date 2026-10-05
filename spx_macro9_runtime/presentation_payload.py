@@ -206,6 +206,7 @@ def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
     confirmed_snapshot["status"] = np.where(confirmed_snapshot["calculable"], "USABLE", "UNAVAILABLE")
     confirmed_snapshot["raw_risk_state"] = confirmed_snapshot["strategy_risk_state"].astype("Int64")
     confirmed_snapshot["invest_position"] = 1 - confirmed_snapshot["raw_risk_state"].fillna(1).astype(int)
+    confirmed_snapshot["current_risk_start_date"] = confirmed_snapshot["current_state_start_date"]
     confirmed_basis_by_candidate = dict(zip(confirmed_snapshot["candidate_id"].astype(str), confirmed_snapshot["basis_date"].map(_date)))
     provisional_basis_by_candidate = dict(zip(snapshot["candidate_id"].astype(str), snapshot["basis_date"].map(_date)))
     candidate_history = _candidate_history(runtime)

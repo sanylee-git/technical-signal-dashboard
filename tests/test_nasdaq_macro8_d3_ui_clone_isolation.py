@@ -159,8 +159,10 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     table = _backtest_table(payload, "COMBO2", candidate_id)
     assert "NASDAQ 100 홀드" in table
     assert "전체 자산 (18Y)" in table
-    assert "min-width:1280px" in table
-    assert "시장단계(1주 전)" in table
+    assert "min-width:1740px" in table
+    assert all(label in table for label in ("1개월 전", "2주 전", "1주 전", "오늘", "신호", "시장단계"))
+    assert table.count("<th colspan='2'") == 4
+    assert table.count("<th rowspan='2'") == 9
     assert table.count("<tbody><tr") == 1
     assert table.count("<tr style=") == 5
     assert "Return / Calmar" not in table
@@ -179,7 +181,11 @@ def test_mixed_group_stage_is_valid_and_not_unavailable(payload: dict) -> None:
     assert _group_stage(["혼조", "매수"]) == "혼조"
     assert _group_stage(["계산 불가", "혼조"]) == "계산 불가"
     summary = _group_summary(payload)
-    assert "조합1+2:" in summary
+    line1 = summary.index("<div class='role-aware-stage-line'><b>조합1</b>")
+    line2 = summary.index("<div class='role-aware-stage-line'><b>조합2</b>")
+    line3 = summary.index("<div class='role-aware-stage-line'><b>조합1+2</b>")
+    assert line1 < line2 < line3
+    assert summary.count("class='role-aware-stage-line'") == 3
     assert "조합1+2: <span style='color:#FF8C69;font-weight:700'>계산 불가" not in summary
     operating = _group_summary(payload, _operational_display_final(payload))
     assert "조합2 계산 가능 5 / 5" in operating
