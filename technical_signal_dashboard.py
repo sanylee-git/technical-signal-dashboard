@@ -6218,8 +6218,8 @@ def _macro_week_ago_state_row(history: pd.DataFrame | None, candidate_id: str | 
     return df.iloc[-6].drop(labels=["_macro_date"], errors="ignore").to_dict()
 
 
-def _macro_historical_current_chip(row: dict | None, start_k: int, risk_col: str) -> str:
-    if not row:
+def _macro_historical_current_chip(row: dict | pd.Series | None, start_k: int, risk_col: str) -> str:
+    if row is None or len(row) == 0:
         return _macro_market_stage_value_html("계산 불가")
     active_count = row.get("active_count", row.get("on_count"))
     risk_state = row.get(risk_col)
@@ -6228,8 +6228,8 @@ def _macro_historical_current_chip(row: dict | None, start_k: int, risk_col: str
     return _macro_flag_ratio_html(active_count, start_k, bool(int(risk_state)))
 
 
-def _macro_historical_market_stage_html(row: dict | None, start_k: int, end_l: int, risk_col: str) -> str:
-    if not row:
+def _macro_historical_market_stage_html(row: dict | pd.Series | None, start_k: int, end_l: int, risk_col: str) -> str:
+    if row is None or len(row) == 0:
         return _macro_market_stage_value_html("계산 불가")
     active_count = row.get("active_count", row.get("on_count"))
     risk_state = row.get(risk_col)

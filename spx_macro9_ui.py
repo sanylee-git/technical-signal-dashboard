@@ -481,7 +481,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str, fina
         f"<th style='text-align:center;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>{label}</th>"
         for _ in range(4) for label in ("신호", "시장단계")
     )
-    return f"<div class='macro-backtest-table-wrap' style='width:1693.02px;min-width:1693.02px;table-layout:fixed;border-collapse:collapse;font-size:11px'>{colgroup}<thead><tr>{base_head}{groups}</tr><tr>{subheaders}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
+    return f"<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:1693.02px;min-width:1693.02px;table-layout:fixed;border-collapse:collapse;font-size:11px'>{colgroup}<thead><tr>{base_head}{groups}</tr><tr>{subheaders}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
 
 
 def _component_status_table(payload: dict[str, Any], candidate_id: str) -> str:

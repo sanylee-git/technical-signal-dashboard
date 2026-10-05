@@ -76,7 +76,7 @@ def test_b2t_cached_backtest_stats_match_uncached_and_reuse_heavy_calculation(mo
 
 def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> None:
     _, metrics, stats = _assets()
-    dates = pd.date_range("2026-08-03", periods=6, freq="B")
+    dates = pd.date_range("2026-08-03", periods=22, freq="B")
     history_rows = []
     live_map = {
         row["candidate_id"]: {
@@ -84,6 +84,7 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
             "raw_risk_state": 1,
             "active_count": int(row["K"]),
             "component_count": int(row["m_or_n"]),
+            "basis_date": dates[-1],
         }
         for _, row in metrics.iterrows()
     }
@@ -264,6 +265,10 @@ def test_b2t_week_ago_individual_stage_uses_historical_risk_state() -> None:
     assert "관망" in dash._macro_historical_market_stage_html(risk_off_row, 9, 5, "raw_risk_state")
     assert "계산 불가" in dash._macro_historical_current_chip({"active_count": 7}, 9, "raw_risk_state")
     assert "계산 불가" in dash._macro_historical_market_stage_html({"raw_risk_state": 1}, 9, 5, "raw_risk_state")
+
+    series_row = pd.Series({"active_count": 7, "raw_risk_state": 0})
+    assert "계산 불가" not in dash._macro_historical_current_chip(series_row, 9, "raw_risk_state")
+    assert "계산 불가" not in dash._macro_historical_market_stage_html(series_row, 9, 5, "raw_risk_state")
 
 
 def test_b2t_chart_and_runtime_functions_are_unchanged_except_macro4_backtest_table() -> None:
