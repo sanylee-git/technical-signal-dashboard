@@ -92,6 +92,8 @@ def _candidate_label(row: pd.Series | dict[str, Any]) -> str:
     family = str(row.get("model_family", ""))
     prefix, unit = ("조합1", "지표") if family == "COMBO1" else ("조합2", "조합1")
     designation = str(row.get("display_designation", "Confirm"))
+    if designation == "MAIN":
+        designation = "main"
     return f"[{prefix} · {designation}] {row.get('display_role', '')} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
 
 
