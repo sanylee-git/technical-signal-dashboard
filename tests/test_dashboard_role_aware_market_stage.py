@@ -192,5 +192,5 @@ def test_missing_candidate_risk_state_fails_closed_without_partial_vote(nasdaq_p
 def test_metadata_document_has_only_explicit_user_authorized_markets() -> None:
     document = load_role_metadata()
 
-    assert set(document["markets"]) == {"S&P2", "NASDAQ"}
+    assert set(document["markets"]) == {"S&P2", "NASDAQ", "KOSPI"}
     assert document["authority"] == "user_explicitly_confirmed"

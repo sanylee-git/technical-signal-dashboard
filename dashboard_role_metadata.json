@@ -35,6 +35,22 @@
         {"candidate_id": "nq_c2_478558562d45356d", "designation": "CONFIRM", "role_1": "공격진입형"},
         {"candidate_id": "nq_c2_6230b4f4492e3e15", "designation": "CONFIRM", "role_1": "공격진입형", "role_2": "민감감지형"}
       ]
+    },
+    "KOSPI": {
+      "COMBO1": [
+        {"candidate_id": "combo1_n11_k8_l5_93919287424179bd", "designation": "MAIN", "role_1": "균형형"},
+        {"candidate_id": "combo1_n11_k9_l5_b984a8e53ad69a2d", "designation": "CONFIRM", "role_1": "보수방어형", "role_2": "추세지속형"},
+        {"candidate_id": "combo1_n11_k9_l6_ad654f06d0d609cb", "designation": "CONFIRM", "role_1": "균형형", "role_2": "민감감지형"},
+        {"candidate_id": "combo1_n11_k9_l6_9f0105582a0f0745", "designation": "CONFIRM", "role_1": "공격진입형", "role_2": "추세지속형"},
+        {"candidate_id": "combo1_n11_k8_l5_78b918eadc42fa16", "designation": "CONFIRM", "role_1": "보수방어형", "role_2": "추세지속형"}
+      ],
+      "COMBO2": [
+        {"candidate_id": "m10::combo2_m10_k7_l4_bbd8c760d49b44bb", "designation": "MAIN", "role_1": "균형형"},
+        {"candidate_id": "m8::combo2_m8_k5_l4_cee6978af4789711", "designation": "CONFIRM", "role_1": "균형형", "role_2": "추세지속형"},
+        {"candidate_id": "m6::combo2_m6_k4_l2_2d90a80e824f7336", "designation": "CONFIRM", "role_1": "보수방어형", "role_2": "추세지속형"},
+        {"candidate_id": "m6::combo2_m6_k4_l3_f976de57b8b4a80e", "designation": "CONFIRM", "role_1": "공격진입형", "role_2": "추세지속형"},
+        {"candidate_id": "m5::combo2_m5_k2_l1_2bc7e194fdecfd9e", "designation": "CONFIRM", "role_1": "보수방어형"}
+      ]
     }
   }
 }

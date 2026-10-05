@@ -7,6 +7,15 @@ from typing import Any
 
 import pandas as pd
 
+from dashboard_role_aware_market_stage import (
+    TIMEPOINTS,
+    compute_role_aware_market_outputs,
+    load_role_metadata,
+    validate_market_metadata,
+)
+from dashboard_role_aware_stage import classify_role_combo
+from dashboard_timepoints import candidate_history_rows_at_offsets
+
 from .canonical_registry import build_canonical_registry, consistency_from_registry
 from .engine import D1C1Context, read_json
 from .freshness import evaluate_source_freshness
@@ -31,6 +40,16 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
     as_of_utc = as_of_utc or datetime.now(timezone.utc)
     root = Path(__file__).resolve().parents[1]
     ctx = D1C1Context(root, root.parent / "macro_dashboard_kospi")
+    operating_dictionary = read_json(ctx.asset_dir / "kospi_final5_operating_dictionary.json")
+    component_additions = read_json(ctx.asset_dir / "kospi_final5_component_metadata_additions.json")["components"]
+    metrics = pd.concat(
+        [
+            pd.read_csv(ctx.asset_dir / "kospi_final9_candidate_metrics.csv"),
+            pd.read_csv(ctx.asset_dir / "kospi_final5_additional_candidate_metrics.csv"),
+        ],
+        ignore_index=True,
+        sort=False,
+    )
     frozen = _load_transformed_source_base(ctx)
     latest_krx = kospi_latest_completed_session(as_of_utc)
     latest_kospi_live = kospi_latest_allowed_live_session(as_of_utc)
@@ -51,14 +70,32 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
     lag_policy = {source_id: contract.lag_bdays for source_id, contract in SOURCE_CONTRACTS.items()}
     transformed, latest_available = build_transformed_frame(frozen, selected_frames, lag_policy)
     resolver_log, resolver_status = _apply_live_source_resolver(transformed, frozen, selected_frames, resolver_frames)
-    live = compute_live_tree(ctx, transformed)
+    live = compute_live_tree(ctx, transformed, operating_dictionary)
     source_status = source_status_rows(selected_frames, frozen, latest_available)
-    snapshot, _ = build_final9_snapshot(ctx, live["final9"], source_status, transformed)
+    snapshot, _ = build_final9_snapshot(
+        ctx,
+        live["operating_final10"],
+        source_status,
+        transformed,
+        candidate_metrics=metrics,
+        candidate_dictionary={row["candidate_id"]: row for row in operating_dictionary["candidates"]},
+    )
     candidate_freshness, group_summary = qualify_candidates(
         snapshot,
         source_df.rename(columns={"freshness_status": "final_freshness_status"}),
         consistency.rename(columns={"rule_id": "rule_id"}),
-        final9_required_sources(ctx),
+        final9_required_sources(
+            ctx,
+            candidate_dictionary={row["candidate_id"]: row for row in operating_dictionary["candidates"]},
+            additional_metadata=component_additions,
+        ),
+    )
+    candidate_history = _candidate_signal_history(ctx, live["operating_final10"], metrics)
+    component_history = _component_signal_history(ctx, live, operating_dictionary, metrics)
+    official_history, official_snapshot, individual_timepoints, role_outputs, red_contract = _role_aware_outputs(
+        candidate_freshness,
+        candidate_history,
+        operating_dictionary,
     )
     return {
         "as_of_utc": as_of_utc.isoformat(),
@@ -67,14 +104,33 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
         "sources_count": len(SOURCE_CONTRACTS),
         "sources_reachable_count": int(source_df["fetch_status"].astype(str).str.contains("FETCH_OK|NO_NEW_RELEASE", regex=True).sum()) if not source_df.empty else 0,
         "candidate_rows": _candidate_rows(candidate_freshness),
+        "operating_candidates": pd.DataFrame(operating_dictionary["candidates"]),
+        "operating_candidate_metrics": metrics,
+        "role_aware_snapshot": official_snapshot,
+        "official_t1_candidate_history": official_history,
+        "role_aware_stage_outputs": role_outputs,
+        "role_metadata_validation": pd.DataFrame(
+            validate_market_metadata(
+                "KOSPI",
+                pd.DataFrame(
+                    [
+                        {"candidate_id": row["candidate_id"], "model_family": row["model_type"].upper()}
+                        for row in operating_dictionary["candidates"]
+                    ]
+                ),
+                load_role_metadata(),
+            )
+        ),
+        "individual_four_timepoint_outputs": individual_timepoints,
+        "red_contract_qa": red_contract,
         "source_rows": source_rows,
         "source_resolver_status": resolver_status,
         "source_resolver_log": resolver_log,
         "group_summary": group_summary,
         "core15_component_history": _core15_component_history(live["core15"]),
-        "candidate_signal_history": _candidate_signal_history(ctx, live["final9"]),
+        "candidate_signal_history": candidate_history,
         "child_combo1_history": _child_combo1_history(live["child_combo1"]),
-        "component_signal_history": _component_signal_history(ctx, live),
+        "component_signal_history": component_history,
         "benchmark_close_history": _benchmark_close_history(transformed),
         "transformed_source_history": _transformed_source_history(transformed),
         "calculation_status": "CALCULABLE",
@@ -363,13 +419,203 @@ def _candidate_rows(candidate_freshness: pd.DataFrame) -> list[dict[str, Any]]:
     return rows
 
 
-def _candidate_signal_history(ctx: D1C1Context, final9_live: pd.DataFrame) -> pd.DataFrame:
+def _role_aware_outputs(
+    candidate_freshness: pd.DataFrame,
+    candidate_history: pd.DataFrame,
+    operating_dictionary: dict[str, Any],
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, list[dict[str, Any]], pd.DataFrame]:
+    history = candidate_history.copy()
+    history["date"] = pd.to_datetime(history["date"]).dt.normalize()
+    history = history.sort_values(["candidate_id", "date"], kind="mergesort").reset_index(drop=True)
+    t1_position = pd.to_numeric(history["t1_position"], errors="coerce")
+    history["raw_risk_state"] = (1 - t1_position).astype("Int8")
+    t1_valid = history["t1_valid"].fillna(t1_position.notna()) if "t1_valid" in history else t1_position.notna()
+    history["valid_signal"] = history["valid_signal"].fillna(False).astype(bool) & t1_valid.fillna(False).astype(bool) & t1_position.notna()
+    on_count = pd.to_numeric(history.get("on_count"), errors="coerce") if "on_count" in history else pd.Series(pd.NA, index=history.index, dtype="Float64")
+    active_count = pd.to_numeric(history.get("active_count"), errors="coerce") if "active_count" in history else pd.Series(pd.NA, index=history.index, dtype="Float64")
+    count_source = on_count.combine_first(active_count)
+    history["active_count"] = count_source.groupby(history["candidate_id"], sort=False).shift(1).astype("Int16")
+    previous = history.groupby("candidate_id", sort=False)["raw_risk_state"].shift(1)
+    valid = history["valid_signal"]
+    history["risk_start_signal"] = (valid & history["raw_risk_state"].eq(1) & previous.ne(1)).fillna(False).astype("int8")
+    history["risk_end_signal"] = (valid & history["raw_risk_state"].eq(0) & previous.eq(1)).fillna(False).astype("int8")
+
+    snapshot = candidate_freshness.copy()
+    t1 = pd.to_numeric(snapshot["t1_position"], errors="coerce")
+    snapshot["raw_risk_state"] = (1 - t1).astype("Int64")
+    snapshot["t1_valid"] = snapshot.get("t1_valid", t1.notna()).fillna(False).astype(bool) & t1.notna()
+    snapshot["valid_signal"] = snapshot.get("valid_signal", snapshot["calculable"]).fillna(False).astype(bool) & snapshot["t1_valid"]
+    snapshot["status"] = snapshot.apply(
+        lambda row: "USABLE" if bool(row.get("calculable")) and bool(row.get("freshness_qualified")) and bool(row.get("t1_valid")) else "UNAVAILABLE",
+        axis=1,
+    )
+    if "availability_status" not in snapshot:
+        snapshot["availability_status"] = "CONFIRMED"
+    for column in ("week_ago_raw_risk_state", "week_ago_basis_date"):
+        if column not in snapshot:
+            snapshot[column] = pd.NA
+    for idx, row in snapshot.iterrows():
+        current = candidate_history_rows_at_offsets(
+            history,
+            row["candidate_id"],
+            row.get("basis_date"),
+            offsets=(0,),
+            valid_col="valid_signal",
+        )[0]
+        if current is not None:
+            snapshot.at[idx, "active_count"] = current.get("active_count")
+            snapshot.at[idx, "official_state_date"] = current.get("date")
+        selected = candidate_history_rows_at_offsets(
+            history,
+            row["candidate_id"],
+            row.get("basis_date"),
+            offsets=(5,),
+            valid_col="valid_signal",
+        )[5]
+        if selected is not None:
+            snapshot.at[idx, "week_ago_raw_risk_state"] = selected.get("raw_risk_state")
+            snapshot.at[idx, "week_ago_basis_date"] = selected.get("date")
+
+    document = load_role_metadata()
+    final = pd.DataFrame(
+        [
+            {
+                "candidate_id": row["candidate_id"],
+                "model_family": str(row["model_type"]).upper(),
+            }
+            for row in operating_dictionary["candidates"]
+        ]
+    )
+    role_outputs = compute_role_aware_market_outputs(
+        "KOSPI",
+        final,
+        snapshot,
+        history,
+        metadata_document=document,
+    )
+
+    metadata = document["markets"]["KOSPI"]
+    individual_rows: list[dict[str, Any]] = []
+    for candidate in operating_dictionary["candidates"]:
+        candidate_id = str(candidate["candidate_id"])
+        candidate_snapshot = snapshot.loc[snapshot["candidate_id"].astype(str).eq(candidate_id)]
+        if candidate_snapshot.empty:
+            continue
+        snap = candidate_snapshot.iloc[0]
+        combo = str(candidate["model_type"]).upper()
+        designation = next(
+            record["designation"]
+            for record in metadata[combo]
+            if str(record["candidate_id"]) == candidate_id
+        )
+        for offset, timepoint_code, label in TIMEPOINTS:
+            if offset == 0:
+                selected = snap
+            else:
+                selected = candidate_history_rows_at_offsets(
+                    history,
+                    candidate_id,
+                    snap.get("basis_date"),
+                    offsets=(offset,),
+                    valid_col="valid_signal",
+                )[offset]
+            state = None if selected is None else selected.get("raw_risk_state")
+            date = None if selected is None else selected.get("date", snap.get("basis_date"))
+            count = None if selected is None else selected.get("active_count")
+            try:
+                state = None if pd.isna(state) else int(state)
+            except (TypeError, ValueError):
+                state = None
+            try:
+                count = None if pd.isna(count) else int(count)
+            except (TypeError, ValueError):
+                count = None
+            individual_rows.append(
+                {
+                    "market": "KOSPI",
+                    "combo": combo,
+                    "candidate_id": candidate_id,
+                    "designation": designation,
+                    "role_1": next(record["role_1"] for record in metadata[combo] if str(record["candidate_id"]) == candidate_id),
+                    "role_2": next((record.get("role_2", "") for record in metadata[combo] if str(record["candidate_id"]) == candidate_id), ""),
+                    "E_M_H": classify_role_combo(
+                        next(record["role_1"] for record in metadata[combo] if str(record["candidate_id"]) == candidate_id),
+                        next((record.get("role_2") for record in metadata[combo] if str(record["candidate_id"]) == candidate_id), None),
+                    ).warning_class,
+                    "timepoint_code": timepoint_code,
+                    "timepoint": label,
+                    "offset_trading_days": offset,
+                    "evaluation_date": "" if date is None or pd.isna(date) else pd.Timestamp(date).strftime("%Y-%m-%d"),
+                    "signal": "UNAVAILABLE" if state is None else ("Risk-off" if state else "Risk-on"),
+                    "official_t1_risk_off": state,
+                    "active_count_official_t1": count,
+                    "N_or_M": int(candidate["N_or_M"]),
+                    "K": int(candidate["K"]),
+                    "L": int(candidate["L"]),
+                    "state_status": "PASS" if state in (0, 1) else "UNAVAILABLE",
+                }
+            )
+    individual = pd.DataFrame(individual_rows)
+
+    h_class: dict[str, set[str]] = {}
+    for family in ("COMBO1", "COMBO2"):
+        h_class[family] = {
+            str(record["candidate_id"])
+            for record in metadata[family]
+            if str(record["designation"]).upper() == "CONFIRM"
+            and classify_role_combo(record.get("role_1"), record.get("role_2")).warning_class == "H"
+        }
+    red_rows: list[dict[str, Any]] = []
+    states_by_time = {
+        (str(row["candidate_id"]), str(row["timepoint_code"])): row["official_t1_risk_off"]
+        for row in individual.to_dict("records")
+    }
+    for output in role_outputs:
+        if output["combination"] not in {"COMBO1", "COMBO2"}:
+            continue
+        family = output["combination"]
+        records = metadata[family]
+        main_id = next(str(record["candidate_id"]) for record in records if record["designation"] == "MAIN")
+        confirm_h_off = sum(
+            states_by_time.get((candidate_id, output["timepoint_code"])) == 1
+            for candidate_id in h_class[family]
+        )
+        risk_off_count = int(output["risk_off_count"])
+        model_count = int(output["model_count"])
+        main_off = states_by_time.get((main_id, output["timepoint_code"])) == 1
+        red = output["stage_code"] == "SELL"
+        all_off = risk_off_count == model_count
+        violation = bool(red and not all_off and not (main_off and risk_off_count / model_count >= 0.75 and confirm_h_off >= 1))
+        red_rows.append(
+            {
+                "combo": family,
+                "timepoint_code": output["timepoint_code"],
+                "stage_code": output["stage_code"],
+                "risk_off_count": risk_off_count,
+                "model_count": model_count,
+                "main_off": int(main_off),
+                "confirm_h_off": int(confirm_h_off),
+                "all_off_exception": int(all_off),
+                "red_contract_violation": int(violation),
+                "status": "PASS" if not violation else "FAIL",
+            }
+        )
+    return history, snapshot, individual, role_outputs, pd.DataFrame(red_rows)
+
+
+def _candidate_signal_history(
+    ctx: D1C1Context,
+    final9_live: pd.DataFrame,
+    candidate_metrics: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     frozen = _read_asset_frame(ctx, "kospi_final9_reference_signals.parquet")
     if "valid_signal" not in frozen.columns:
         frozen["valid_signal"] = True
     else:
         frozen["valid_signal"] = frozen["valid_signal"].fillna(True).astype(bool)
-    metrics = pd.read_csv(ctx.asset_dir / "kospi_final9_candidate_metrics.csv")
+    metrics = candidate_metrics
+    if metrics is None:
+        metrics = pd.read_csv(ctx.asset_dir / "kospi_final9_candidate_metrics.csv")
     slot_by_id = dict(zip(metrics["candidate_id"], metrics["slot"]))
     live = final9_live.copy()
     live["date"] = pd.to_datetime(live["date"]).dt.normalize()
@@ -388,10 +634,11 @@ def _candidate_signal_history(ctx: D1C1Context, final9_live: pd.DataFrame) -> pd
             "risk_start_signal",
             "risk_end_signal",
             "valid_signal",
+            "t1_valid",
             "active_count",
         ]
     ].copy()
-    return _append_live_tail(frozen, live, ["candidate_id", "date"])
+    return _append_live_tail_and_new(frozen, live, ["candidate_id", "date"], "candidate_id")
 
 
 def _core15_component_history(core_live: pd.DataFrame) -> pd.DataFrame:
@@ -432,14 +679,28 @@ def _child_combo1_history(child_live: pd.DataFrame) -> pd.DataFrame:
     return out[[col for col in columns if col in out.columns]].sort_values(["combo1_id", "date"]).reset_index(drop=True)
 
 
-def _component_signal_history(ctx: D1C1Context, live: dict[str, pd.DataFrame]) -> pd.DataFrame:
+def _component_signal_history(
+    ctx: D1C1Context,
+    live: dict[str, pd.DataFrame],
+    operating_dictionary: dict[str, Any] | None = None,
+    candidate_metrics: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     frozen = _read_asset_frame(ctx, "kospi_final9_component_reference_signals.parquet")
     if "valid_signal" not in frozen.columns:
         frozen["valid_signal"] = True
     else:
         frozen["valid_signal"] = frozen["valid_signal"].fillna(True).astype(bool)
-    final9 = read_json(ctx.asset_dir / "kospi_final9_component_dictionary.json")
-    metrics = pd.read_csv(ctx.asset_dir / "kospi_final9_candidate_metrics.csv")
+    final9 = operating_dictionary
+    if final9 is None:
+        final9 = read_json(ctx.asset_dir / "kospi_final9_component_dictionary.json")
+    elif "candidates" in final9:
+        final9 = {
+            str(candidate["candidate_id"]): candidate
+            for candidate in final9["candidates"]
+        }
+    metrics = candidate_metrics
+    if metrics is None:
+        metrics = pd.read_csv(ctx.asset_dir / "kospi_final9_candidate_metrics.csv")
     slot_by_id = dict(zip(metrics["candidate_id"], metrics["slot"]))
     meta = (
         frozen.sort_values("date")
@@ -487,7 +748,12 @@ def _component_signal_history(ctx: D1C1Context, live: dict[str, pd.DataFrame]) -
             )
             frames.append(part)
     live_components = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-    return _append_live_tail(frozen, live_components, ["parent_candidate_id", "component_id", "date"])
+    return _append_live_tail_and_new(
+        frozen,
+        live_components,
+        ["parent_candidate_id", "component_id", "date"],
+        "parent_candidate_id",
+    )
 
 
 def _benchmark_close_history(transformed: pd.DataFrame) -> pd.DataFrame:
@@ -532,6 +798,28 @@ def _append_live_tail(frozen: pd.DataFrame, live: pd.DataFrame, key_cols: list[s
     for column in all_na_columns:
         combined[column] = pd.NA
     combined = combined.reindex(columns=columns)
+    return combined.sort_values(key_cols).drop_duplicates(key_cols, keep="first").reset_index(drop=True)
+
+
+def _append_live_tail_and_new(
+    frozen: pd.DataFrame,
+    live: pd.DataFrame,
+    key_cols: list[str],
+    identity_col: str,
+) -> pd.DataFrame:
+    frozen = frozen.copy()
+    live = live.copy()
+    frozen["date"] = pd.to_datetime(frozen["date"]).dt.normalize()
+    live["date"] = pd.to_datetime(live["date"]).dt.normalize()
+    cutoff = frozen["date"].max()
+    frozen_ids = set(frozen[identity_col].astype(str))
+    old_tail = live.loc[live[identity_col].astype(str).isin(frozen_ids) & live["date"].gt(cutoff)]
+    new_history = live.loc[~live[identity_col].astype(str).isin(frozen_ids)]
+    additions = pd.concat([old_tail, new_history], ignore_index=True, sort=False)
+    if additions.empty:
+        return frozen.sort_values(key_cols).drop_duplicates(key_cols, keep="first").reset_index(drop=True)
+    columns = list(dict.fromkeys([*frozen.columns.tolist(), *additions.columns.tolist()]))
+    combined = pd.concat([frozen.reindex(columns=columns), additions.reindex(columns=columns)], ignore_index=True, sort=False)
     return combined.sort_values(key_cols).drop_duplicates(key_cols, keep="first").reset_index(drop=True)
 
 

@@ -33,6 +33,17 @@ def combo_from_components_nullable(source: pd.DataFrame, component_ids: list[str
     return out
 
 
+def _candidate_state_source(source: pd.DataFrame, spec: dict[str, Any]) -> pd.DataFrame:
+    start_value = spec.get("state_start_date")
+    if not start_value:
+        return source
+    start = pd.Timestamp(start_value).normalize()
+    dates = pd.to_datetime(source["date"]).dt.normalize()
+    if not dates.eq(start).any():
+        raise ValueError(f"Candidate state_start_date is not present in source calendar: {start.date()}")
+    return source.loc[dates.ge(start)].reset_index(drop=True)
+
+
 def compute_live_core15(frame: pd.DataFrame, metadata: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     frames: list[pd.DataFrame] = []
     rows: list[dict[str, Any]] = []
@@ -50,10 +61,30 @@ def compute_live_core15(frame: pd.DataFrame, metadata: pd.DataFrame) -> tuple[pd
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(), pd.DataFrame(rows)
 
 
-def compute_live_tree(ctx: D1C1Context, transformed: pd.DataFrame) -> dict[str, pd.DataFrame]:
+def compute_live_tree(
+    ctx: D1C1Context,
+    transformed: pd.DataFrame,
+    operating_dictionary: dict[str, Any] | None = None,
+) -> dict[str, pd.DataFrame]:
     graph = build_dependency_graph(ctx)
     metadata = pd.read_parquet(ctx.asset_dir / "kospi_d1c1_required_core15_metadata.parquet")
-    metadata = metadata[metadata["candidate_id"].isin(graph["required_core15_components"])].copy()
+    core_ids = set(graph["required_core15_components"])
+    if operating_dictionary is not None:
+        core_ids.update(
+            component_id
+            for candidate in operating_dictionary["candidates"]
+            if candidate["model_type"] == "combo1"
+            for component_id in candidate["component_ids"]
+        )
+        additions = read_json(ctx.asset_dir / "kospi_final5_component_metadata_additions.json")
+        extra_metadata = pd.DataFrame(additions["components"])
+        metadata = pd.concat([metadata, extra_metadata], ignore_index=True, sort=False)
+        if metadata["candidate_id"].duplicated().any():
+            raise ValueError("KOSPI Final5 component metadata contains duplicate IDs")
+        missing_core = sorted(core_ids - set(metadata["candidate_id"].astype(str)))
+        if missing_core:
+            raise ValueError(f"KOSPI Final5 component metadata missing: {missing_core}")
+    metadata = metadata[metadata["candidate_id"].isin(core_ids)].copy()
     core, core_status = compute_live_core15(transformed, metadata)
     core_wide = core.pivot(index="date", columns="component_id", values="risk_state").reset_index()
 
@@ -85,4 +116,27 @@ def compute_live_tree(ctx: D1C1Context, transformed: pd.DataFrame) -> dict[str, 
         replay["component_ids_json"] = json.dumps(spec["component_ids"], ensure_ascii=False)
         final_rows.append(replay)
     final = pd.concat(final_rows, ignore_index=True) if final_rows else pd.DataFrame()
-    return {"core15": core, "core15_status": core_status, "child_combo1": child, "final9": final}
+    result = {"core15": core, "core15_status": core_status, "child_combo1": child, "final9": final}
+    if operating_dictionary is not None:
+        operating_rows: list[pd.DataFrame] = []
+        for spec in operating_dictionary["candidates"]:
+            source = core_wide if spec["model_type"] == "combo1" else child_wide
+            candidate_source = _candidate_state_source(source, spec)
+            replay = combo_from_components_nullable(
+                candidate_source,
+                list(spec["component_ids"]),
+                int(spec["K"]),
+                int(spec["L"]),
+            )
+            t1 = t1_position_from_nullable_raw(replay["raw_risk_state"], replay["valid_signal"])
+            replay = pd.concat([replay, t1], axis=1)
+            replay["candidate_id"] = spec["candidate_id"]
+            replay["model_type"] = spec["model_type"]
+            replay["component_count"] = len(spec["component_ids"])
+            replay["K"] = int(spec["K"])
+            replay["L"] = int(spec["L"])
+            replay["component_ids_json"] = json.dumps(spec["component_ids"], ensure_ascii=False)
+            operating_rows.append(replay)
+        operating = pd.concat(operating_rows, ignore_index=True) if operating_rows else pd.DataFrame()
+        result["operating_final10"] = operating
+    return result

@@ -26,8 +26,10 @@ import time
 import copy
 import warnings
 import traceback
+from functools import lru_cache
 from zoneinfo import ZoneInfo
 from dashboard_timepoints import candidate_history_rows_at_offsets, risk_state_short_label
+from dashboard_role_aware_market_stage import format_role_stage_sequence, load_role_metadata
 from kosdaq_macro7_ui import render_macro7_kosdaq_section
 from nasdaq_macro8_ui import render_macro8_nasdaq_section
 from spx_macro9_ui import render_macro9_spx_section
@@ -14195,17 +14197,17 @@ def _macro5_kospi_suffix(candidate_id: str) -> str:
     return str(candidate_id).split("_")[-1][-8:]
 
 
-_MACRO5_KOSPI_DISPLAY_LABEL_OVERRIDES = {
-    "m10::combo2_m10_k7_l4_bbd8c760d49b44bb": "[조합2] Main1 최상위 성과 (조합1 10개/K7/L4)",
-    "m8::combo2_m8_k5_l4_cee6978af4789711": "[조합2] Main2 다양성·안정 보완 (조합1 8개/K5/L4)",
-    "combo1_n11_k9_l5_b984a8e53ad69a2d": "[조합1] Main1 균형 코어 (지표 11개/K9/L5)",
-    "combo1_n11_k9_l6_ad654f06d0d609cb": "[조합1] Main2 공격 수익 (지표 11개/K9/L6)",
-}
 _MACRO5_KOSPI_ORDER_OVERRIDES = {
-    "combo1_n11_k9_l5_b984a8e53ad69a2d": 0,
-    "combo1_n11_k9_l6_ad654f06d0d609cb": 1,
+    "combo1_n11_k8_l5_93919287424179bd": 0,
+    "combo1_n11_k9_l5_b984a8e53ad69a2d": 1,
+    "combo1_n11_k9_l6_ad654f06d0d609cb": 2,
+    "combo1_n11_k9_l6_9f0105582a0f0745": 3,
+    "combo1_n11_k8_l5_78b918eadc42fa16": 4,
     "m10::combo2_m10_k7_l4_bbd8c760d49b44bb": 0,
     "m8::combo2_m8_k5_l4_cee6978af4789711": 1,
+    "m6::combo2_m6_k4_l2_2d90a80e824f7336": 2,
+    "m6::combo2_m6_k4_l3_f976de57b8b4a80e": 3,
+    "m5::combo2_m5_k2_l1_2bc7e194fdecfd9e": 4,
 }
 
 
@@ -14225,14 +14227,28 @@ def _macro5_kospi_model_type(value) -> str:
     return str(value or "").strip().lower()
 
 
+@lru_cache(maxsize=1)
+def _macro5_kospi_role_records() -> dict[str, dict]:
+    document = load_role_metadata()
+    return {
+        str(record["candidate_id"]): {**record, "combo": family}
+        for family in ("COMBO1", "COMBO2")
+        for record in document.get("markets", {}).get("KOSPI", {}).get(family, [])
+    }
+
+
 def _macro5_kospi_preset_label(row: pd.Series | dict, component_count: int | None = None) -> str:
     candidate_id = str(row.get("candidate_id") or "")
-    if candidate_id in _MACRO5_KOSPI_DISPLAY_LABEL_OVERRIDES:
-        return _MACRO5_KOSPI_DISPLAY_LABEL_OVERRIDES[candidate_id]
     model_type = _macro5_kospi_model_type(row["model_type"])
     prefix = "조합1" if model_type == "combo1" else "조합2"
     unit = "지표" if model_type == "combo1" else "조합1"
-    role = str(row.get("role") or "")
+    metadata = _macro5_kospi_role_records().get(candidate_id, {})
+    designation = {"MAIN": "Main", "CONFIRM": "Confirm"}.get(
+        str(metadata.get("designation", "")).upper(), ""
+    )
+    roles = [str(metadata.get(key, "")).strip() for key in ("role_1", "role_2")]
+    role = " + ".join(role for role in roles if role)
+    role_label = f"{designation} · {role}" if designation and role else str(row.get("role") or "")
     try:
         count = int(component_count if component_count is not None else row.get("m_or_n"))
     except Exception:
@@ -14243,7 +14259,7 @@ def _macro5_kospi_preset_label(row: pd.Series | dict, component_count: int | Non
     except Exception:
         k_value = 0
         l_value = 0
-    return f"[{prefix}] {role} ({unit} {count}개/K{k_value}/L{l_value})"
+    return f"[{prefix}] {role_label} ({unit} {count}개/K{k_value}/L{l_value})"
 
 
 def _macro5_kospi_sort_metrics(metrics: pd.DataFrame) -> pd.DataFrame:
@@ -14288,16 +14304,15 @@ def _macro5_kospi_combo2_main_candidate_id(metrics: pd.DataFrame) -> str:
         raise ValueError("REVIEW_KOSPI_MACRO5_D1C3B2V_COMBO2_MAIN_NOT_UNIQUE")
     data = metrics.copy()
     data["_model_type_norm"] = data["model_type"].map(_macro5_kospi_model_type)
-    main_rows = []
-    for _, row in data[data["_model_type_norm"].eq("combo2")].iterrows():
-        label = _macro5_kospi_preset_label(row)
-        if str(row.get("candidate_id")) in _MACRO5_KOSPI_ORDER_OVERRIDES and _MACRO5_KOSPI_ORDER_OVERRIDES[str(row.get("candidate_id"))] == 0:
-            main_rows.append(row)
-        elif label.startswith("[조합2] Main "):
-            main_rows.append(row)
+    main_rows = data[
+        data["_model_type_norm"].eq("combo2")
+        & data["candidate_id"].astype(str).map(
+            lambda candidate_id: _macro5_kospi_role_records().get(candidate_id, {}).get("designation") == "MAIN"
+        )
+    ]
     if len(main_rows) != 1:
         raise ValueError("REVIEW_KOSPI_MACRO5_D1C3B2V_COMBO2_MAIN_NOT_UNIQUE")
-    return str(main_rows[0]["candidate_id"])
+    return str(main_rows.iloc[0]["candidate_id"])
 
 
 def _macro5_kospi_component_family(component_id: str) -> str:
@@ -14470,55 +14485,27 @@ def _macro5_kospi_group_summary_html(
     candidate_rows: list[dict] | None,
     metrics: pd.DataFrame,
     candidate_history: pd.DataFrame | None = None,
+    role_outputs: list[dict] | None = None,
+    individual_timepoints: pd.DataFrame | None = None,
 ) -> str:
     candidate_rows = candidate_rows or []
     by_id = {str(row.get("candidate_id")): row for row in candidate_rows}
     summary = {}
-    offsets = (21, 10, 5, 0)
-    for label, model_type in [("조합2", "combo2"), ("조합1", "combo1")]:
+    for label, model_type, family in [("조합1", "combo1", "COMBO1"), ("조합2", "combo2", "COMBO2")]:
         group = metrics[metrics["model_type"].map(_macro5_kospi_model_type).eq(model_type)]
         total = int(group["candidate_id"].nunique())
         rows = [by_id.get(str(candidate_id), {}) for candidate_id in group["candidate_id"]]
         calculable = sum(1 for row in rows if bool(row.get("calculable")))
         unavailable = max(0, total - calculable)
-        risk_off = sum(1 for row in rows if bool(row.get("calculable")) and int(row.get("raw_risk_state") or 0) == 1)
-        stage_labels_by_offset = {offset: [] for offset in offsets}
-        for _, metric_row in group.iterrows():
-            candidate_id = str(metric_row.get("candidate_id"))
-            live_row = by_id.get(candidate_id, {})
-            if not live_row or not live_row.get("calculable"):
-                for offset in offsets:
-                    stage_labels_by_offset[offset].append("계산 불가")
-                continue
-            stage_labels_by_offset[0].append(
-                _macro_market_stage_label(live_row.get("active_count"), metric_row.get("K"), metric_row.get("L"), int(live_row.get("raw_risk_state") or 0) == 1)
-            )
-            week_ago_row = _macro_week_ago_state_row(candidate_history, candidate_id)
-            stage_labels_by_offset[5].append(
-                "계산 불가" if not week_ago_row else _macro_market_stage_label(
-                    week_ago_row.get("active_count", week_ago_row.get("on_count", 0)),
-                    metric_row.get("K"),
-                    metric_row.get("L"),
-                    int(week_ago_row.get("raw_risk_state") or 0) == 1,
-                )
-            )
-            historical = candidate_history_rows_at_offsets(
-                candidate_history,
-                candidate_id,
-                live_row.get("basis_date"),
-                offsets=(21, 10),
-                valid_col="valid_signal",
-            )
-            for offset in (21, 10):
-                state = historical[offset]
-                stage_labels_by_offset[offset].append(
-                    "계산 불가" if state is None else _macro_market_stage_label(
-                        state.get("active_count", state.get("on_count", 0)),
-                        metric_row.get("K"),
-                        metric_row.get("L"),
-                        int(state.get("raw_risk_state") or 0) == 1,
-                    )
-                )
+        risk_off = 0
+        if isinstance(individual_timepoints, pd.DataFrame) and not individual_timepoints.empty:
+            current = individual_timepoints.loc[
+                individual_timepoints["combo"].astype(str).str.lower().eq(model_type)
+                & individual_timepoints["timepoint_code"].eq("TODAY")
+            ]
+            risk_off = int(pd.to_numeric(current["official_t1_risk_off"], errors="coerce").eq(1).sum())
+        else:
+            risk_off = sum(1 for row in rows if bool(row.get("calculable")) and int(row.get("raw_risk_state") or 0) == 1)
         basis_dates = [row.get("basis_date") for row in rows if row.get("basis_date")]
         basis = max(basis_dates) if basis_dates else "계산 불가"
         availability_color = "#54F2A3" if unavailable == 0 else "rgba(255,255,255,0.92)"
@@ -14534,41 +14521,32 @@ def _macro5_kospi_group_summary_html(
                 f"<span style='color:{risk_color};font-weight:700;'>{label} {_macro_risk_state_display_text(True)} {risk_off}/{total}</span>"
                 f"<span style='color:rgba(255,255,255,0.55);'> · 기준일 {_macro5_kospi_escape(basis)}</span>"
             ),
-            "stages": {offset: _macro_group_market_stage_label(stage_labels_by_offset[offset]) for offset in offsets},
+            "family": family,
         }
     sep = "<span style='color:rgba(255,255,255,0.36);padding:0 10px;'>|</span>"
-    combo1, combo2 = summary.get("조합1", {}), summary.get("조합2", {})
-    combined = {
-        offset: _macro_combined_group_market_stage_label(combo1.get("stages", {}).get(offset, "계산 불가"), combo2.get("stages", {}).get(offset, "계산 불가"))
-        for offset in offsets
-    }
-
-    def sequence(values: list[str]) -> str:
-        arrow = "<span style='color:rgba(255,255,255,0.36);padding:0 4px;'>→</span>"
-        return arrow.join(_macro_market_stage_value_html(value) for value in values)
+    outputs = role_outputs or []
+    stage_lines = []
+    for label, combination in (("조합1", "COMBO1"), ("조합2", "COMBO2"), ("조합1+2", "OVERALL")):
+        stage_lines.append(
+            "<div class='macro5-kospi-role-stage-line'><b>"
+            + label
+            + "</b> "
+            + format_role_stage_sequence(outputs, combination)
+            + "</div>"
+        )
 
     return (
         "<div class='macro2-helper-text' style='margin-top:6px;line-height:1.55;'>"
         "<div>"
-        + summary.get("조합2", {}).get("availability", "")
-        + sep
         + summary.get("조합1", {}).get("availability", "")
-        + "</div><div style='margin-top:2px;'>"
-        + summary.get("조합2", {}).get("risk", "")
         + sep
+        + summary.get("조합2", {}).get("availability", "")
+        + "</div><div style='margin-top:2px;'>"
         + summary.get("조합1", {}).get("risk", "")
-        + "</div><div style='margin-top:2px;'>"
-        + "<span><b>시장단계 (1개월 전 → 2주 전 → 1주 전 → 오늘)</b> · 조합1+2: "
-        + sequence([combined[offset] for offset in offsets])
-        + "</span>"
         + sep
-        + "<span>조합2: "
-        + sequence([combo2.get("stages", {}).get(offset, "계산 불가") for offset in offsets])
-        + "</span>"
-        + sep
-        + "<span>조합1: "
-        + sequence([combo1.get("stages", {}).get(offset, "계산 불가") for offset in offsets])
-        + "</span>"
+        + summary.get("조합2", {}).get("risk", "")
+        + "</div><div style='margin-top:4px;'><b>시장단계 (1개월 전 → 2주 전 → 1주 전 → 오늘)</b></div>"
+        + "".join(stage_lines)
         + "</div></div>"
     )
 
@@ -14956,6 +14934,7 @@ def _macro5_kospi_build_backtest_panel(
     model_type: str,
     backtest_stats: dict | None = None,
     candidate_history: pd.DataFrame | None = None,
+    official_live_row_map: dict[str, dict] | None = None,
 ) -> str:
     model_type = _macro5_kospi_model_type(model_type)
     rows_html = []
@@ -14976,6 +14955,7 @@ def _macro5_kospi_build_backtest_panel(
     widths = ["230px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["104.4px"] * 8
     colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in widths) + "</colgroup>"
     subset = _macro5_kospi_sort_metrics(metrics[metrics["model_type"].map(_macro5_kospi_model_type).eq(model_type)])
+    state_row_map = official_live_row_map or live_row_map
     if len(subset):
         rows_html.append(
             "<tr style='background:rgba(255,255,255,0.035);border-top:1px solid rgba(255,255,255,0.12);'>"
@@ -15028,10 +15008,10 @@ def _macro5_kospi_build_backtest_panel(
             hold_metrics.get("_full_cagr_num"),
             "cagr",
         )
-        current_chip = _macro5_kospi_current_chip(candidate_id, live_row_map, int(row.get("K", 1)))
+        current_chip = _macro5_kospi_current_chip(candidate_id, state_row_map, int(row.get("K", 1)))
         week_ago_row = _macro_week_ago_state_row(candidate_history, candidate_id)
-        live_row = live_row_map.get(candidate_id, {})
-        market_stage = _macro5_kospi_market_stage_chip(candidate_id, live_row_map, row.get("K"), row.get("L"))
+        live_row = state_row_map.get(candidate_id, {})
+        market_stage = _macro5_kospi_market_stage_chip(candidate_id, state_row_map, row.get("K"), row.get("L"))
         historical = candidate_history_rows_at_offsets(
             candidate_history,
             candidate_id,
@@ -15044,6 +15024,10 @@ def _macro5_kospi_build_backtest_panel(
             historical[10],
             week_ago_row,
             live_row if live_row.get("calculable") else None,
+        ]
+        time_states = [
+            state.to_dict() if isinstance(state, pd.Series) else state
+            for state in time_states
         ]
         time_cells = []
         for point_index, state in enumerate(time_states):
@@ -17430,9 +17414,23 @@ def main(page="signal"):
             _ui_manifest5k = _assets5k["ui_manifest"]
             _component_dict5k = _assets5k["component_dictionary"]
             try:
-                _default_preset5k = _macro5_kospi_combo2_main_candidate_id(_metrics5k)
-            except ValueError as _exc:
-                st.error(str(_exc))
+                with open(_macro5_kospi_asset_path("kospi_final5_operating_dictionary.json"), "r", encoding="utf-8") as _dictionary_file5k:
+                    _operating_dictionary5k = json.load(_dictionary_file5k)
+                _additional_metrics5k = pd.read_csv(_macro5_kospi_asset_path("kospi_final5_additional_candidate_metrics.csv"))
+                _metrics5k = _macro5_kospi_sort_metrics(
+                    pd.concat([_metrics5k, _additional_metrics5k], ignore_index=True, sort=False)
+                )
+                _component_dict5k = {
+                    str(_candidate5k["candidate_id"]): {
+                        "model_type": _candidate5k["model_type"],
+                        "component_ids": list(_candidate5k["component_ids"]),
+                        "K": int(_candidate5k["K"]),
+                        "L": int(_candidate5k["L"]),
+                    }
+                    for _candidate5k in _operating_dictionary5k["candidates"]
+                }
+            except (OSError, ValueError, KeyError, TypeError) as _exc:
+                st.error(f"KOSPI Final5 operating config을 읽지 못했습니다: {_exc}")
                 return
             _metrics5k["_model_type_norm"] = _metrics5k["model_type"].map(_macro5_kospi_model_type)
             _combo2_order5k = _metrics5k[_metrics5k["_model_type_norm"].eq("combo2")]["candidate_id"].tolist()
@@ -17449,17 +17447,42 @@ def main(page="signal"):
             except Exception as _exc:
                 _live_error5k = str(_exc)
             _live_row_map5k = {}
+            _official_live_row_map5k = {}
             _live_candidate_history_all5k = None
             _live_component_history_all5k = None
             _live_benchmark_history_all5k = None
             if isinstance(_live5k, dict):
                 _live_row_map5k = {str(row.get("candidate_id")): row for row in _live5k.get("candidate_rows", [])}
+                _role_snapshot5k = _live5k.get("role_aware_snapshot")
+                if isinstance(_role_snapshot5k, pd.DataFrame) and not _role_snapshot5k.empty:
+                    _official_live_row_map5k = {
+                        str(row["candidate_id"]): row
+                        for row in _role_snapshot5k.to_dict("records")
+                    }
                 if isinstance(_live5k.get("candidate_signal_history"), pd.DataFrame):
                     _live_candidate_history_all5k = _live5k.get("candidate_signal_history")
+                    if not _live_candidate_history_all5k.empty:
+                        _signals5k = _live_candidate_history_all5k.copy()
                 if isinstance(_live5k.get("component_signal_history"), pd.DataFrame):
                     _live_component_history_all5k = _live5k.get("component_signal_history")
+                    if not _live_component_history_all5k.empty:
+                        _components5k = _live_component_history_all5k.copy()
                 if isinstance(_live5k.get("benchmark_close_history"), pd.DataFrame):
                     _live_benchmark_history_all5k = _live5k.get("benchmark_close_history")
+                    if not _live_benchmark_history_all5k.empty:
+                        _benchmark5k = _live_benchmark_history_all5k.copy()
+                if isinstance(_live5k.get("operating_candidate_metrics"), pd.DataFrame):
+                    _metrics5k = _macro5_kospi_sort_metrics(_live5k["operating_candidate_metrics"])
+            try:
+                _default_preset5k = _macro5_kospi_combo2_main_candidate_id(_metrics5k)
+            except ValueError as _exc:
+                st.error(str(_exc))
+                return
+            _metrics5k["_model_type_norm"] = _metrics5k["model_type"].map(_macro5_kospi_model_type)
+            _combo2_order5k = _metrics5k[_metrics5k["_model_type_norm"].eq("combo2")]["candidate_id"].tolist()
+            _combo1_order5k = _metrics5k[_metrics5k["_model_type_norm"].eq("combo1")]["candidate_id"].tolist()
+            _preset_order5k = _combo2_order5k + _combo1_order5k
+            _candidate_map5k = {row["candidate_id"]: row for _, row in _metrics5k.iterrows()}
             _live_history_ready5k = bool(
                 _live_candidate_history_all5k is not None
                 and _live_component_history_all5k is not None
@@ -17479,6 +17502,8 @@ def main(page="signal"):
                     _live5k.get("candidate_rows", []) if isinstance(_live5k, dict) else [],
                     _metrics5k,
                     _live_candidate_history_all5k,
+                    _live5k.get("role_aware_stage_outputs", []) if isinstance(_live5k, dict) else [],
+                    _live5k.get("individual_four_timepoint_outputs") if isinstance(_live5k, dict) else None,
                 ),
                 unsafe_allow_html=True,
             )
@@ -17572,7 +17597,6 @@ def main(page="signal"):
                 st.multiselect(
                     "조합 지표",
                     options=_selected_components5k,
-                    default=_selected_components5k,
                     format_func=lambda x: _macro5_kospi_component_display_label(x, _candidate_map5k, _component_dict5k),
                     key="macro5_kospi_selected_codes",
                     label_visibility="collapsed",
@@ -17667,7 +17691,8 @@ def main(page="signal"):
                 _macro5_kospi_preset,
                 "combo2",
                 _backtest_stats5k,
-                _live_candidate_history_all5k,
+                _live5k.get("official_t1_candidate_history") if isinstance(_live5k, dict) else _live_candidate_history_all5k,
+                _official_live_row_map5k,
             )
             _combo1_bt5k = _macro5_kospi_build_backtest_panel(
                 _metrics5k,
@@ -17675,7 +17700,8 @@ def main(page="signal"):
                 _macro5_kospi_preset,
                 "combo1",
                 _backtest_stats5k,
-                _live_candidate_history_all5k,
+                _live5k.get("official_t1_candidate_history") if isinstance(_live5k, dict) else _live_candidate_history_all5k,
+                _official_live_row_map5k,
             )
             if _combo2_bt5k:
                 with st.expander("백테스트 비교 보기 · 조합2", expanded=False):

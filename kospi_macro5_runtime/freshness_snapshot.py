@@ -11,9 +11,18 @@ from .freshness_contracts import source_freshness_contracts, required_sources_fo
 from .source_consistency import blocking_source_ids
 
 
-def final9_required_sources(ctx: D1C1Context) -> dict[str, list[str]]:
-    final9 = read_json(ctx.asset_dir / "kospi_final9_component_dictionary.json")
+def final9_required_sources(
+    ctx: D1C1Context,
+    *,
+    candidate_dictionary: dict[str, Any] | None = None,
+    additional_metadata: list[dict[str, Any]] | None = None,
+) -> dict[str, list[str]]:
+    final9 = candidate_dictionary
+    if final9 is None:
+        final9 = read_json(ctx.asset_dir / "kospi_final9_component_dictionary.json")
     metadata = pd.read_parquet(ctx.asset_dir / "kospi_d1c1_required_core15_metadata.parquet")
+    if additional_metadata:
+        metadata = pd.concat([metadata, pd.DataFrame(additional_metadata)], ignore_index=True, sort=False)
     family_by_component = dict(zip(metadata["candidate_id"], metadata["indicator_id"]))
     child_specs = child_combo1_specs_from_dependency_graph(build_dependency_graph(ctx))
 
@@ -24,11 +33,14 @@ def final9_required_sources(ctx: D1C1Context) -> dict[str, list[str]]:
             core_components = list(spec["component_ids"])
         else:
             for child_id in spec["component_ids"]:
-                if child_id in child_specs:
-                    core_components.extend(list(child_specs[child_id]["component_ids"]))
+                if child_id not in child_specs:
+                    raise ValueError(f"KOSPI operating Combo2 child missing from dependency graph: {child_id}")
+                core_components.extend(list(child_specs[child_id]["component_ids"]))
         sources: set[str] = set()
         for component_id in core_components:
             family = family_by_component.get(component_id, "")
+            if not family:
+                raise ValueError(f"KOSPI operating component metadata missing: {component_id}")
             sources.update(required_sources_for_family(str(family)))
         out[candidate_id] = sorted(sources)
     return out
@@ -164,8 +176,9 @@ def qualify_candidates(
 
 def group_freshness_summary(snapshot: pd.DataFrame) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    for model_type, expected in [("combo1", 4), ("combo2", 5)]:
+    for model_type in ("combo1", "combo2"):
         group = snapshot.loc[snapshot["model_type"].eq(model_type)].copy()
+        expected = len(group)
         calc = group["calculable"].astype(bool) if "calculable" in group else pd.Series(False, index=group.index)
         fq = group["freshness_qualified"].astype(bool) if "freshness_qualified" in group else pd.Series(False, index=group.index)
         risk = group["raw_risk_state"].fillna(0).astype(int) if "raw_risk_state" in group else pd.Series(0, index=group.index)
@@ -178,6 +191,7 @@ def group_freshness_summary(snapshot: pd.DataFrame) -> dict[str, Any]:
             "risk_off_freshness_qualified_count": int(risk.loc[fq].sum()),
         }
     out["final9"] = {
+        "total_count": len(snapshot),
         "calculated_risk_off_count": int(snapshot.loc[snapshot["calculable"].astype(bool), "raw_risk_state"].fillna(0).astype(int).sum()),
         "freshness_qualified_risk_off_count": int(snapshot.loc[snapshot["freshness_qualified"].astype(bool), "raw_risk_state"].fillna(0).astype(int).sum()),
     }
