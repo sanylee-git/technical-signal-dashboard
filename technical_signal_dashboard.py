@@ -17801,7 +17801,12 @@ def main(page="signal"):
                 st.warning("최신 대표 차트를 표시할 수 없습니다.")
 
             _debug_component_rows5k = []
-            for _idx5k, (_component_id5k, _component_df5k) in enumerate(_candidate_components5k.groupby("component_id", sort=False), start=1):
+            _component_groups5k = (
+                _candidate_components5k.groupby("component_id", sort=False)
+                if "component_id" in _candidate_components5k.columns
+                else []
+            )
+            for _idx5k, (_component_id5k, _component_df5k) in enumerate(_component_groups5k, start=1):
                 if str(_component_id5k) in _candidate_map5k:
                     _component_label5k = _macro5_kospi_component_display_label(str(_component_id5k), _candidate_map5k, _component_dict5k)
                 else:

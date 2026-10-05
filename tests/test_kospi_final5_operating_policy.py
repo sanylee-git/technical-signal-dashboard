@@ -214,3 +214,57 @@ def test_official_t1_four_timepoints_are_exactly_once_and_role_outputs_complete(
     assert official.groupby("candidate_id", sort=False)["t1_valid"].apply(lambda values: values.iloc[1:].all()).all()
     assert all(row["state_status"] == "PASS" for row in stages)
     assert {row["timepoint_code"] for row in stages} == {"21TD", "10TD", "5TD", "TODAY"}
+
+
+def test_unavailable_role_stage_is_reported_without_aborting_live_result() -> None:
+    operating = _operating_dictionary()
+    dates = pd.bdate_range("2026-08-01", periods=30)
+    history_rows = []
+    snapshot_rows = []
+    for candidate in operating["candidates"]:
+        cid = candidate["candidate_id"]
+        raw = [0] * len(dates)
+        for i, date in enumerate(dates):
+            history_rows.append(
+                {
+                    "candidate_id": cid,
+                    "date": date,
+                    "raw_risk_state": raw[i],
+                    "on_count": 0,
+                    "active_count": 0,
+                    "t1_position": pd.NA if i == 0 else 1,
+                    "t1_valid": i > 0,
+                    "valid_signal": True,
+                }
+            )
+        snapshot_rows.append(
+            {
+                "candidate_id": cid,
+                "model_type": candidate["model_type"],
+                "basis_date": dates[-1],
+                "calculable": True,
+                "freshness_qualified": True,
+                "raw_risk_state": 0,
+                "active_count": 0,
+                "t1_position": 1,
+                "t1_valid": True,
+                "valid_signal": True,
+                "K": candidate["K"],
+                "L": candidate["L"],
+            }
+        )
+    snapshot = pd.DataFrame(snapshot_rows)
+    snapshot.loc[snapshot["candidate_id"].eq(EXPECTED["combo1"][0][0]), "freshness_qualified"] = False
+
+    _official, _snapshot, _individual, stages, red_contract = _role_aware_outputs(
+        snapshot, pd.DataFrame(history_rows), operating
+    )
+
+    combo1_qa = red_contract.loc[red_contract["combo"].eq("COMBO1")]
+    combo2_qa = red_contract.loc[red_contract["combo"].eq("COMBO2")]
+    unavailable_combo1 = combo1_qa["status"].eq("UNAVAILABLE")
+    assert unavailable_combo1.sum() == 2
+    assert combo1_qa.loc[unavailable_combo1, "red_contract_violation"].isna().all()
+    assert combo1_qa.loc[~unavailable_combo1, "status"].eq("PASS").all()
+    assert combo2_qa["status"].eq("PASS").all()
+    assert len(stages) == 12

@@ -574,14 +574,37 @@ def _role_aware_outputs(
         if output["combination"] not in {"COMBO1", "COMBO2"}:
             continue
         family = output["combination"]
+        risk_off_value = output.get("risk_off_count")
+        model_count_value = output.get("model_count")
+        if (
+            output.get("stage_code") == "UNAVAILABLE"
+            or risk_off_value in (None, "")
+            or model_count_value in (None, "")
+        ):
+            red_rows.append(
+                {
+                    "combo": family,
+                    "timepoint_code": output["timepoint_code"],
+                    "stage_code": output.get("stage_code", "UNAVAILABLE"),
+                    "risk_off_count": pd.NA,
+                    "model_count": pd.NA,
+                    "main_off": pd.NA,
+                    "confirm_h_off": pd.NA,
+                    "all_off_exception": pd.NA,
+                    "red_contract_violation": pd.NA,
+                    "status": "UNAVAILABLE",
+                    "reason": output.get("unavailable_reason", "role stage inputs unavailable"),
+                }
+            )
+            continue
         records = metadata[family]
         main_id = next(str(record["candidate_id"]) for record in records if record["designation"] == "MAIN")
         confirm_h_off = sum(
             states_by_time.get((candidate_id, output["timepoint_code"])) == 1
             for candidate_id in h_class[family]
         )
-        risk_off_count = int(output["risk_off_count"])
-        model_count = int(output["model_count"])
+        risk_off_count = int(risk_off_value)
+        model_count = int(model_count_value)
         main_off = states_by_time.get((main_id, output["timepoint_code"])) == 1
         red = output["stage_code"] == "SELL"
         all_off = risk_off_count == model_count
@@ -598,6 +621,7 @@ def _role_aware_outputs(
                 "all_off_exception": int(all_off),
                 "red_contract_violation": int(violation),
                 "status": "PASS" if not violation else "FAIL",
+                "reason": "",
             }
         )
     return history, snapshot, individual, role_outputs, pd.DataFrame(red_rows)
