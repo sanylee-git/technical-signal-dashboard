@@ -159,9 +159,10 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     table = _backtest_table(payload, "COMBO2", candidate_id)
     assert "NASDAQ 100 홀드" in table
     assert "전체 자산 (18Y)" in table
-    assert "min-width:1553.82px" in table
+    assert "min-width:1693.02px" in table
     assert "width:214.02px" in table
-    assert table.count("<col style='width:87px'>") == 10
+    assert table.count("<col style='width:87px'>") == 2
+    assert table.count("<col style='width:104.4px'>") == 8
     assert all(label in table for label in ("1개월 전", "2주 전", "1주 전", "오늘", "신호", "시장단계"))
     assert table.count("<th colspan='2'") == 4
     assert table.count("<th rowspan='2'") == 9

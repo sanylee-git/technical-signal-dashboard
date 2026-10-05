@@ -120,9 +120,10 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
     for html in (combo2, combo1):
         for column in required:
             assert column in html
-        assert "min-width:1553.82px" in html
+        assert "min-width:1693.02px" in html
         assert "width:214.02px" in html
-        assert html.count("<col style='width:87px'>") == 10
+        assert html.count("<col style='width:87px'>") == 2
+        assert html.count("<col style='width:104.4px'>") == 8
         assert html.count("<th colspan='2'") == 4
         assert html.count("<th rowspan='2'") == 9
         assert "전체 자산 (18Y)" in html
