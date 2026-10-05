@@ -1,0 +1,40 @@
+{
+  "source_path": "macro_dashboard_kospi/outputs/kospi/run_20260731T005207Z_stage03c_core15_extended_signal_bank_v1/03c_core15_extended_signal_bank/candidate_metadata.parquet",
+  "source_sha256": "8e15d3bdd36f290f37213394ae77f1456966247e80a2d5ccc1724e1a39781bfd",
+  "components": [
+    {
+      "candidate_id": "usdkrw_level__EMA80_W60_S90_E65__970361d74f48",
+      "indicator_id": "usdkrw_level",
+      "indicator_name": "USD/KRW Level Signal",
+      "kind": "level",
+      "source_column": "usdkrw_safe",
+      "source_series_id": "usdkrw_level",
+      "safe_direction": "higher_is_safer",
+      "transform": "safe = -usdkrw, lagged in Stage 2",
+      "param_id": "EMA80_W60_S90_E65",
+      "params_json": "{\"ema_span\":80,\"end_q\":0.65,\"start_q\":0.9,\"window\":60}",
+      "signal_hash": "725827bf9edd70fad538c71288faac61a2e57ced3afe6d8a6741d86a3b501803",
+      "valid_start_date": "2004-03-17",
+      "valid_end_date": "2026-07-28",
+      "valid_rows": 5515,
+      "total_rows": 7292,
+      "missing_rows_before_valid": 1777,
+      "valid_ratio": 0.7563082830499177,
+      "risk_off_share": 0.6094288304623754,
+      "risk_start_count": 31,
+      "risk_end_count": 30,
+      "performance_start_date_recorded_only": "2009-04-17",
+      "uses_kodex200": false,
+      "indicator_family": "usdkrw_level",
+      "valid_start": "2004-03-17",
+      "valid_end": "2026-07-28",
+      "official_eligible": true,
+      "exclusion_reason": "",
+      "reuse_mode": "regenerated_from_extended_frozen",
+      "official_eligibility_cutoff": "2008-04-01",
+      "previous_valid_start_date": "2008-03-19",
+      "previous_signal_hash": "74bb92e7cdad454bca218f94202529e88e5ae2abacf79311813a80f85eb40b2d",
+      "signal_hash_changed_vs_stage03b": true
+    }
+  ]
+}

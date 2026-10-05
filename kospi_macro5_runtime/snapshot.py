@@ -13,12 +13,19 @@ def build_final9_snapshot(
     final9_live: pd.DataFrame,
     source_status: pd.DataFrame,
     transformed: pd.DataFrame,
+    *,
+    candidate_metrics: pd.DataFrame | None = None,
+    candidate_dictionary: dict[str, Any] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
-    metrics = pd.read_csv(ctx.asset_dir / "kospi_final9_candidate_metrics.csv")
+    metrics = candidate_metrics
+    if metrics is None:
+        metrics = pd.read_csv(ctx.asset_dir / "kospi_final9_candidate_metrics.csv")
     slot = dict(zip(metrics["candidate_id"], metrics["slot"]))
     role = dict(zip(metrics["candidate_id"], metrics.get("role", metrics["model_type"])))
     suffix = dict(zip(metrics["candidate_id"], metrics.get("suffix", metrics["candidate_id"])))
-    dictionary = read_json(ctx.asset_dir / "kospi_final9_component_dictionary.json")
+    dictionary = candidate_dictionary
+    if dictionary is None:
+        dictionary = read_json(ctx.asset_dir / "kospi_final9_component_dictionary.json")
     transformed_dates = pd.to_datetime(transformed["date"]).dt.strftime("%Y-%m-%d")
     frozen_reference_end = transformed_dates.loc[~transformed.get("live_extension_row", False).astype(bool)].max()
     live_dates = transformed_dates.loc[transformed.get("live_extension_row", False).astype(bool)]
@@ -127,8 +134,9 @@ def _int_or_none(value: object) -> int | None:
 
 def _group_summary(snapshot: pd.DataFrame) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    for model_type, expected in [("combo1", 4), ("combo2", 5)]:
+    for model_type in ("combo1", "combo2"):
         group = snapshot.loc[snapshot["model_type"].eq(model_type)].copy()
+        expected = len(group)
         basis = group["basis_date"].dropna().unique().tolist()
         out[model_type] = {
             "total_count": expected,
