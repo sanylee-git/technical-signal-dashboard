@@ -92,16 +92,8 @@ def _candidate_label(row: pd.Series | dict[str, Any]) -> str:
     family = str(row.get("model_family", ""))
     prefix, unit = ("조합1", "지표") if family == "COMBO1" else ("조합2", "조합1")
     selection_type = str(row.get("selection_type", ""))
-    display_role = str(row.get("display_role", ""))
-    if selection_type == "Selected":
-        if display_role.startswith("Main1 · "):
-            selection = "main"
-            display_role = display_role.removeprefix("Main1 · ")
-        else:
-            selection = "Confirm"
-    else:
-        selection = {"Performance": "성과", "Practical": "실전"}.get(selection_type, "운영")
-    return f"[{prefix} · {selection}] {display_role} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
+    selection = {"Performance": "성과", "Practical": "실전", "Selected": "운영"}.get(selection_type, "운영")
+    return f"[{prefix} · {selection}] {row.get('display_role', '')} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
 
 
 def _ordered_candidate_ids(final: pd.DataFrame, family: str) -> list[str]:
