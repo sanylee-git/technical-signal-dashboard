@@ -40,8 +40,8 @@ _ROLE_SEVERITY_BY_SET = {
 }
 
 STAGE_LABELS = {
-    "BUY": "🟢 매수 (Risk-on)",
-    "WEAK_CAUTION": "🟡 약한경계 (Risk-on)",
+    "BUY": "🔵 매수 (Risk-on)",
+    "WEAK_CAUTION": "🟢 약한경계 (Risk-on)",
     "STRONG_CAUTION": "🟠 강한경계 (Risk-on)",
     "SELL": "🔴 매도 (Risk-off)",
 }

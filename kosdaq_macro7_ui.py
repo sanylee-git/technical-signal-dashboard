@@ -447,7 +447,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
     metrics = payload["frozen_display_metrics"]
     hold = payload["benchmark_display_metrics"].set_index("window")
     base_headers = ["역할 / 후보", "10Y 자산", _full_asset_header(payload["backtest_windows"]), "전체 CAGR", "10Y MDD", "전체 MDD", "전체 Risk-off", "전체 Cycle", "짧은 Cycle"]
-    widths = ["12.3%", "5.3%", "5.3%", "4.5%", "5.0%", "5.0%", "4.5%", "3.7%", "3.7%"] + ["6.3375%"] * 8
+    widths = ["214.02px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["87px"] * 8
     colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in widths) + "</colgroup>"
     style = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
     rows = []
@@ -504,7 +504,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
         for _ in range(4) for label in ("신호", "시장단계")
     )
     return (
-        "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:100%;min-width:1740px;table-layout:fixed;border-collapse:collapse;font-size:11px'>"
+        "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:1553.82px;min-width:1553.82px;table-layout:fixed;border-collapse:collapse;font-size:11px'>"
         + colgroup + f"<thead><tr>{base_head}{groups}</tr><tr>{subheaders}</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>"
     )
 

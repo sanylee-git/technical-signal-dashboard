@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from dashboard_role_aware_market_stage import (
+    STAGE_COLORS,
     TIMEPOINTS,
     compute_role_aware_market_outputs,
     format_role_stage_sequence,
@@ -148,7 +149,16 @@ def test_role_aware_market_sections_render_with_local_frozen_payloads() -> None:
             for label in ("조합1", "조합2", "조합1+2")
         ]
         assert line_positions == sorted(line_positions)
-        assert "🟢" in markdown or "🟡" in markdown or "🟠" in markdown or "🔴" in markdown
+        assert "🔵" in markdown or "🟢" in markdown or "🟠" in markdown or "🔴" in markdown
+
+
+def test_role_stage_colors_follow_the_display_emoji_scale() -> None:
+    assert {stage: STAGE_COLORS[stage] for stage in ("BUY", "WEAK_CAUTION", "STRONG_CAUTION", "SELL")} == {
+        "BUY": "#3B82F6",
+        "WEAK_CAUTION": "#22C55E",
+        "STRONG_CAUTION": "#F97316",
+        "SELL": "#EF4444",
+    }
 
 
 def test_metadata_candidate_drift_fails_closed(spx_payload) -> None:

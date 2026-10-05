@@ -14973,7 +14973,7 @@ def _macro5_kospi_build_backtest_panel(
         ("전체 Cycle", "right"),
         ("짧은 Cycle", "right"),
     ]
-    widths = ["12.3%", "5.3%", "5.3%", "4.5%", "5.0%", "5.0%", "4.5%", "3.7%", "3.7%"] + ["6.3375%"] * 8
+    widths = ["214.02px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["87px"] * 8
     colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in widths) + "</colgroup>"
     subset = _macro5_kospi_sort_metrics(metrics[metrics["model_type"].map(_macro5_kospi_model_type).eq(model_type)])
     if len(subset):
@@ -15087,7 +15087,7 @@ def _macro5_kospi_build_backtest_panel(
         return ""
     return (
         _MACRO_BACKTEST_TABLE_WRAP_OPEN
-        + "<table style='width:100%;min-width:1740px;table-layout:fixed;border-collapse:collapse;font-size:11px;'>"
+        + "<table style='width:1553.82px;min-width:1553.82px;table-layout:fixed;border-collapse:collapse;font-size:11px;'>"
         + colgroup
         + "<thead><tr>"
         + "".join(

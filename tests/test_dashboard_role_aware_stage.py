@@ -44,6 +44,15 @@ def test_combo_rule_boundaries_for_four_and_five_models(case) -> None:
     assert (result.stage == "SELL") == ("Risk-off" in result.label)
 
 
+def test_stage_display_labels_use_the_blue_to_red_visual_scale() -> None:
+    assert STAGE_LABELS == {
+        "BUY": "🔵 매수 (Risk-on)",
+        "WEAK_CAUTION": "🟢 약한경계 (Risk-on)",
+        "STRONG_CAUTION": "🟠 강한경계 (Risk-on)",
+        "SELL": "🔴 매도 (Risk-off)",
+    }
+
+
 def test_dual_role_risk_off_candidate_counts_once_and_uses_one_class() -> None:
     metadata = [
         {"candidate_id": "main", "designation": "MAIN", "role_1": "균형형"},
