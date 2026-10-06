@@ -441,6 +441,34 @@ def _role_aware_outputs(
     history["risk_end_signal"] = (valid & history["raw_risk_state"].eq(0) & previous.eq(1)).fillna(False).astype("int8")
 
     snapshot = candidate_freshness.copy()
+    candidate_ids = [str(row["candidate_id"]) for row in operating_dictionary["candidates"]]
+    snapshot["candidate_id"] = snapshot["candidate_id"].astype(str)
+    confirmed_dates = pd.to_datetime(
+        snapshot.get("confirmed_basis_actual_date", pd.Series(pd.NaT, index=snapshot.index)),
+        errors="coerce",
+    ).dt.normalize()
+    confirmed_cutoff = None
+    if (
+        confirmed_dates.notna().all()
+        and len(snapshot) == len(candidate_ids)
+        and snapshot["candidate_id"].nunique() == len(candidate_ids)
+        and set(snapshot["candidate_id"]) == set(candidate_ids)
+    ):
+        cutoff = confirmed_dates.min()
+        common_dates: set[pd.Timestamp] | None = None
+        history_states = pd.to_numeric(history["raw_risk_state"], errors="coerce")
+        for candidate_id in candidate_ids:
+            rows = history.loc[
+                history["candidate_id"].astype(str).eq(candidate_id)
+                & history["date"].le(cutoff)
+                & history["valid_signal"].fillna(False).astype(bool)
+                & history_states.isin([0, 1])
+            ]
+            dates = set(pd.to_datetime(rows["date"], errors="coerce").dropna().dt.normalize())
+            common_dates = dates if common_dates is None else common_dates.intersection(dates)
+        if common_dates:
+            confirmed_cutoff = max(common_dates)
+
     t1 = pd.to_numeric(snapshot["t1_position"], errors="coerce")
     snapshot["raw_risk_state"] = (1 - t1).astype("Int64")
     snapshot["t1_valid"] = snapshot.get("t1_valid", t1.notna()).fillna(False).astype(bool) & t1.notna()
@@ -454,7 +482,49 @@ def _role_aware_outputs(
     for column in ("week_ago_raw_risk_state", "week_ago_basis_date"):
         if column not in snapshot:
             snapshot[column] = pd.NA
+
+    if confirmed_cutoff is not None:
+        allowed_confirmed_statuses = {
+            "FRESH",
+            "EXPECTED_CADENCE_LAG",
+            "NO_NEW_RELEASE_EXPECTED",
+            "STALE",
+        }
+        for idx, row in snapshot.iterrows():
+            candidate_id = str(row["candidate_id"])
+            status = str(row.get("freshness_status", "")).upper()
+            selected = candidate_history_rows_at_offsets(
+                history,
+                candidate_id,
+                confirmed_cutoff,
+                offsets=(0, 5),
+                valid_col="valid_signal",
+            )
+            current = selected[0]
+            stale_only_or_fresh = status in allowed_confirmed_statuses
+            usable = bool(row.get("calculable")) and stale_only_or_fresh and current is not None
+            if usable:
+                state = current.get("raw_risk_state")
+                usable = not pd.isna(state) and int(state) in (0, 1)
+            snapshot.at[idx, "status"] = "USABLE" if usable else "UNAVAILABLE"
+            snapshot.at[idx, "availability_status"] = "CONFIRMED" if usable else "UNAVAILABLE"
+            snapshot.at[idx, "basis_date"] = confirmed_cutoff
+            snapshot.at[idx, "confirmed_evaluation_date"] = confirmed_cutoff
+            if usable:
+                snapshot.at[idx, "raw_risk_state"] = int(current["raw_risk_state"])
+                snapshot.at[idx, "t1_position"] = 1 - int(current["raw_risk_state"])
+                snapshot.at[idx, "t1_valid"] = True
+                snapshot.at[idx, "valid_signal"] = True
+                snapshot.at[idx, "active_count"] = current.get("active_count")
+                snapshot.at[idx, "official_state_date"] = current.get("date")
+                week_ago = selected[5]
+                if week_ago is not None:
+                    snapshot.at[idx, "week_ago_raw_risk_state"] = week_ago.get("raw_risk_state")
+                    snapshot.at[idx, "week_ago_basis_date"] = week_ago.get("date")
+
     for idx, row in snapshot.iterrows():
+        if confirmed_cutoff is not None:
+            continue
         current = candidate_history_rows_at_offsets(
             history,
             row["candidate_id"],
@@ -510,7 +580,11 @@ def _role_aware_outputs(
         )
         for offset, timepoint_code, label in TIMEPOINTS:
             if offset == 0:
-                selected = snap
+                selected = (
+                    snap
+                    if confirmed_cutoff is None or str(snap.get("status", "")) == "USABLE"
+                    else None
+                )
             else:
                 selected = candidate_history_rows_at_offsets(
                     history,

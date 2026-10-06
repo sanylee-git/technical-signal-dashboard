@@ -15,8 +15,11 @@ from dashboard_role_aware_stage import classify_role_combo
 from kospi_macro5_runtime.page_adapter import _role_aware_outputs
 from kospi_macro5_runtime.live_engine import _candidate_state_source, combo_from_components_nullable
 from technical_signal_dashboard import (
+    _macro5_kospi_add_validated_live_candidate_stats,
+    _macro5_kospi_build_backtest_stats,
     _macro5_kospi_build_backtest_panel,
     _macro5_kospi_combo2_main_candidate_id,
+    _macro5_kospi_group_summary_html,
 )
 
 
@@ -268,3 +271,211 @@ def test_unavailable_role_stage_is_reported_without_aborting_live_result() -> No
     assert combo1_qa.loc[~unavailable_combo1, "status"].eq("PASS").all()
     assert combo2_qa["status"].eq("PASS").all()
     assert len(stages) == 12
+
+
+def test_role_stages_and_candidate_timepoints_use_common_confirmed_official_date() -> None:
+    operating = _operating_dictionary()
+    dates = pd.bdate_range("2026-08-01", periods=45)
+    confirmed_date = dates[-3]
+    history_rows = []
+    snapshot_rows = []
+    expected_state = {}
+    for index, candidate in enumerate(operating["candidates"]):
+        cid = candidate["candidate_id"]
+        official_states = [int((day + index) % 4 == 0) for day in range(len(dates))]
+        expected_state[cid] = official_states[-3]
+        for day, date in enumerate(dates):
+            history_rows.append(
+                {
+                    "candidate_id": cid,
+                    "date": date,
+                    "on_count": candidate["K"] if official_states[day] == 0 else 0,
+                    "t1_position": 1 - official_states[day],
+                    "t1_valid": True,
+                    "valid_signal": True,
+                }
+            )
+        snapshot_rows.append(
+            {
+                "candidate_id": cid,
+                "model_type": candidate["model_type"],
+                "basis_date": dates[-1],
+                "confirmed_basis_actual_date": confirmed_date,
+                "calculable": True,
+                "freshness_qualified": False,
+                "freshness_status": "STALE",
+                "t1_position": 1 - official_states[-1],
+                "t1_valid": True,
+                "K": candidate["K"],
+                "L": candidate["L"],
+            }
+        )
+
+    history, snapshot, individual, stages, _red_contract = _role_aware_outputs(
+        pd.DataFrame(snapshot_rows), pd.DataFrame(history_rows), operating
+    )
+
+    assert snapshot["basis_date"].eq(confirmed_date).all()
+    assert snapshot["status"].eq("USABLE").all()
+    today = individual.loc[individual["timepoint_code"].eq("TODAY")]
+    assert today["evaluation_date"].eq(confirmed_date.strftime("%Y-%m-%d")).all()
+    assert today.set_index("candidate_id")["official_t1_risk_off"].astype(int).to_dict() == expected_state
+    assert all(row["state_status"] == "PASS" for row in stages)
+    assert {row["evaluation_dates"] for row in stages if row["timepoint_code"] == "TODAY"} == {
+        confirmed_date.strftime("%Y-%m-%d")
+    }
+
+    blocked_snapshot = pd.DataFrame(snapshot_rows)
+    blocked_id = EXPECTED["combo1"][0][0]
+    blocked_snapshot.loc[blocked_snapshot["candidate_id"].eq(blocked_id), "freshness_status"] = "SOURCE_ERROR"
+    _history, _snapshot, blocked_individual, blocked_stages, _qa = _role_aware_outputs(
+        blocked_snapshot, pd.DataFrame(history_rows), operating
+    )
+    blocked_today = blocked_individual.loc[
+        blocked_individual["candidate_id"].eq(blocked_id)
+        & blocked_individual["timepoint_code"].eq("TODAY")
+    ]
+    assert blocked_today["state_status"].eq("UNAVAILABLE").all()
+    assert any(
+        row["combination"] == "COMBO1"
+        and row["timepoint_code"] == "TODAY"
+        and row["stage_code"] == "UNAVAILABLE"
+        for row in blocked_stages
+    )
+
+    metrics = pd.DataFrame(
+        [{"candidate_id": row["candidate_id"], "model_type": row["model_type"]} for row in operating["candidates"]]
+    )
+    html = _macro5_kospi_group_summary_html(
+        [
+            {"candidate_id": row["candidate_id"], "basis_date": dates[-1].strftime("%Y-%m-%d"), "calculable": True}
+            for row in operating["candidates"]
+        ],
+        metrics,
+        history,
+        stages,
+        individual,
+    )
+    assert f"확정 기준일 {confirmed_date:%Y-%m-%d}" in html
+    assert f"최신 후보 계산일 {dates[-1]:%Y-%m-%d}" in html
+
+
+def test_validated_added_candidate_stats_reuse_only_frozen_window() -> None:
+    candidate_id = EXPECTED["combo1"][-1][0]
+    dates = pd.bdate_range("2008-04-01", periods=40)
+    close = pd.Series(range(100, 140), dtype=float)
+    benchmark = pd.DataFrame({"date": dates, "kospi_close": close})
+    position = [1] * 10 + [0] * 3 + [1] * 12 + [0] * 2 + [1] * 13
+    signals = pd.DataFrame(
+        {
+            "candidate_id": candidate_id,
+            "date": dates,
+            "t1_position": position,
+            "valid_signal": True,
+        }
+    )
+    metrics = pd.DataFrame(
+        [
+            {
+                "candidate_id": candidate_id,
+                "cagr": 0.1418,
+                "mdd": -0.1366,
+                "risk_off_ratio": 0.4793,
+                "signal_hash_source": "validated_official_t1_history",
+                "source_signal_parity": "PASS_FINAL5_CANDIDATE_VALIDATION",
+            }
+        ]
+    )
+    end = dates[-1]
+    baseline = {
+        "candidate": {"incumbent": {"preserved": True}},
+        "window": {"frozen_start": dates[0], "frozen_end": end},
+    }
+    expected = _macro5_kospi_build_backtest_stats(metrics, signals, benchmark)["candidate"][candidate_id]
+
+    extended = _macro5_kospi_add_validated_live_candidate_stats(
+        baseline,
+        metrics,
+        pd.concat(
+            [
+                signals,
+                pd.DataFrame(
+                    [{"candidate_id": candidate_id, "date": end + pd.offsets.BDay(1), "t1_position": 0, "valid_signal": True}]
+                ),
+            ],
+            ignore_index=True,
+        ),
+        pd.concat(
+            [benchmark, pd.DataFrame([{"date": end + pd.offsets.BDay(1), "kospi_close": 1_000_000.0}])],
+            ignore_index=True,
+        ),
+    )
+
+    assert extended["candidate"]["incumbent"] == {"preserved": True}
+    assert extended["candidate"][candidate_id] == expected
+    assert extended["candidate"][candidate_id]["전체 Cycle"] == expected["전체 Cycle"]
+
+
+def test_validated_added_candidate_stats_skip_incomplete_official_history() -> None:
+    candidate_id = EXPECTED["combo1"][-1][0]
+    dates = pd.bdate_range("2008-04-01", periods=10)
+    benchmark = pd.DataFrame({"date": dates, "kospi_close": range(100, 110)})
+    signals = pd.DataFrame(
+        {
+            "candidate_id": candidate_id,
+            "date": dates[:-1],
+            "t1_position": [1] * (len(dates) - 1),
+            "valid_signal": True,
+        }
+    )
+    metrics = pd.DataFrame(
+        [
+            {
+                "candidate_id": candidate_id,
+                "signal_hash_source": "validated_official_t1_history",
+                "source_signal_parity": "PASS_FINAL5_CANDIDATE_VALIDATION",
+                "cagr": 0.1,
+                "mdd": -0.1,
+                "risk_off_ratio": 0.4,
+            }
+        ]
+    )
+    baseline = {"candidate": {}, "window": {"frozen_start": dates[0], "frozen_end": dates[-1]}}
+    extended = _macro5_kospi_add_validated_live_candidate_stats(baseline, metrics, signals, benchmark)
+    assert candidate_id not in extended["candidate"]
+
+
+def test_validated_added_candidate_stats_apply_only_contractual_first_day_seed() -> None:
+    candidate_id = EXPECTED["combo1"][-1][0]
+    dates = pd.bdate_range("2008-04-01", periods=25)
+    benchmark = pd.DataFrame({"date": dates, "kospi_close": range(100, 125)})
+    positions = [pd.NA] + [1] * 9 + [0] * 3 + [1] * 12
+    signals = pd.DataFrame(
+        {
+            "candidate_id": candidate_id,
+            "date": dates,
+            "t1_position": positions,
+            "valid_signal": [False] + [True] * (len(dates) - 1),
+        }
+    )
+    metrics = pd.DataFrame(
+        [
+            {
+                "candidate_id": candidate_id,
+                "cagr": 0.1418,
+                "mdd": -0.1366,
+                "risk_off_ratio": 0.4793,
+                "signal_hash_source": "validated_official_t1_history",
+                "source_signal_parity": "PASS_FINAL5_CANDIDATE_VALIDATION",
+            }
+        ]
+    )
+    seeded = signals.copy()
+    seeded.loc[seeded.index[0], "t1_position"] = 1
+    seeded["valid_signal"] = True
+    baseline = {"candidate": {}, "window": {"frozen_start": dates[0], "frozen_end": dates[-1]}}
+
+    actual = _macro5_kospi_add_validated_live_candidate_stats(baseline, metrics, signals, benchmark)
+    expected = _macro5_kospi_build_backtest_stats(metrics, seeded, benchmark)
+
+    assert actual["candidate"][candidate_id] == expected["candidate"][candidate_id]

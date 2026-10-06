@@ -31,10 +31,10 @@ def test_macro5_live_page_data_extends_full_history_to_latest_completed_session(
     display_components = data["component_signal_history"]
     benchmark = data["benchmark_close_history"]
 
-    assert core["component_id"].nunique() == 47
+    assert core["component_id"].nunique() == 48
     assert child["combo1_id"].nunique() == 17
-    assert candidate["candidate_id"].nunique() == 9
-    assert candidate.groupby("model_type")["candidate_id"].nunique().to_dict() == {"combo1": 4, "combo2": 5}
+    assert candidate["candidate_id"].nunique() == 10
+    assert candidate.groupby("model_type")["candidate_id"].nunique().to_dict() == {"combo1": 5, "combo2": 5}
 
     assert _dates(core).max() == EXPECTED_LATEST_SESSION
     assert _dates(candidate).max() == EXPECTED_LATEST_SESSION
@@ -60,11 +60,11 @@ def test_macro5_live_snapshot_matches_history_last_rows() -> None:
     last = candidate.sort_values("date").groupby("candidate_id").tail(1).reset_index(drop=True)
     compare = snapshot.merge(last, on="candidate_id", suffixes=("_snapshot", "_history"))
 
-    assert len(snapshot) == 9
-    assert len(compare) == 9
-    assert int(snapshot["calculable"].astype(bool).sum()) == 9
-    assert int(snapshot["freshness_qualified"].astype(bool).sum()) == 9
-    assert int(snapshot.loc[snapshot["calculable"].astype(bool), "raw_risk_state"].fillna(0).astype(int).sum()) == 9
+    assert len(snapshot) == 10
+    assert len(compare) == 10
+    assert int(snapshot["calculable"].astype(bool).sum()) == 10
+    assert int(snapshot["freshness_qualified"].astype(bool).sum()) == 10
+    assert int(snapshot.loc[snapshot["calculable"].astype(bool), "raw_risk_state"].fillna(0).astype(int).sum()) == 10
     assert int((compare["basis_date"].astype(str) != pd.to_datetime(compare["date"]).dt.strftime("%Y-%m-%d")).sum()) == 0
 
     for column in ["raw_risk_state", "t1_position", "active_count"]:

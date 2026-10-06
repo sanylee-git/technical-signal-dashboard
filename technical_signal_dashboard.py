@@ -6199,9 +6199,22 @@ def _macro_group_market_stage_summary_html(
     )
 
 
-def _macro_week_ago_state_row(history: pd.DataFrame | None, candidate_id: str | None = None) -> dict | None:
+def _macro_week_ago_state_row(
+    history: pd.DataFrame | None,
+    candidate_id: str | None = None,
+    reference_date=None,
+) -> dict | None:
     if history is None or not isinstance(history, pd.DataFrame) or history.empty:
         return None
+    if reference_date is not None and candidate_id is not None:
+        selected = candidate_history_rows_at_offsets(
+            history,
+            candidate_id,
+            reference_date,
+            offsets=(5,),
+            valid_col="valid_signal",
+        )[5]
+        return None if selected is None else selected.to_dict()
     df = history.copy()
     if candidate_id is not None and "candidate_id" in df.columns:
         df = df[df["candidate_id"].astype(str).eq(str(candidate_id))]
@@ -14506,8 +14519,15 @@ def _macro5_kospi_group_summary_html(
             risk_off = int(pd.to_numeric(current["official_t1_risk_off"], errors="coerce").eq(1).sum())
         else:
             risk_off = sum(1 for row in rows if bool(row.get("calculable")) and int(row.get("raw_risk_state") or 0) == 1)
-        basis_dates = [row.get("basis_date") for row in rows if row.get("basis_date")]
-        basis = max(basis_dates) if basis_dates else "계산 불가"
+        basis_dates = set()
+        for output in role_outputs or []:
+            if output.get("combination") == family and output.get("timepoint_code") == "TODAY":
+                basis_dates.update(
+                    value for value in str(output.get("evaluation_dates", "")).split("|") if value
+                )
+        confirmed_basis = ", ".join(sorted(basis_dates)) if len(basis_dates) == 1 else "계산 불가"
+        provisional_dates = [row.get("basis_date") for row in rows if row.get("basis_date")]
+        provisional_basis = max(provisional_dates) if provisional_dates else "계산 불가"
         availability_color = "#54F2A3" if unavailable == 0 else "rgba(255,255,255,0.92)"
         unavailable_color = _MACRO_STATUS_RISK_OFF_COLOR if unavailable else "rgba(255,255,255,0.72)"
         risk_color = _MACRO_STATUS_RISK_OFF_COLOR if risk_off else _MACRO_STATUS_RISK_ON_COLOR
@@ -14519,7 +14539,8 @@ def _macro5_kospi_group_summary_html(
             ),
             "risk": (
                 f"<span style='color:{risk_color};font-weight:700;'>{label} {_macro_risk_state_display_text(True)} {risk_off}/{total}</span>"
-                f"<span style='color:rgba(255,255,255,0.55);'> · 기준일 {_macro5_kospi_escape(basis)}</span>"
+                f"<span style='color:rgba(255,255,255,0.55);'> · 확정 기준일 {_macro5_kospi_escape(confirmed_basis)}</span>"
+                f"<span style='color:rgba(255,255,255,0.42);'> · 최신 후보 계산일 {_macro5_kospi_escape(provisional_basis)}</span>"
             ),
             "family": family,
         }
@@ -14545,7 +14566,7 @@ def _macro5_kospi_group_summary_html(
         + summary.get("조합1", {}).get("risk", "")
         + sep
         + summary.get("조합2", {}).get("risk", "")
-        + "</div><div style='margin-top:4px;'><b>시장단계 (1개월 전 → 2주 전 → 1주 전 → 오늘)</b></div>"
+        + "</div><div style='margin-top:4px;'><b>시장단계 (공통 확정 Official T+1 기준 · 1개월 전 → 2주 전 → 1주 전 → 오늘)</b></div>"
         + "".join(stage_lines)
         + "</div></div>"
     )
@@ -14667,7 +14688,12 @@ def _macro5_kospi_current_status_html(
 
 def _macro5_kospi_current_chip(candidate_id: str, live_row_map: dict[str, dict], start_k: int | None = None) -> str:
     row = live_row_map.get(str(candidate_id), {})
-    if not row or not row.get("calculable"):
+    if (
+        not row
+        or not row.get("calculable")
+        or row.get("availability_status") == "UNAVAILABLE"
+        or row.get("status") == "UNAVAILABLE"
+    ):
         return f"<span style='color:{_MACRO_STATUS_RISK_OFF_COLOR};font-weight:700;'>계산 불가</span>"
     raw_state = int(row.get("raw_risk_state") or 0)
     color = _MACRO_STATUS_RISK_OFF_COLOR if raw_state == 1 else _MACRO_STATUS_RISK_ON_COLOR
@@ -14682,7 +14708,12 @@ def _macro5_kospi_current_chip(candidate_id: str, live_row_map: dict[str, dict],
 
 def _macro5_kospi_market_stage_chip(candidate_id: str, live_row_map: dict[str, dict], start_k, end_l) -> str:
     row = live_row_map.get(str(candidate_id), {})
-    if not row or not row.get("calculable"):
+    if (
+        not row
+        or not row.get("calculable")
+        or row.get("availability_status") == "UNAVAILABLE"
+        or row.get("status") == "UNAVAILABLE"
+    ):
         return "계산 불가"
     return _macro_market_stage_html(
         _macro_market_stage_label(
@@ -14901,6 +14932,105 @@ def _macro5_kospi_build_backtest_stats_cached(asset_contract_key: str) -> dict:
     return _macro5_kospi_build_backtest_stats(metrics, assets["signals"], assets["benchmark"])
 
 
+def _macro5_kospi_add_validated_live_candidate_stats(
+    backtest_stats: dict,
+    metrics: pd.DataFrame,
+    official_signals: pd.DataFrame | None,
+    benchmark: pd.DataFrame | None,
+) -> dict:
+    """Fill only validated added candidates, using the frozen benchmark window."""
+    result = dict(backtest_stats or {})
+    result["candidate"] = dict(result.get("candidate", {}))
+    if (
+        metrics is None
+        or metrics.empty
+        or official_signals is None
+        or official_signals.empty
+        or benchmark is None
+        or benchmark.empty
+        or "frozen_start" not in result.get("window", {})
+        or not result.get("window", {}).get("frozen_end")
+        or "kospi_close" not in benchmark
+        or not {"candidate_id", "date", "t1_position", "valid_signal"}.issubset(official_signals.columns)
+    ):
+        return result
+
+    frozen_end = pd.Timestamp(result["window"]["frozen_end"]).normalize()
+    frozen_start = pd.Timestamp(result["window"]["frozen_start"]).normalize()
+    bench = benchmark.copy()
+    bench["date"] = pd.to_datetime(bench["date"], errors="coerce").dt.normalize()
+    bench = bench.loc[bench["date"].le(frozen_end)].dropna(subset=["date"])
+    if bench.empty:
+        return result
+    expected_dates = _macro5_kospi_window_index(bench, pd.Timestamp("2008-04-01"), frozen_end)
+    if expected_dates.empty:
+        return result
+
+    history = official_signals.copy()
+    history["date"] = pd.to_datetime(history["date"], errors="coerce").dt.normalize()
+    for _, row in metrics.iterrows():
+        candidate_id = str(row.get("candidate_id", ""))
+        if candidate_id in result["candidate"]:
+            continue
+        if (
+            str(row.get("signal_hash_source", "")) != "validated_official_t1_history"
+            or str(row.get("source_signal_parity", "")) != "PASS_FINAL5_CANDIDATE_VALIDATION"
+        ):
+            continue
+        try:
+            if not all(np.isfinite(float(row.get(key))) for key in ("cagr", "mdd", "risk_off_ratio")):
+                continue
+        except (TypeError, ValueError):
+            continue
+        signal = history.loc[history["candidate_id"].astype(str).eq(candidate_id)].copy()
+        signal = signal.loc[signal["date"].le(frozen_end)].dropna(subset=["date"])
+        if "valid_signal" not in signal:
+            continue
+        signal = signal.sort_values("date").drop_duplicates("date", keep="last")
+        signal_dates = pd.DatetimeIndex(signal["date"])
+        if not signal_dates.equals(expected_dates):
+            continue
+        positions = pd.to_numeric(signal.get("t1_position"), errors="coerce")
+        valid = signal["valid_signal"].fillna(False).astype(bool)
+        missing_positions = positions.isna()
+        if missing_positions.any() or not valid.all():
+            first_day_seedable = (
+                len(expected_dates) > 0
+                and expected_dates[0] == frozen_start
+                and missing_positions.sum() == 1
+                and bool(missing_positions.iloc[0])
+                and not bool(valid.iloc[0])
+                and bool(valid.iloc[1:].all())
+                and not positions.iloc[1:].isna().any()
+            )
+            if not first_day_seedable:
+                continue
+            # KOSPI's retained historical contract seeds the first evaluation
+            # position as Risk-on; subsequent positions remain Official T+1.
+            positions.iloc[0] = 1
+            signal["valid_signal"] = True
+        if not positions.isin([0, 1]).all():
+            continue
+        signal["t1_position"] = positions.astype("int8")
+        one_candidate = _macro5_kospi_build_backtest_stats(
+            pd.DataFrame([row]),
+            signal,
+            bench,
+        )
+        stats = one_candidate.get("candidate", {}).get(candidate_id)
+        if stats:
+            try:
+                finite_values = all(
+                    np.isfinite(float(stats[key]))
+                    for key in ("_10y_asset_num", "_full_asset_num", "_10y_mdd_num", "_full_mdd_num")
+                )
+            except (KeyError, TypeError, ValueError):
+                finite_values = False
+            if finite_values:
+                result["candidate"][candidate_id] = stats
+    return result
+
+
 def _macro5_kospi_with_hold_ratio(value: str, numerator, denominator, kind: str) -> str:
     try:
         num = float(numerator)
@@ -15008,9 +15138,13 @@ def _macro5_kospi_build_backtest_panel(
             hold_metrics.get("_full_cagr_num"),
             "cagr",
         )
-        current_chip = _macro5_kospi_current_chip(candidate_id, state_row_map, int(row.get("K", 1)))
-        week_ago_row = _macro_week_ago_state_row(candidate_history, candidate_id)
         live_row = state_row_map.get(candidate_id, {})
+        current_chip = _macro5_kospi_current_chip(candidate_id, state_row_map, int(row.get("K", 1)))
+        week_ago_row = _macro_week_ago_state_row(
+            candidate_history,
+            candidate_id,
+            live_row.get("basis_date"),
+        )
         market_stage = _macro5_kospi_market_stage_chip(candidate_id, state_row_map, row.get("K"), row.get("L"))
         historical = candidate_history_rows_at_offsets(
             candidate_history,
@@ -17473,6 +17607,12 @@ def main(page="signal"):
                         _benchmark5k = _live_benchmark_history_all5k.copy()
                 if isinstance(_live5k.get("operating_candidate_metrics"), pd.DataFrame):
                     _metrics5k = _macro5_kospi_sort_metrics(_live5k["operating_candidate_metrics"])
+                _backtest_stats5k = _macro5_kospi_add_validated_live_candidate_stats(
+                    _backtest_stats5k,
+                    _metrics5k,
+                    _live5k.get("official_t1_candidate_history"),
+                    _live_benchmark_history_all5k,
+                )
             try:
                 _default_preset5k = _macro5_kospi_combo2_main_candidate_id(_metrics5k)
             except ValueError as _exc:
