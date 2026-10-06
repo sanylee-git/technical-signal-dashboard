@@ -484,6 +484,7 @@ def _role_aware_outputs(
             snapshot[column] = pd.NA
 
     if confirmed_cutoff is not None:
+        confirmed_cutoff_text = pd.Timestamp(confirmed_cutoff).strftime("%Y-%m-%d")
         allowed_confirmed_statuses = {
             "FRESH",
             "EXPECTED_CADENCE_LAG",
@@ -508,19 +509,19 @@ def _role_aware_outputs(
                 usable = not pd.isna(state) and int(state) in (0, 1)
             snapshot.at[idx, "status"] = "USABLE" if usable else "UNAVAILABLE"
             snapshot.at[idx, "availability_status"] = "CONFIRMED" if usable else "UNAVAILABLE"
-            snapshot.at[idx, "basis_date"] = confirmed_cutoff
-            snapshot.at[idx, "confirmed_evaluation_date"] = confirmed_cutoff
+            snapshot.at[idx, "basis_date"] = confirmed_cutoff_text
+            snapshot.at[idx, "confirmed_evaluation_date"] = confirmed_cutoff_text
             if usable:
                 snapshot.at[idx, "raw_risk_state"] = int(current["raw_risk_state"])
                 snapshot.at[idx, "t1_position"] = 1 - int(current["raw_risk_state"])
                 snapshot.at[idx, "t1_valid"] = True
                 snapshot.at[idx, "valid_signal"] = True
                 snapshot.at[idx, "active_count"] = current.get("active_count")
-                snapshot.at[idx, "official_state_date"] = current.get("date")
+                snapshot.at[idx, "official_state_date"] = pd.Timestamp(current["date"]).strftime("%Y-%m-%d")
                 week_ago = selected[5]
                 if week_ago is not None:
                     snapshot.at[idx, "week_ago_raw_risk_state"] = week_ago.get("raw_risk_state")
-                    snapshot.at[idx, "week_ago_basis_date"] = week_ago.get("date")
+                    snapshot.at[idx, "week_ago_basis_date"] = pd.Timestamp(week_ago["date"]).strftime("%Y-%m-%d")
 
     for idx, row in snapshot.iterrows():
         if confirmed_cutoff is not None:
@@ -534,7 +535,7 @@ def _role_aware_outputs(
         )[0]
         if current is not None:
             snapshot.at[idx, "active_count"] = current.get("active_count")
-            snapshot.at[idx, "official_state_date"] = current.get("date")
+            snapshot.at[idx, "official_state_date"] = pd.Timestamp(current["date"]).strftime("%Y-%m-%d")
         selected = candidate_history_rows_at_offsets(
             history,
             row["candidate_id"],
@@ -544,7 +545,7 @@ def _role_aware_outputs(
         )[5]
         if selected is not None:
             snapshot.at[idx, "week_ago_raw_risk_state"] = selected.get("raw_risk_state")
-            snapshot.at[idx, "week_ago_basis_date"] = selected.get("date")
+            snapshot.at[idx, "week_ago_basis_date"] = pd.Timestamp(selected["date"]).strftime("%Y-%m-%d")
 
     document = load_role_metadata()
     final = pd.DataFrame(

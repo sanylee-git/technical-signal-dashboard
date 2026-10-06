@@ -299,7 +299,7 @@ def test_role_stages_and_candidate_timepoints_use_common_confirmed_official_date
             {
                 "candidate_id": cid,
                 "model_type": candidate["model_type"],
-                "basis_date": dates[-1],
+                "basis_date": dates[-1].strftime("%Y-%m-%d"),
                 "confirmed_basis_actual_date": confirmed_date,
                 "calculable": True,
                 "freshness_qualified": False,
@@ -315,7 +315,9 @@ def test_role_stages_and_candidate_timepoints_use_common_confirmed_official_date
         pd.DataFrame(snapshot_rows), pd.DataFrame(history_rows), operating
     )
 
-    assert snapshot["basis_date"].eq(confirmed_date).all()
+    assert snapshot["basis_date"].eq(confirmed_date.strftime("%Y-%m-%d")).all()
+    assert snapshot["official_state_date"].eq(confirmed_date.strftime("%Y-%m-%d")).all()
+    assert snapshot["week_ago_basis_date"].notna().all()
     assert snapshot["status"].eq("USABLE").all()
     today = individual.loc[individual["timepoint_code"].eq("TODAY")]
     assert today["evaluation_date"].eq(confirmed_date.strftime("%Y-%m-%d")).all()
