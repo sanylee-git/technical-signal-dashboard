@@ -29,7 +29,12 @@ import traceback
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 from dashboard_timepoints import candidate_history_rows_at_offsets, risk_state_short_label
-from dashboard_role_aware_market_stage import format_role_stage_sequence, load_role_metadata, role_warning_classes
+from dashboard_role_aware_market_stage import (
+    format_role_stage_sequence,
+    load_role_metadata,
+    order_candidates_main_emh,
+    role_warning_classes,
+)
 from kosdaq_macro7_ui import render_macro7_kosdaq_section
 from nasdaq_macro8_ui import render_macro8_nasdaq_section
 from spx_macro9_ui import render_macro9_spx_section
@@ -15122,6 +15127,16 @@ def _macro5_kospi_build_backtest_panel(
     widths = ["300px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["104.4px"] * 8
     colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in widths) + "</colgroup>"
     subset = _macro5_kospi_sort_metrics(metrics[metrics["model_type"].map(_macro5_kospi_model_type).eq(model_type)])
+    role_records = _macro5_kospi_role_records()
+    main_ids = [
+        str(candidate_id)
+        for candidate_id in subset["candidate_id"]
+        if role_records.get(str(candidate_id), {}).get("designation") == "MAIN"
+    ]
+    candidate_order = order_candidates_main_emh(
+        subset["candidate_id"].tolist(), main_ids, _macro5_kospi_role_warning_classes()
+    )
+    subset = subset.set_index("candidate_id").loc[candidate_order].reset_index()
     state_row_map = official_live_row_map or live_row_map
     if len(subset):
         rows_html.append(

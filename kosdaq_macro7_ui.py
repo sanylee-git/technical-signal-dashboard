@@ -24,6 +24,7 @@ from dashboard_role_aware_market_stage import (
     compute_role_aware_market_outputs,
     format_role_stage_sequence,
     load_role_metadata,
+    order_candidates_main_emh,
     role_warning_classes,
 )
 from macro_source_schedule import source_schedule_table_html
@@ -471,6 +472,12 @@ def _full_asset_header(backtest_windows: dict[str, Any]) -> str:
 def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> str:
     all_final = payload["final10"].sort_values(["model_family", "display_slot"])
     candidate_order = _ordered_candidate_ids(all_final, family)
+    main_ids = all_final.loc[
+        all_final["model_family"].eq(family) & all_final["display_slot"].eq(1), "candidate_id"
+    ].tolist()
+    candidate_order = order_candidates_main_emh(
+        candidate_order, main_ids, _kosdaq_role_warning_classes()
+    )
     final = all_final.set_index("candidate_id").loc[candidate_order].reset_index()
     snapshot = payload["snapshot"].set_index("candidate_id")
     history = payload.get("candidate_history")

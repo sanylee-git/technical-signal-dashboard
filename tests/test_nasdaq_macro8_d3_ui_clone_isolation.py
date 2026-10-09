@@ -174,6 +174,32 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     assert f">{int(state['active_count'])}/K{int(state['K'])}/{int(selected['n_or_m'])}<" in table
     assert "Return / Calmar" not in table
     assert "균형형 + 추세지속형" in table
+    combo2_final = _operational_display_final(payload).loc[lambda frame: frame["model_family"].eq("COMBO2")]
+    combo2_ordered_labels = [
+        _candidate_label(combo2_final.set_index("candidate_id").loc[candidate_id])
+        for candidate_id in (
+            "m5|n6|nq5e6_2c78a53ac6e928f8|n7|nq5e7_934189464a0ef2f2|n8|nq5e8_be766ae57cfa9042|n8|nq5e8_d2cd70973210bf4d|n8|nq5e8_f2b2eadb0bc3f323|K3|L1",
+            "nq_c2_6230b4f4492e3e15",
+            "m7|n10|nq5e10_9bd42da1c1a6841b|n5|nq5e5_6194c950c7d8e169|n6|nq5e6_2c78a53ac6e928f8|n6|nq5e6_ec1d4faea1cff3e8|n7|nq5e7_2b2edceb8bbeb2b4|n8|nq5e8_f2b2eadb0bc3f323|n9|nq5e9_c796e1a7980688d2|K4|L2",
+            "nq_c2_e03c993a14c2dfe8",
+            "nq_c2_478558562d45356d",
+        )
+    ]
+    assert [table.index(label) for label in combo2_ordered_labels] == sorted(table.index(label) for label in combo2_ordered_labels)
+
+    combo1_final = _operational_display_final(payload).loc[lambda frame: frame["model_family"].eq("COMBO1")]
+    combo1_ordered_labels = [
+        _candidate_label(combo1_final.set_index("candidate_id").loc[candidate_id])
+        for candidate_id in (
+            "n10|nq5e10_c7a79e5c0e3bd870",
+            "n12|nq5e12_02afb347b4b9eaf8",
+            "n8|nq5e8_6f60d9e268c12ef1",
+            "n12|nq5e12_d972a9f173c64587",
+            "n8|nq5e8_2bd44048f58e2fcd",
+        )
+    ]
+    combo1_table = _backtest_table(payload, "COMBO1", str(combo1_final.iloc[0]["candidate_id"]))
+    assert [combo1_table.index(label) for label in combo1_ordered_labels] == sorted(combo1_table.index(label) for label in combo1_ordered_labels)
     dashboard = (ROOT / "technical_signal_dashboard.py").read_text(encoding="utf-8")
     assert '"macro8_nasdaq": ("NASDAQ MACRO INDICATORS", "🇺🇸 나스닥지표")' in dashboard
     assert "render_macro8_nasdaq_section(_macro8_nasdaq_container)" in dashboard

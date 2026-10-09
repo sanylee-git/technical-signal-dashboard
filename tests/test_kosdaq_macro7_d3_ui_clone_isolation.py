@@ -156,6 +156,24 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     state = payload["snapshot"].set_index("candidate_id").loc[DEFAULT_CANDIDATE]
     assert f">{int(state['active_count'])}/K{int(state['K'])}/{int(selected['n_or_m'])}<" in table
     assert table.index("KOSDAQ 홀드") < table.index("[조합2 · main · M] 균형형") < table.index("[조합2 · Confirm 1 · M] 공격진입형 + 민감감지형")
+    combo2_labels = [
+        "[조합2 · main · M] 균형형",
+        "[조합2 · Confirm 1 · M] 공격진입형 + 민감감지형",
+        "[조합2 · Confirm 2 · H] 공격진입형 + 추세지속형",
+        "[조합2 · Confirm 3 · H] 균형형 + 추세지속형",
+        "[조합2 · Confirm 4 · H] 보수방어형 + 추세지속형",
+    ]
+    assert [table.index(label) for label in combo2_labels] == sorted(table.index(label) for label in combo2_labels)
+
+    combo1_table = _backtest_table(payload, "COMBO1", str(payload["final10"].loc[payload["final10"]["model_family"].eq("COMBO1") & payload["final10"]["display_slot"].eq(1), "candidate_id"].iloc[0]))
+    combo1_labels = [
+        "[조합1 · main · H] 균형형 + 추세지속형",
+        "[조합1 · Confirm 3 · E] 보수방어형",
+        "[조합1 · Confirm 1 · M] 균형형 + 민감감지형",
+        "[조합1 · Confirm 4 · M] 균형형",
+        "[조합1 · Confirm 2 · H] 보수방어형 + 추세지속형",
+    ]
+    assert [combo1_table.index(label) for label in combo1_labels] == sorted(combo1_table.index(label) for label in combo1_labels)
 
 
 def test_role_aware_stages_use_official_t1_and_user_role_classes() -> None:

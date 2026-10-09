@@ -126,3 +126,25 @@ def test_spx_backtest_table_adds_four_grouped_timepoints_and_keeps_today_week_va
     assert _on_k_html(state.active_count, state.K, state.raw_risk_state, candidate.n_or_m) in html
     expected_r = "R-off" if int(state.raw_risk_state) == 1 else "R-on"
     assert f"({expected_r})" in html
+    combo2_rows = final.loc[final["model_family"].eq("COMBO2")].set_index("candidate_id")
+    combo2_ordered_ids = [
+        "6b4595522bbed808d41be978",
+        "e6d450aa79ca39a713ba2558",
+        "b524905cfdecdc45c5cfc205",
+        "3e58ad167be4bb0aad010eb9",
+        "56965121941b6abcf928fe96",
+    ]
+    combo2_labels = [_candidate_label(combo2_rows.loc[candidate_id]) for candidate_id in combo2_ordered_ids]
+    assert [html.index(label) for label in combo2_labels] == sorted(html.index(label) for label in combo2_labels)
+
+    combo1_rows = final.loc[final["model_family"].eq("COMBO1")].set_index("candidate_id")
+    combo1_ordered_ids = [
+        "da862ec08d016b6f056c71d4",
+        "3b836baf07044098ee443d40",
+        "cc58a67d98a9db7b6228a5b6",
+        "e4ad56aa66de8a3f2fb7c645",
+        "f4d9115064635c283f9f04d5",
+    ]
+    combo1_labels = [_candidate_label(combo1_rows.loc[candidate_id]) for candidate_id in combo1_ordered_ids]
+    combo1_html = _backtest_table(payload, "COMBO1", combo1_ordered_ids[0], final)
+    assert [combo1_html.index(label) for label in combo1_labels] == sorted(combo1_html.index(label) for label in combo1_labels)

@@ -199,6 +199,104 @@ def test_backtest_table_adds_model_size_to_signal_and_widens_only_candidate_colu
     assert "[조합2 · main · M] 균형형" in html
 
 
+def test_kospi_backtest_rows_put_main_first_then_confirmation_class_order() -> None:
+    candidates = [
+        ("m10::combo2_m10_k7_l4_bbd8c760d49b44bb", 1, 10, 7, 4),
+        ("m8::combo2_m8_k5_l4_cee6978af4789711", 2, 8, 5, 4),
+        ("m6::combo2_m6_k4_l2_2d90a80e824f7336", 3, 6, 4, 2),
+        ("m6::combo2_m6_k4_l3_f976de57b8b4a80e", 4, 6, 4, 3),
+        ("m5::combo2_m5_k2_l1_2bc7e194fdecfd9e", 5, 5, 2, 1),
+    ]
+    metrics = pd.DataFrame([
+        {
+            "candidate_id": candidate_id,
+            "model_type": "combo2",
+            "slot": slot,
+            "m_or_n": size,
+            "K": k_value,
+            "L": l_value,
+            "cagr": 0.2,
+            "mdd": -0.1,
+            "risk_off_ratio": 0.3,
+        }
+        for candidate_id, slot, size, k_value, l_value in candidates
+    ])
+    live_rows = {
+        candidate_id: {
+            "calculable": True,
+            "raw_risk_state": 1,
+            "active_count": k_value,
+            "basis_date": "2026-10-08",
+        }
+        for candidate_id, _, _, k_value, _ in candidates
+    }
+
+    html = dash._macro5_kospi_build_backtest_panel(
+        metrics,
+        live_rows,
+        candidates[0][0],
+        "combo2",
+        backtest_stats={},
+        candidate_history=pd.DataFrame(),
+    )
+
+    ordered_labels = [
+        "[조합2 · main · M] 균형형",
+        "[조합2 · Confirm · E] 보수방어형",
+        "[조합2 · Confirm · H] 균형형 + 추세지속형",
+        "[조합2 · Confirm · H] 보수방어형 + 추세지속형",
+        "[조합2 · Confirm · H] 공격진입형 + 추세지속형",
+    ]
+    assert [html.index(label) for label in ordered_labels] == sorted(html.index(label) for label in ordered_labels)
+
+    combo1_candidates = [
+        ("combo1_n11_k8_l5_93919287424179bd", 1, 11, 8, 5),
+        ("combo1_n11_k9_l5_b984a8e53ad69a2d", 2, 11, 9, 5),
+        ("combo1_n11_k9_l6_ad654f06d0d609cb", 3, 11, 9, 6),
+        ("combo1_n11_k9_l6_9f0105582a0f0745", 4, 11, 9, 6),
+        ("combo1_n11_k8_l5_78b918eadc42fa16", 5, 11, 8, 5),
+    ]
+    combo1_metrics = pd.DataFrame([
+        {
+            "candidate_id": candidate_id,
+            "model_type": "combo1",
+            "slot": slot,
+            "m_or_n": size,
+            "K": k_value,
+            "L": l_value,
+            "cagr": 0.2,
+            "mdd": -0.1,
+            "risk_off_ratio": 0.3,
+        }
+        for candidate_id, slot, size, k_value, l_value in combo1_candidates
+    ])
+    combo1_live_rows = {
+        candidate_id: {
+            "calculable": True,
+            "raw_risk_state": 1,
+            "active_count": k_value,
+            "basis_date": "2026-10-08",
+        }
+        for candidate_id, _, _, k_value, _ in combo1_candidates
+    }
+    combo1_html = dash._macro5_kospi_build_backtest_panel(
+        combo1_metrics,
+        combo1_live_rows,
+        combo1_candidates[0][0],
+        "combo1",
+        backtest_stats={},
+        candidate_history=pd.DataFrame(),
+    )
+    combo1_class_labels = [
+        "[조합1 · main · M] 균형형",
+        "[조합1 · Confirm · M] 균형형 + 민감감지형",
+        "[조합1 · Confirm · H] 보수방어형 + 추세지속형",
+    ]
+    assert [combo1_html.index(label) for label in combo1_class_labels] == sorted(
+        combo1_html.index(label) for label in combo1_class_labels
+    )
+
+
 def test_b2t_market_stage_label_uses_existing_on_k_l_and_state() -> None:
     assert dash._macro_market_stage_label(5, 4, 2, False) == "매도심화"
     assert dash._macro_market_stage_label(4, 4, 2, False) == "매도"

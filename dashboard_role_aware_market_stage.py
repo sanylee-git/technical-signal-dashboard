@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 from html import escape
 
 import pandas as pd
@@ -72,6 +72,24 @@ def role_warning_classes(
     if not classes:
         raise MetadataValidationError(f"no candidate role metadata for {market}")
     return classes
+
+
+def order_candidates_main_emh(
+    candidate_ids: Sequence[object],
+    main_ids: Sequence[object],
+    warning_classes: Mapping[str, str],
+) -> list[str]:
+    """Place Main first, then Confirm candidates by E, M, H; preserve ties."""
+    main = {str(candidate_id) for candidate_id in main_ids}
+    class_order = {"E": 0, "M": 1, "H": 2}
+    ids = [str(candidate_id) for candidate_id in candidate_ids]
+    return sorted(
+        ids,
+        key=lambda candidate_id: (
+            0 if candidate_id in main else 1,
+            class_order.get(str(warning_classes.get(candidate_id, "")).upper(), 3),
+        ),
+    )
 
 
 def _family_column(final: pd.DataFrame) -> str:

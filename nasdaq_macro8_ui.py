@@ -16,6 +16,7 @@ from dashboard_role_aware_market_stage import (
     TIMEPOINTS as ROLE_TIMEPOINTS,
     compute_role_aware_market_outputs,
     format_role_stage_sequence,
+    order_candidates_main_emh,
     role_warning_classes,
 )
 from nasdaq_macro8_runtime.live_runtime import run_live_runtime
@@ -438,6 +439,12 @@ def _full_asset_header(windows: dict[str, Any]) -> str:
 def _backtest_table(payload: dict[str, Any], family: str, selected_id: str, final: pd.DataFrame | None = None) -> str:
     final = _operational_display_final(payload) if final is None and "display_final" in payload else _practical_final(payload["final20"]) if final is None else final
     final = final.loc[final["model_family"].eq(family)].sort_values("display_order")
+    candidate_order = order_candidates_main_emh(
+        final["candidate_id"].tolist(),
+        final.loc[final["display_designation"].eq("MAIN"), "candidate_id"].tolist(),
+        _nasdaq_role_warning_classes(),
+    )
+    final = final.set_index("candidate_id").loc[candidate_order].reset_index()
     snapshot = payload["snapshot"].set_index("candidate_id")
     history = payload.get("candidate_history")
     metrics = payload["frozen_display_metrics"]

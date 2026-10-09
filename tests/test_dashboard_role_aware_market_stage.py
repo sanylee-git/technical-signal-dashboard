@@ -17,6 +17,7 @@ from dashboard_role_aware_market_stage import (
     compute_role_aware_market_outputs,
     format_role_stage_sequence,
     load_role_metadata,
+    order_candidates_main_emh,
     validate_market_metadata,
 )
 from nasdaq_macro8_runtime.frozen_runtime import run_frozen_runtime as run_nasdaq_frozen
@@ -159,6 +160,15 @@ def test_role_stage_colors_follow_the_display_emoji_scale() -> None:
         "STRONG_CAUTION": "#F97316",
         "SELL": "#EF4444",
     }
+
+
+def test_candidate_table_order_is_main_then_emh_and_stable_within_class() -> None:
+    candidate_ids = ["h1", "main", "m1", "e1", "h2", "m2"]
+    warning_classes = {"h1": "H", "main": "H", "m1": "M", "e1": "E", "h2": "H", "m2": "M"}
+
+    assert order_candidates_main_emh(candidate_ids, ["main"], warning_classes) == [
+        "main", "e1", "m1", "m2", "h1", "h2"
+    ]
 
 
 def test_metadata_candidate_drift_fails_closed(spx_payload) -> None:
