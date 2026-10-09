@@ -49,6 +49,31 @@ def load_role_metadata(path: str | Path = DEFAULT_METADATA_PATH) -> dict[str, An
     return data
 
 
+def role_warning_classes(
+    market: str,
+    metadata_document: Mapping[str, Any] | None = None,
+    *,
+    metadata_path: str | Path = DEFAULT_METADATA_PATH,
+) -> dict[str, str]:
+    """Map locked candidate IDs to their existing E/M/H role classification."""
+    document = load_role_metadata(metadata_path) if metadata_document is None else metadata_document
+    market_metadata = document.get("markets", {}).get(market, {})
+    classes: dict[str, str] = {}
+    for family in ("COMBO1", "COMBO2"):
+        for record in market_metadata.get(family, []):
+            candidate_id = str(record.get("candidate_id", "")).strip()
+            if not candidate_id or candidate_id in classes:
+                raise MetadataValidationError(f"candidate role metadata is missing or duplicated: {candidate_id}")
+            derived = classify_role_combo(record.get("role_1"), record.get("role_2")).warning_class
+            declared = str(record.get("confirmation_type", "")).strip().upper()
+            if declared and declared != derived:
+                raise MetadataValidationError(f"confirmation type conflicts with role metadata: {candidate_id}")
+            classes[candidate_id] = declared or derived
+    if not classes:
+        raise MetadataValidationError(f"no candidate role metadata for {market}")
+    return classes
+
+
 def _family_column(final: pd.DataFrame) -> str:
     for column in ("model_family", "family"):
         if column in final.columns:

@@ -95,11 +95,11 @@ def test_user_final_five_per_combo_are_the_only_display_candidates(payload: dict
     ]
     assert combo1["display_designation"].tolist() == ["MAIN", "Confirm", "Confirm", "Confirm", "Confirm"]
     assert combo2["display_designation"].tolist() == ["MAIN", "Confirm", "Confirm", "Confirm", "Confirm"]
-    assert _candidate_label(combo1.iloc[0]).startswith("[조합1 · main] 균형형 + 추세지속형")
-    assert _candidate_label(combo2.iloc[0]).startswith("[조합2 · main] 균형형 + 추세지속형")
-    assert _candidate_label(combo1.iloc[1]).startswith("[조합1 · Confirm] 보수방어형 + 추세지속형")
-    assert _candidate_label(combo2.iloc[1]).startswith("[조합2 · Confirm] 균형형 + 추세지속형")
-    assert _candidate_label(combo1.iloc[4]) == "[조합1 · Confirm] 공격진입형 + 민감감지형 (지표 12개/K7/L5)"
+    assert _candidate_label(combo1.iloc[0]).startswith("[조합1 · main · H] 균형형 + 추세지속형")
+    assert _candidate_label(combo2.iloc[0]).startswith("[조합2 · main · H] 균형형 + 추세지속형")
+    assert _candidate_label(combo1.iloc[1]).startswith("[조합1 · Confirm · H] 보수방어형 + 추세지속형")
+    assert _candidate_label(combo2.iloc[1]).startswith("[조합2 · Confirm · H] 균형형 + 추세지속형")
+    assert _candidate_label(combo1.iloc[4]) == "[조합1 · Confirm · M] 공격진입형 + 민감감지형 (지표 12개/K7/L5)"
 
 
 def test_combo2_main_defaults_to_selected_existing_candidate(payload: dict) -> None:
@@ -160,8 +160,8 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     table = _backtest_table(payload, "COMBO2", candidate_id)
     assert "NASDAQ 100 홀드" in table
     assert "전체 자산 (18Y)" in table
-    assert "min-width:1709px" in table
-    assert "width:230px" in table
+    assert "min-width:1779px" in table
+    assert "width:300px" in table
     assert table.count("<col style='width:87px'>") == 2
     assert table.count("<col style='width:104.4px'>") == 8
     assert all(label in table for label in ("1개월 전", "2주 전", "1주 전", "오늘", "신호", "시장단계"))
@@ -169,6 +169,9 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     assert table.count("<th rowspan='2'") == 9
     assert table.count("<tbody><tr") == 1
     assert table.count("<tr style=") == 5
+    selected = _operational_display_final(payload).set_index("candidate_id").loc[candidate_id]
+    state = payload["snapshot"].set_index("candidate_id").loc[candidate_id]
+    assert f">{int(state['active_count'])}/K{int(state['K'])}/{int(selected['n_or_m'])}<" in table
     assert "Return / Calmar" not in table
     assert "균형형 + 추세지속형" in table
     dashboard = (ROOT / "technical_signal_dashboard.py").read_text(encoding="utf-8")

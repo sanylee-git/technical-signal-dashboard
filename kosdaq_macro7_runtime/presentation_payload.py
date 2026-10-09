@@ -324,10 +324,10 @@ def build_presentation_payload(live_payload: dict[str, Any]) -> dict[str, Any]:
     required_ids = _required_core_ids(final, children)
     final_ids = final["candidate_id"].astype(str).tolist()
     snapshot = live_payload["snapshot"].copy().set_index("candidate_id").reindex(final_ids).reset_index()
-    for column in ("model_family", "display_slot", "display_role", "K", "L"):
+    for column in ("model_family", "display_slot", "display_role", "n_or_m", "K", "L"):
         snapshot[column] = final[column].to_numpy()
     confirmed_snapshot = live_payload.get("confirmed_snapshot", live_payload["snapshot"]).copy().set_index("candidate_id").reindex(final_ids).reset_index()
-    for column in ("model_family", "display_slot", "display_role", "K", "L"):
+    for column in ("model_family", "display_slot", "display_role", "n_or_m", "K", "L"):
         confirmed_snapshot[column] = final[column].to_numpy()
     candidate_history = _candidate_history(live_payload, final)
     component_history = _component_history(live_payload, final, definitions, children)

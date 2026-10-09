@@ -143,8 +143,8 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     assert "KOSDAQ 홀드" in table
     assert "전체 자산" in table
     assert "전체 자산 (18Y)" in table
-    assert "min-width:1709px" in table
-    assert "width:230px" in table
+    assert "min-width:1779px" in table
+    assert "width:300px" in table
     assert table.count("<col style=") == 17
     assert table.count("<col style='width:87px'>") == 2
     assert table.count("<col style='width:104.4px'>") == 8
@@ -152,7 +152,10 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     assert table.count("<th rowspan='2'") == 9
     assert "전체 CAGR" in table
     assert "x)</span>" in table
-    assert table.index("KOSDAQ 홀드") < table.index("[조합2 · main] 균형형") < table.index("[조합2 · Confirm 1] 공격진입형 + 민감감지형")
+    selected = payload["final10"].set_index("candidate_id").loc[DEFAULT_CANDIDATE]
+    state = payload["snapshot"].set_index("candidate_id").loc[DEFAULT_CANDIDATE]
+    assert f">{int(state['active_count'])}/K{int(state['K'])}/{int(selected['n_or_m'])}<" in table
+    assert table.index("KOSDAQ 홀드") < table.index("[조합2 · main · M] 균형형") < table.index("[조합2 · Confirm 1 · M] 공격진입형 + 민감감지형")
 
 
 def test_role_aware_stages_use_official_t1_and_user_role_classes() -> None:
@@ -191,11 +194,11 @@ def test_kosdaq_main_labels_and_combo_family_separator_are_display_only() -> Non
     payload = _payload()
     rows = payload["final10"].set_index("candidate_id")
 
-    assert "[조합2 · main] 균형형" in _candidate_label(rows.loc["combo2_m5_k3_l2_50e15ab10d6cba46"])
-    assert "[조합2 · Confirm 1] 공격진입형 + 민감감지형" in _candidate_label(rows.loc["combo2_m7_k4_l3_58c1eaea19e6d371"])
-    assert "[조합2 · Confirm 4] 보수방어형 + 추세지속형" in _candidate_label(rows.loc["combo2_m7_k3_l2_1e7182522962de01"])
-    assert "[조합1 · main] 균형형 + 추세지속형" in _candidate_label(rows.loc["combo1_n10_k8_l5_7d675fa2173be942"])
-    assert "[조합1 · Confirm 1] 균형형 + 민감감지형" in _candidate_label(rows.loc["combo1_n9_k7_l5_ef47fc166183b7f0"])
+    assert "[조합2 · main · M] 균형형" in _candidate_label(rows.loc["combo2_m5_k3_l2_50e15ab10d6cba46"])
+    assert "[조합2 · Confirm 1 · M] 공격진입형 + 민감감지형" in _candidate_label(rows.loc["combo2_m7_k4_l3_58c1eaea19e6d371"])
+    assert "[조합2 · Confirm 4 · H] 보수방어형 + 추세지속형" in _candidate_label(rows.loc["combo2_m7_k3_l2_1e7182522962de01"])
+    assert "[조합1 · main · H] 균형형 + 추세지속형" in _candidate_label(rows.loc["combo1_n10_k8_l5_7d675fa2173be942"])
+    assert "[조합1 · Confirm 1 · M] 균형형 + 민감감지형" in _candidate_label(rows.loc["combo1_n9_k7_l5_ef47fc166183b7f0"])
 
     source = (ROOT / "kosdaq_macro7_ui.py").read_text(encoding="utf-8")
     assert "__macro7_kosdaq_combo1_separator__" in source

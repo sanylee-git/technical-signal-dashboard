@@ -266,7 +266,7 @@ def build_presentation_payload(runtime: dict[str, Any]) -> dict[str, Any]:
     display_metadata = display_final.set_index("candidate_id")
     for frame in (snapshot, confirmed_snapshot):
         frame_indexed = frame.set_index("candidate_id", drop=False).reindex(display_final["candidate_id"])
-        for column in ("model_family", "display_slot", "display_role", "display_vintage", "tier", "display_designation", "display_name", "display_order"):
+        for column in ("model_family", "display_slot", "display_role", "display_vintage", "tier", "display_designation", "display_name", "display_order", "n_or_m"):
             frame_indexed[column] = display_metadata.loc[display_final["candidate_id"], column].to_numpy()
         frame.drop(frame.index, inplace=True)
         frame[frame_indexed.columns] = frame_indexed.reset_index(drop=True)

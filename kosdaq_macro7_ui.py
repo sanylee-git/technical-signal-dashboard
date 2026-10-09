@@ -7,6 +7,7 @@ freshness calculation happens here.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from html import escape
 from pathlib import Path
 from typing import Any, Callable
@@ -23,6 +24,7 @@ from dashboard_role_aware_market_stage import (
     compute_role_aware_market_outputs,
     format_role_stage_sequence,
     load_role_metadata,
+    role_warning_classes,
 )
 from macro_source_schedule import source_schedule_table_html
 
@@ -108,13 +110,21 @@ def _stage_with_risk_html(active_count: object, k: object, l: object, risk_off: 
     return f"{_stage_html(stage)} <span style='color:{state_color};font-weight:700;'>({escape(state_label)})</span>"
 
 
-def _on_k_html(active_count: object, k: object, risk_off: object) -> str:
+def _on_k_html(active_count: object, k: object, risk_off: object, component_count: object = None) -> str:
     try:
         label = f"{max(0, int(active_count))}/K{max(1, int(k))}"
+        if component_count is not None and not pd.isna(component_count):
+            label += f"/{max(0, int(component_count))}"
     except (TypeError, ValueError):
         return "계산 불가"
     color = RISK_OFF if bool(risk_off) else RISK_ON
     return f"<span style='color:{color};font-weight:700;'>{label}</span>"
+
+
+@lru_cache(maxsize=1)
+def _kosdaq_role_warning_classes() -> dict[str, str]:
+    metadata = load_role_metadata(KOSDAQ_ROLE_METADATA)
+    return role_warning_classes("KOSDAQ", metadata)
 
 
 def _candidate_label(row: pd.Series | dict[str, Any]) -> str:
@@ -124,7 +134,10 @@ def _candidate_label(row: pd.Series | dict[str, Any]) -> str:
     slot = int(row.get("display_slot", 0) or 0)
     designation = "main" if slot == 1 else f"Confirm {slot - 1}"
     role = str(row.get("display_role", ""))
-    return f"[{prefix} · {designation}] {role} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
+    candidate_id = str(row.get("candidate_id") or getattr(row, "name", ""))
+    warning_class = _kosdaq_role_warning_classes().get(candidate_id)
+    class_label = f" · {warning_class}" if warning_class else ""
+    return f"[{prefix} · {designation}{class_label}] {role} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
 
 
 def _ordered_candidate_ids(final: pd.DataFrame, family: str) -> list[str]:
@@ -398,7 +411,7 @@ def _signal_snapshot_html(label: str, row: pd.Series) -> str:
     state = "Risk-off · 비투자" if risk else "Risk-on · 투자"
     return (
         f"{label}: 기준일 {_date(row['basis_date'])} <span style='color:rgba(255,255,255,.45)'>·</span> "
-        f"현재 플래그 {_on_k_html(row['active_count'], row['K'], risk)} <span style='color:rgba(255,255,255,.45)'>·</span> "
+        f"현재 플래그 {_on_k_html(row['active_count'], row['K'], risk, row.get('n_or_m'))} <span style='color:rgba(255,255,255,.45)'>·</span> "
         f"상태 <span style='color:{color};font-weight:700'>{state}</span>"
     )
 
@@ -464,7 +477,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
     metrics = payload["frozen_display_metrics"]
     hold = payload["benchmark_display_metrics"].set_index("window")
     base_headers = ["역할 / 후보", "10Y 자산", _full_asset_header(payload["backtest_windows"]), "전체 CAGR", "10Y MDD", "전체 MDD", "전체 Risk-off", "전체 Cycle", "짧은 Cycle"]
-    widths = ["230px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["104.4px"] * 8
+    widths = ["300px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["104.4px"] * 8
     colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in widths) + "</colgroup>"
     style = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
     rows = []
@@ -504,7 +517,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
         for historical_row, legacy_active, legacy_risk in time_states:
             active = historical_row.get("active_count") if historical_row is not None else legacy_active
             risk = historical_row.get("raw_risk_state") if historical_row is not None else legacy_risk
-            cells.append(f"<td style='padding:7px 8px;text-align:center'>{_on_k_html(active, state.K, risk)}</td>")
+            cells.append(f"<td style='padding:7px 8px;text-align:center'>{_on_k_html(active, state.K, risk, candidate['n_or_m'])}</td>")
             cells.append(f"<td style='padding:7px 8px;text-align:center'>{_stage_with_risk_html(active, state.K, state.L, risk)}</td>")
         rows.append(f"<tr style='{selected_style}'>" + "".join(cells) + "</tr>")
     base_alignments = ["left"] + ["right"] * 8
@@ -521,7 +534,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
         for _ in range(4) for label in ("신호", "시장단계")
     )
     return (
-        "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:1709px;min-width:1709px;table-layout:fixed;border-collapse:collapse;font-size:11px'>"
+        "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:1779px;min-width:1779px;table-layout:fixed;border-collapse:collapse;font-size:11px'>"
         + colgroup + f"<thead><tr>{base_head}{groups}</tr><tr>{subheaders}</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>"
     )
 

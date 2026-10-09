@@ -82,9 +82,10 @@ def test_b2r_current_column_uses_active_count_denominator() -> None:
         "candidate",
         {"candidate": {"calculable": True, "raw_risk_state": 1, "active_count": 5, "component_count": 9}},
         start_k=9,
+        component_count=9,
     )
 
-    assert "5/K9" in html
+    assert "5/K9/9" in html
     assert "Risk-off" not in html
 
 
@@ -133,12 +134,12 @@ def test_b2r_render_section_removes_general_technical_captions_and_metric_card()
 
 
 def test_b2r_preset_main_alias_uses_fixed_slots() -> None:
-    combo2 = pd.Series({"model_type": "combo2", "slot": 5, "role": "균형·강건", "m_or_n": 6, "K": 4, "L": 2})
-    combo1 = pd.Series({"model_type": "combo1", "slot": 1, "role": "균형 코어", "m_or_n": 11, "K": 9, "L": 5})
+    combo2 = pd.Series({"candidate_id": "m10::combo2_m10_k7_l4_bbd8c760d49b44bb", "model_type": "combo2", "slot": 5, "role": "균형·강건", "m_or_n": 10, "K": 7, "L": 4})
+    combo1 = pd.Series({"candidate_id": "combo1_n11_k8_l5_93919287424179bd", "model_type": "combo1", "slot": 1, "role": "균형 코어", "m_or_n": 11, "K": 8, "L": 5})
     other = pd.Series({"model_type": "combo2", "slot": 6, "role": "성과 코어", "m_or_n": 6, "K": 4, "L": 3})
 
-    assert dash._macro5_kospi_preset_label(combo2) == "[조합2] Main (조합1 6개/K4/L2)"
-    assert dash._macro5_kospi_preset_label(combo1) == "[조합1] Main (지표 11개/K9/L5)"
+    assert dash._macro5_kospi_preset_label(combo2) == "[조합2 · main · M] 균형형 (조합1 10개/K7/L4)"
+    assert dash._macro5_kospi_preset_label(combo1) == "[조합1 · main · M] 균형형 (지표 11개/K8/L5)"
     assert dash._macro5_kospi_preset_label(other) == "[조합2] 성과 코어 (조합1 6개/K4/L3)"
 
 

@@ -121,8 +121,8 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
     for html in (combo2, combo1):
         for column in required:
             assert column in html
-        assert "min-width:1709px" in html
-        assert "width:230px" in html
+        assert "min-width:1779px" in html
+        assert "width:300px" in html
         assert html.count("<col style='width:87px'>") == 2
         assert html.count("<col style='width:104.4px'>") == 8
         assert html.count("<th colspan='2'") == 4
@@ -159,8 +159,44 @@ def test_b2t_current_column_uses_live_active_count_over_entry_k() -> None:
 
     html = dash._macro5_kospi_build_backtest_panel(metrics.iloc[[0]], live_map, selected_id, "combo1", stats)
 
-    assert "9/K9" in html
+    assert "9/K9/11" in html
     assert "Risk-off</span>" not in html
+
+
+def test_backtest_table_adds_model_size_to_signal_and_widens_only_candidate_column() -> None:
+    candidate_id = "m10::combo2_m10_k7_l4_bbd8c760d49b44bb"
+    metrics = pd.DataFrame([{
+        "candidate_id": candidate_id,
+        "model_type": "combo2",
+        "slot": 1,
+        "m_or_n": 10,
+        "K": 7,
+        "L": 4,
+        "cagr": 0.2,
+        "mdd": -0.1,
+        "risk_off_ratio": 0.3,
+    }])
+    live_rows = {
+        candidate_id: {
+            "calculable": True,
+            "raw_risk_state": 1,
+            "active_count": 7,
+            "basis_date": "2026-10-08",
+        }
+    }
+    html = dash._macro5_kospi_build_backtest_panel(
+        metrics,
+        live_rows,
+        candidate_id,
+        "combo2",
+        backtest_stats={},
+        candidate_history=pd.DataFrame(),
+    )
+
+    assert "width:1779px;min-width:1779px" in html
+    assert "<col style='width:300px'>" in html
+    assert "7/K7/10" in html
+    assert "[조합2 · main · M] 균형형" in html
 
 
 def test_b2t_market_stage_label_uses_existing_on_k_l_and_state() -> None:

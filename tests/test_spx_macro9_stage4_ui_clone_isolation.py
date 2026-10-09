@@ -85,15 +85,15 @@ def test_spx_combo2_main1_is_the_default_and_tab_uses_operator_ui(payload: dict[
     combo1_main1, combo1_confirm = combo1.iloc[0], combo1.iloc[2]
     combo2_main1, combo2_confirm = combo2.iloc[0], combo2.iloc[2]
     assert combo1_main1["candidate_id"] == "da862ec08d016b6f056c71d4"
-    assert _candidate_label(combo1_main1).startswith("[조합1 · main] 균형형 + 추세지속형")
+    assert _candidate_label(combo1_main1).startswith("[조합1 · main · H] 균형형 + 추세지속형")
     assert combo1_main1["display_role"] == "Main1 · 균형형 + 추세지속형"
     assert combo1_confirm["candidate_id"] == "f4d9115064635c283f9f04d5"
-    assert _candidate_label(combo1_confirm).endswith("[조합1 · Confirm] 공격진입형 (지표 11개/K7/L5)")
+    assert _candidate_label(combo1_confirm).endswith("[조합1 · Confirm · H] 공격진입형 (지표 11개/K7/L5)")
     assert combo2_main1["candidate_id"] == "6b4595522bbed808d41be978"
-    assert _candidate_label(combo2_main1).startswith("[조합2 · main] 균형형 + 추세지속형")
+    assert _candidate_label(combo2_main1).startswith("[조합2 · main · H] 균형형 + 추세지속형")
     assert combo2_main1["display_role"] == "Main1 · 균형형 + 추세지속형"
     assert combo2_confirm["candidate_id"] == "e6d450aa79ca39a713ba2558"
-    assert _candidate_label(combo2_confirm).endswith("[조합2 · Confirm] 보수방어형 + 민감감지형 (조합1 8개/K5/L4)")
+    assert _candidate_label(combo2_confirm).endswith("[조합2 · Confirm · E] 보수방어형 + 민감감지형 (조합1 8개/K5/L4)")
     assert combo2.iloc[0]["candidate_id"] == "6b4595522bbed808d41be978"
 
     ui = (ROOT / "spx_macro9_ui.py").read_text(encoding="utf-8")
@@ -112,17 +112,17 @@ def test_spx_backtest_table_adds_four_grouped_timepoints_and_keeps_today_week_va
 
     html = _backtest_table(payload, "COMBO2", str(candidate["candidate_id"]), final)
 
-    assert "min-width:1709px" in html
+    assert "min-width:1779px" in html
     assert html.count("<table ") == 1
     assert html.count("</table>") == 1
     assert "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table" in html
-    assert "width:230px" in html
+    assert "width:300px" in html
     assert html.count("<col style='width:87px'>") == 2
     assert html.count("<col style='width:104.4px'>") == 8
     assert all(label in html for label in ("1개월 전", "2주 전", "1주 전", "오늘"))
     assert html.count("<th colspan='2'") == 4
     assert html.count("<th rowspan='2'") == 9
-    assert _on_k_html(state.week_ago_active_count, state.K, state.week_ago_raw_risk_state) in html
-    assert _on_k_html(state.active_count, state.K, state.raw_risk_state) in html
+    assert _on_k_html(state.week_ago_active_count, state.K, state.week_ago_raw_risk_state, candidate.n_or_m) in html
+    assert _on_k_html(state.active_count, state.K, state.raw_risk_state, candidate.n_or_m) in html
     expected_r = "R-off" if int(state.raw_risk_state) == 1 else "R-on"
     assert f"({expected_r})" in html

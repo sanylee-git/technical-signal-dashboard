@@ -29,7 +29,7 @@ import traceback
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 from dashboard_timepoints import candidate_history_rows_at_offsets, risk_state_short_label
-from dashboard_role_aware_market_stage import format_role_stage_sequence, load_role_metadata
+from dashboard_role_aware_market_stage import format_role_stage_sequence, load_role_metadata, role_warning_classes
 from kosdaq_macro7_ui import render_macro7_kosdaq_section
 from nasdaq_macro8_ui import render_macro8_nasdaq_section
 from spx_macro9_ui import render_macro9_spx_section
@@ -6015,16 +6015,27 @@ def _macro_risk_state_display_text(is_risk_off: bool) -> str:
     return "Risk-off(위험회피)" if bool(is_risk_off) else "Risk-on(투자)"
 
 
-def _macro_flag_ratio_html(on_count: int, start_k: int, is_on: bool | None = None) -> str:
+def _macro_flag_ratio_html(
+    on_count: int,
+    start_k: int,
+    is_on: bool | None = None,
+    component_count: int | None = None,
+) -> str:
     k_value = max(1, int(start_k))
     on = max(0, int(on_count))
     if is_on is not None:
         color = _MACRO_STATUS_RISK_OFF_COLOR if bool(is_on) else _MACRO_STATUS_RISK_ON_COLOR
     else:
         color = _MACRO_STATUS_RISK_OFF_COLOR if on >= k_value else _MACRO_STATUS_RISK_ON_COLOR
+    component_label = ""
+    try:
+        if component_count is not None and not pd.isna(component_count):
+            component_label = f"/{int(component_count)}"
+    except (TypeError, ValueError):
+        pass
     return (
         f"<span style='color:{color};font-weight:700;font-variant-numeric:tabular-nums;'>"
-        f"{_macro_on_k_text(on, k_value)}</span>"
+        f"{_macro_on_k_text(on, k_value)}{component_label}</span>"
     )
 
 
@@ -6233,14 +6244,21 @@ def _macro_week_ago_state_row(
     return df.iloc[-6].drop(labels=["_macro_date"], errors="ignore").to_dict()
 
 
-def _macro_historical_current_chip(row: dict | pd.Series | None, start_k: int, risk_col: str) -> str:
+def _macro_historical_current_chip(
+    row: dict | pd.Series | None,
+    start_k: int,
+    risk_col: str,
+    component_count: int | None = None,
+) -> str:
     if row is None or len(row) == 0:
         return _macro_market_stage_value_html("계산 불가")
     active_count = row.get("active_count", row.get("on_count"))
     risk_state = row.get(risk_col)
     if active_count is None or risk_state is None or pd.isna(active_count) or pd.isna(risk_state):
         return _macro_market_stage_value_html("계산 불가")
-    return _macro_flag_ratio_html(active_count, start_k, bool(int(risk_state)))
+    if component_count is None:
+        component_count = row.get("m_or_n")
+    return _macro_flag_ratio_html(active_count, start_k, bool(int(risk_state)), component_count)
 
 
 def _macro_historical_market_stage_html(row: dict | pd.Series | None, start_k: int, end_l: int, risk_col: str) -> str:
@@ -14250,6 +14268,11 @@ def _macro5_kospi_role_records() -> dict[str, dict]:
     }
 
 
+@lru_cache(maxsize=1)
+def _macro5_kospi_role_warning_classes() -> dict[str, str]:
+    return role_warning_classes("KOSPI")
+
+
 def _macro5_kospi_preset_label(row: pd.Series | dict, component_count: int | None = None) -> str:
     candidate_id = str(row.get("candidate_id") or "")
     model_type = _macro5_kospi_model_type(row["model_type"])
@@ -14261,7 +14284,14 @@ def _macro5_kospi_preset_label(row: pd.Series | dict, component_count: int | Non
     )
     roles = [str(metadata.get(key, "")).strip() for key in ("role_1", "role_2")]
     role = " + ".join(role for role in roles if role)
-    role_label = f"{designation} · {role}" if designation and role else str(row.get("role") or "")
+    warning_class = _macro5_kospi_role_warning_classes().get(candidate_id)
+    designation_label = designation.lower() if designation.lower() == "main" else designation
+    class_label = f" · {warning_class}" if warning_class else ""
+    role_label = (
+        f"[{prefix} · {designation_label}{class_label}] {role}"
+        if designation and role
+        else f"[{prefix}] {str(row.get('role') or '')}"
+    )
     try:
         count = int(component_count if component_count is not None else row.get("m_or_n"))
     except Exception:
@@ -14272,7 +14302,7 @@ def _macro5_kospi_preset_label(row: pd.Series | dict, component_count: int | Non
     except Exception:
         k_value = 0
         l_value = 0
-    return f"[{prefix}] {role_label} ({unit} {count}개/K{k_value}/L{l_value})"
+    return f"{role_label} ({unit} {count}개/K{k_value}/L{l_value})"
 
 
 def _macro5_kospi_sort_metrics(metrics: pd.DataFrame) -> pd.DataFrame:
@@ -14686,7 +14716,12 @@ def _macro5_kospi_current_status_html(
     )
 
 
-def _macro5_kospi_current_chip(candidate_id: str, live_row_map: dict[str, dict], start_k: int | None = None) -> str:
+def _macro5_kospi_current_chip(
+    candidate_id: str,
+    live_row_map: dict[str, dict],
+    start_k: int | None = None,
+    component_count: int | None = None,
+) -> str:
     row = live_row_map.get(str(candidate_id), {})
     if (
         not row
@@ -14701,6 +14736,8 @@ def _macro5_kospi_current_chip(candidate_id: str, live_row_map: dict[str, dict],
         active_count = int(row.get("active_count"))
         k_value = int(start_k if start_k is not None else row.get("K"))
         label = _macro5_kospi_current_on_k(active_count, k_value)
+        if component_count is not None and not pd.isna(component_count):
+            label += f"/{int(component_count)}"
     except Exception:
         label = _macro_risk_state_display_text(raw_state == 1)
     return f"<span style='color:{color};font-weight:700;'>{label}</span>"
@@ -15082,7 +15119,7 @@ def _macro5_kospi_build_backtest_panel(
         ("전체 Cycle", "right"),
         ("짧은 Cycle", "right"),
     ]
-    widths = ["230px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["104.4px"] * 8
+    widths = ["300px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["104.4px"] * 8
     colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in widths) + "</colgroup>"
     subset = _macro5_kospi_sort_metrics(metrics[metrics["model_type"].map(_macro5_kospi_model_type).eq(model_type)])
     state_row_map = official_live_row_map or live_row_map
@@ -15139,7 +15176,10 @@ def _macro5_kospi_build_backtest_panel(
             "cagr",
         )
         live_row = state_row_map.get(candidate_id, {})
-        current_chip = _macro5_kospi_current_chip(candidate_id, state_row_map, int(row.get("K", 1)))
+        component_count = int(row.get("m_or_n", 0))
+        current_chip = _macro5_kospi_current_chip(
+            candidate_id, state_row_map, int(row.get("K", 1)), component_count
+        )
         week_ago_row = _macro_week_ago_state_row(
             candidate_history,
             candidate_id,
@@ -15175,7 +15215,9 @@ def _macro5_kospi_build_backtest_panel(
                 stage_cell = _macro5_kospi_stage_with_risk_html(market_stage, risk_state)
             else:
                 risk_state = state.get("raw_risk_state")
-                signal_cell = _macro_historical_current_chip(state, int(row.get("K", 1)), "raw_risk_state")
+                signal_cell = _macro_historical_current_chip(
+                    state, int(row.get("K", 1)), "raw_risk_state", component_count
+                )
                 stage_cell = _macro_historical_market_stage_html(
                     state,
                     int(row.get("K", 1)),
@@ -15205,7 +15247,7 @@ def _macro5_kospi_build_backtest_panel(
         return ""
     return (
         _MACRO_BACKTEST_TABLE_WRAP_OPEN
-        + "<table style='width:1709px;min-width:1709px;table-layout:fixed;border-collapse:collapse;font-size:11px;'>"
+        + "<table style='width:1779px;min-width:1779px;table-layout:fixed;border-collapse:collapse;font-size:11px;'>"
         + colgroup
         + "<thead><tr>"
         + "".join(
