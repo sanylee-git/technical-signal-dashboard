@@ -14,6 +14,7 @@ from pandas.tseries.offsets import BDay
 from .frozen_replay import _candidate_frame, _combine, _final_t1, _metrics, _performance
 from .live_sources import SOURCE_SPECS, fetch_all_sources
 from .market_calendar import latest_allowed_live_session, latest_completed_session, load_calendar, session_status, sessions_between
+from .operating_assets import load_operating_final_inputs
 from live_source_resolver import exact_date_spread, resolve_aligned_sources
 
 
@@ -421,9 +422,7 @@ def run_live_runtime(*, as_of: datetime | pd.Timestamp | None = None, provider_f
     frozen = _load_frozen()
     frames = provider_frames if provider_frames is not None else fetch_all_sources(as_of=as_of_utc)
     combined, source_status, merge, source_resolver_status, source_resolver_log = _combined_frame(frozen, frames, as_of_utc)
-    definitions = pd.read_csv(ASSETS / "kosdaq_macro7_signal_definitions.csv")
-    final = pd.read_csv(ASSETS / "kosdaq_macro7_final10.csv")
-    children = pd.read_csv(ASSETS / "kosdaq_macro7_combo2_child_mapping.csv")
+    final, definitions, children = load_operating_final_inputs()
     strict_source_bases = {item["source_id"]: pd.Timestamp(item["available_through_date"]) if item.get("available_through_date") else None for item in source_status}
     latest_session = pd.to_datetime(merge.get("latest_calculation_session"), errors="coerce")
     for status, source_key in zip(source_resolver_status, ("resolver_us_10y_2y", "resolver_us_10y_3m", "resolver_vix3m")):

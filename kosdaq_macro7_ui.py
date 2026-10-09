@@ -8,6 +8,7 @@ freshness calculation happens here.
 from __future__ import annotations
 
 from html import escape
+from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
@@ -18,6 +19,11 @@ import streamlit as st
 from dashboard_timepoints import candidate_history_rows_at_offsets, risk_state_short_label
 from kosdaq_macro7_runtime.live_runtime import run_live_runtime
 from kosdaq_macro7_runtime.presentation_payload import build_presentation_payload
+from dashboard_role_aware_market_stage import (
+    compute_role_aware_market_outputs,
+    format_role_stage_sequence,
+    load_role_metadata,
+)
 from macro_source_schedule import source_schedule_table_html
 
 
@@ -33,18 +39,14 @@ STAGE_SCORES = {
     "관망": 0, "매도준비": 1, "매도": 2, "매도심화": 3,
 }
 PERIOD_OPTIONS: list[int | str] = [2, 3, 5, 7, 10, 15, "all"]
-KOSDAQ_COMBO2_MAIN1 = "combo2_m6_k3_l2_32c73aa82d8abc21"
-KOSDAQ_COMBO2_MAIN2 = "combo2_m5_k3_l2_50e15ab10d6cba46"
+KOSDAQ_COMBO2_MAIN1 = "combo2_m5_k3_l2_50e15ab10d6cba46"
 KOSDAQ_COMBO1_MAIN1 = "combo1_n10_k8_l5_7d675fa2173be942"
-KOSDAQ_COMBO1_MAIN2 = "combo1_n9_k7_l5_ef47fc166183b7f0"
 DEFAULT_CANDIDATE = KOSDAQ_COMBO2_MAIN1
-KOSDAQ_PRESET_VERSION = "combo2-main1-m6-20260913"
-KOSDAQ_DISPLAY_ROLE_OVERRIDES = {
-    KOSDAQ_COMBO2_MAIN1: "Main1 MDD 방어형",
-    KOSDAQ_COMBO2_MAIN2: "Main2 안정적 균형형",
-    KOSDAQ_COMBO1_MAIN1: "Main1 최고 성과형",
-    KOSDAQ_COMBO1_MAIN2: "Main2 사이클·수익형",
-}
+KOSDAQ_PRESET_VERSION = "final10-role-aware-20261009"
+KOSDAQ_ROLE_METADATA = (
+    Path(__file__).resolve().parent
+    / "kosdaq_macro7_assets/operating/kosdaq_macro7_role_metadata.json"
+)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -119,18 +121,15 @@ def _candidate_label(row: pd.Series | dict[str, Any]) -> str:
     family = str(row.get("model_family", ""))
     prefix = "조합1" if family == "COMBO1" else "조합2"
     unit = "지표" if family == "COMBO1" else "조합1"
-    candidate_id = str(row.get("candidate_id") or (row.name if isinstance(row, pd.Series) else ""))
-    role = KOSDAQ_DISPLAY_ROLE_OVERRIDES.get(candidate_id, str(row.get("display_role", "")))
-    return f"[{prefix}] {role} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
+    slot = int(row.get("display_slot", 0) or 0)
+    designation = "main" if slot == 1 else f"Confirm {slot - 1}"
+    role = str(row.get("display_role", ""))
+    return f"[{prefix} · {designation}] {role} ({unit} {int(row.get('n_or_m', 0))}개/K{int(row.get('K', 0))}/L{int(row.get('L', 0))})"
 
 
 def _ordered_candidate_ids(final: pd.DataFrame, family: str) -> list[str]:
     candidate_ids = final.loc[final["model_family"].eq(family), "candidate_id"].tolist()
-    preferred = (
-        (KOSDAQ_COMBO2_MAIN1, KOSDAQ_COMBO2_MAIN2)
-        if family == "COMBO2"
-        else (KOSDAQ_COMBO1_MAIN1, KOSDAQ_COMBO1_MAIN2)
-    )
+    preferred = (KOSDAQ_COMBO2_MAIN1,) if family == "COMBO2" else (KOSDAQ_COMBO1_MAIN1,)
     return [candidate_id for candidate_id in preferred if candidate_id in candidate_ids] + [candidate_id for candidate_id in candidate_ids if candidate_id not in preferred]
 
 
@@ -308,55 +307,73 @@ def _stage_change_html(previous: str, current: str) -> str:
     return f"{_stage_html(previous)}{arrow}{_stage_html(current)}"
 
 
+def _official_role_inputs(payload: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    snapshot = payload.get("confirmed_snapshot", payload["snapshot"]).copy()
+    history = payload["candidate_history"].copy()
+    if "risk_off_t1" in history:
+        history["raw_risk_state"] = history["risk_off_t1"]
+    else:
+        history["raw_risk_state"] = pd.NA
+    if "valid_signal" not in history:
+        history["valid_signal"] = history.get("valid", False)
+
+    if "risk_off_t1" in snapshot:
+        snapshot["raw_risk_state"] = snapshot["risk_off_t1"]
+    else:
+        snapshot["raw_risk_state"] = pd.NA
+    snapshot["week_ago_raw_risk_state"] = pd.NA
+    snapshot["week_ago_basis_date"] = pd.NaT
+    for index, row in snapshot.iterrows():
+        selected = candidate_history_rows_at_offsets(
+            history,
+            row["candidate_id"],
+            row.get("basis_date"),
+            offsets=(5,),
+            valid_col="valid_signal",
+        )[5]
+        if selected is not None:
+            snapshot.at[index, "week_ago_raw_risk_state"] = selected["raw_risk_state"]
+            snapshot.at[index, "week_ago_basis_date"] = selected["date"]
+    return snapshot, history
+
+
+def _role_aware_outputs(payload: dict[str, Any]) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+    snapshot, history = _official_role_inputs(payload)
+    metadata = load_role_metadata(KOSDAQ_ROLE_METADATA)
+    outputs = compute_role_aware_market_outputs(
+        "KOSDAQ", payload["final10"], snapshot, history, metadata_document=metadata
+    )
+    return snapshot, outputs
+
+
 def _group_summary(payload: dict[str, Any]) -> str:
-    snapshot = payload["snapshot"]
-    history = payload.get("candidate_history")
+    snapshot, role_outputs = _role_aware_outputs(payload)
     summary: dict[str, dict[str, str]] = {}
-    offsets = (21, 10, 5, 0)
-    for family, name in (("COMBO2", "조합2"), ("COMBO1", "조합1")):
+    for family, name in (("COMBO1", "조합1"), ("COMBO2", "조합2")):
         rows = snapshot.loc[snapshot["model_family"].eq(family)]
         usable = rows.loc[rows["status"].eq("USABLE")]
-        risk_off = int(usable["raw_risk_state"].astype(bool).sum())
+        states = pd.to_numeric(usable["raw_risk_state"], errors="coerce").fillna(0).eq(1)
+        risk_off = int(states.sum())
         basis = max((_date(value) for value in usable["basis_date"]), default="계산 불가")
-        stages_by_offset = {offset: [] for offset in offsets}
-        for row in usable.itertuples(index=False):
-            historical = candidate_history_rows_at_offsets(
-                history,
-                row.candidate_id,
-                row.basis_date,
-                offsets=(21, 10),
-                valid_col="valid_signal",
-            )
-            for offset in (21, 10):
-                state = historical[offset]
-                stages_by_offset[offset].append(
-                    "계산 불가" if state is None else _stage(state.get("active_count"), row.K, row.L, state.get("raw_risk_state"))
-                )
-            stages_by_offset[5].append(_stage(row.week_ago_active_count, row.K, row.L, row.week_ago_raw_risk_state))
-            stages_by_offset[0].append(_stage(row.active_count, row.K, row.L, row.raw_risk_state))
         summary[name] = {
             "availability": f"<span style='color:{RISK_ON};font-weight:700'>{name} 계산 가능 {len(usable)} / {len(rows)}</span><span style='color:rgba(255,255,255,.55)'> · 계산 불가 {len(rows)-len(usable)}</span>",
             "risk": f"<span style='color:{RISK_OFF if risk_off else RISK_ON};font-weight:700'>{name} Risk-off(위험회피) {risk_off}/{len(rows)}</span><span style='color:rgba(255,255,255,.55)'> · 기준일 {basis}</span>",
-            "stages": {offset: _group_stage(stages_by_offset[offset]) for offset in offsets},
         }
     separator = "<span style='color:rgba(255,255,255,.36);padding:0 10px;'>|</span>"
-    combo2, combo1 = summary["조합2"], summary["조합1"]
-    combined = {offset: _combined_stage(combo1["stages"][offset], combo2["stages"][offset]) for offset in offsets}
-
-    def sequence(values: list[str]) -> str:
-        arrow = "<span style='color:rgba(255,255,255,.36);padding:0 4px;'>→</span>"
-        return arrow.join(_stage_html(value) for value in values)
-
     stage_line = (
-        "<span><b>시장단계 (1개월 전 → 2주 전 → 1주 전 → 오늘)</b> · 조합1+2: "
-        f"{sequence([combined[offset] for offset in offsets])}</span>{separator}"
-        f"<span>조합2: {sequence([combo2['stages'][offset] for offset in offsets])}</span>{separator}"
-        f"<span>조합1: {sequence([combo1['stages'][offset] for offset in offsets])}</span>"
+        "<div><b>시장단계</b> · 역할군 적용 · 공통 확정 Official T+1 기준"
+        " · 1개월 전 → 2주 전 → 1주 전 → 오늘</div>"
+        "<div class='role-aware-stage-lines'>"
+        f"<div><b>조합1</b> {format_role_stage_sequence(role_outputs, 'COMBO1')}</div>"
+        f"<div><b>조합2</b> {format_role_stage_sequence(role_outputs, 'COMBO2')}</div>"
+        f"<div><b>조합1+2</b> {format_role_stage_sequence(role_outputs, 'OVERALL')}</div>"
+        "</div>"
     )
+    combo1, combo2 = summary["조합1"], summary["조합2"]
     return (
         "<div class='macro2-helper-text' style='margin-top:6px;line-height:1.55;'>"
-        f"<div>{combo2['availability']}{separator}{combo1['availability']}</div>"
-        f"<div style='margin-top:2px;'>{combo2['risk']}{separator}{combo1['risk']}</div>"
+        f"<div>{combo1['availability']}{separator}{combo2['availability']}</div>"
+        f"<div style='margin-top:2px;'>{combo1['risk']}{separator}{combo2['risk']}</div>"
         f"<div style='margin-top:2px;'>{stage_line}</div></div>"
     )
 

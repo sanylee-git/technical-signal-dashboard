@@ -25,6 +25,8 @@ from kosdaq_macro7_ui import (
     _current_status_html,
     _group_summary,
     _main_chart,
+    _official_role_inputs,
+    _role_aware_outputs,
     _snapshot_row,
     _stage,
 )
@@ -86,8 +88,8 @@ def test_chart_ranges_and_default_candidate_are_bound_to_payload_basis_date() ->
     fig = _main_chart(payload, DEFAULT_CANDIDATE, row["basis_date"], 5)
     assert fig is not None
     assert pd.Timestamp(fig.layout.xaxis.range[1]).normalize() == pd.Timestamp(row["basis_date"]).normalize()
-    assert "조합1 6개/K3/L2" in fig.layout.title.text
-    assert DEFAULT_CANDIDATE == "combo2_m6_k3_l2_32c73aa82d8abc21"
+    assert "조합1 5개/K3/L2" in fig.layout.title.text
+    assert DEFAULT_CANDIDATE == "combo2_m5_k3_l2_50e15ab10d6cba46"
 
 
 def test_all_period_charts_start_at_official_evaluation_boundary() -> None:
@@ -150,7 +152,22 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     assert table.count("<th rowspan='2'") == 9
     assert "전체 CAGR" in table
     assert "x)</span>" in table
-    assert table.index("KOSDAQ 홀드") < table.index("Main1 MDD 방어형") < table.index("Main2 안정적 균형형") < table.index("성과 대표")
+    assert table.index("KOSDAQ 홀드") < table.index("[조합2 · main] 균형형") < table.index("[조합2 · Confirm 1] 공격진입형 + 민감감지형")
+
+
+def test_role_aware_stages_use_official_t1_and_user_role_classes() -> None:
+    payload = _payload()
+    snapshot, history = _official_role_inputs(payload)
+    _snapshot, outputs = _role_aware_outputs(payload)
+
+    assert snapshot["raw_risk_state"].tolist() == snapshot["risk_off_t1"].tolist()
+    assert history["raw_risk_state"].tolist() == history["risk_off_t1"].tolist()
+    assert len(outputs) == 12
+    assert all(row["state_status"] == "PASS" for row in outputs)
+    current = {row["combination"]: row for row in outputs if row["timepoint_code"] == "TODAY"}
+    assert (current["COMBO1"]["E_off"], current["COMBO1"]["M_off"], current["COMBO1"]["H_off"]) == (1, 2, 2)
+    assert (current["COMBO2"]["E_off"], current["COMBO2"]["M_off"], current["COMBO2"]["H_off"]) == (0, 2, 3)
+    assert current["OVERALL"]["stage_code"] == "SELL"
 
 
 def test_kosdaq_component_labels_and_status_remain_payload_driven() -> None:
@@ -174,11 +191,11 @@ def test_kosdaq_main_labels_and_combo_family_separator_are_display_only() -> Non
     payload = _payload()
     rows = payload["final10"].set_index("candidate_id")
 
-    assert "Main1 MDD 방어형" in _candidate_label(rows.loc["combo2_m6_k3_l2_32c73aa82d8abc21"])
-    assert "Main2 안정적 균형형" in _candidate_label(rows.loc["combo2_m5_k3_l2_50e15ab10d6cba46"])
-    assert "[조합2] 성과 대표" in _candidate_label(rows.loc["combo2_m7_k4_l3_58c1eaea19e6d371"])
-    assert "Main1 최고 성과형" in _candidate_label(rows.loc["combo1_n10_k8_l5_7d675fa2173be942"])
-    assert "Main2 사이클·수익형" in _candidate_label(rows.loc["combo1_n9_k7_l5_ef47fc166183b7f0"])
+    assert "[조합2 · main] 균형형" in _candidate_label(rows.loc["combo2_m5_k3_l2_50e15ab10d6cba46"])
+    assert "[조합2 · Confirm 1] 공격진입형 + 민감감지형" in _candidate_label(rows.loc["combo2_m7_k4_l3_58c1eaea19e6d371"])
+    assert "[조합2 · Confirm 4] 보수방어형 + 추세지속형" in _candidate_label(rows.loc["combo2_m7_k3_l2_1e7182522962de01"])
+    assert "[조합1 · main] 균형형 + 추세지속형" in _candidate_label(rows.loc["combo1_n10_k8_l5_7d675fa2173be942"])
+    assert "[조합1 · Confirm 1] 균형형 + 민감감지형" in _candidate_label(rows.loc["combo1_n9_k7_l5_ef47fc166183b7f0"])
 
     source = (ROOT / "kosdaq_macro7_ui.py").read_text(encoding="utf-8")
     assert "__macro7_kosdaq_combo1_separator__" in source

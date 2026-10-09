@@ -16,10 +16,13 @@ sys.path.insert(0, str(ROOT))
 
 from kosdaq_macro7_runtime.live_runtime import run_live_runtime
 from kosdaq_macro7_runtime.presentation_payload import build_presentation_payload
+from kosdaq_macro7_runtime.operating_assets import load_operating_final_inputs
+from dashboard_role_aware_market_stage import validate_market_metadata
+from dashboard_role_aware_stage import classify_role_combo
 
 
 ASSETS = ROOT / "kosdaq_macro7_assets"
-REPORT = ROOT / "reports/kosdaq_macro7_d2_1_presentation_payload.md"
+REPORT = ROOT / "reports/kosdaq_macro7_d3_role_aware_operating_validation.md"
 PRE_D2_1_IMMUTABLE = {
     "kosdaq_macro7_assets/kosdaq_macro7_final10.csv": "2048053e07be73fb76b6a8a6ee4b8ba0fe070ab13b52f66f4185db717c454551",
     "kosdaq_macro7_assets/kosdaq_macro7_combo2_child_mapping.csv": "0ab2fe1e202bad7014fe2c263dc0c60fc3247972511df95f446e2fafa2e7e5d3",
@@ -37,6 +40,7 @@ PRE_D2_1_IMMUTABLE = {
     "tests/test_kosdaq_macro7_d2_live_runtime.py": "be9763a7dccea42a9d74852f7c0651f060ab25a53a95043986ce3a34b65af679",
     "reports/kosdaq_macro7_d2_live_runtime_validation.md": "17b45da3789a82ad0c2db779ded7f867e739e0a2cacf52f3ab7dcadd6a26977b",
 }
+FROZEN_IMMUTABLE = {path: digest for path, digest in PRE_D2_1_IMMUTABLE.items() if path.startswith("kosdaq_macro7_assets/")}
 
 
 def _sha256(path: Path) -> str:
@@ -59,8 +63,14 @@ def _after_basis(frame: pd.DataFrame, key: str, bases: dict[str, pd.Timestamp]) 
 def validate(*, live_payload: dict[str, Any] | None = None, presentation_payload: dict[str, Any] | None = None) -> dict[str, Any]:
     live = live_payload or run_live_runtime()
     payload = presentation_payload or build_presentation_payload(live)
-    immutable_drift = [path for path, expected in PRE_D2_1_IMMUTABLE.items() if _sha256(ROOT / path) != expected]
-    contract = json.loads((ASSETS / "kosdaq_macro7_presentation_contract.json").read_text(encoding="utf-8"))
+    frozen_drift = [path for path, expected in FROZEN_IMMUTABLE.items() if _sha256(ROOT / path) != expected]
+    operating_manifest = json.loads((ASSETS / "operating/kosdaq_macro7_operating_manifest.json").read_text(encoding="utf-8"))
+    role_metadata = json.loads((ASSETS / "operating/kosdaq_macro7_role_metadata.json").read_text(encoding="utf-8"))
+    operating_final, _definitions, _children = load_operating_final_inputs()
+    operating_file_drift = [
+        name for name, expected in operating_manifest["operating_files"].items()
+        if _sha256(ASSETS / "operating" / name) != expected
+    ]
     final = payload["final10"].sort_values(["model_family", "display_slot"])
     snapshot = payload["snapshot"]
     bases = {
@@ -85,11 +95,25 @@ def validate(*, live_payload: dict[str, Any] | None = None, presentation_payload
     forbidden_hits = [token for token in forbidden if token in source]
     final_order = snapshot["candidate_id"].astype(str).tolist()
     expected_order = final["candidate_id"].astype(str).tolist()
+    role_validation = validate_market_metadata("KOSDAQ", operating_final, role_metadata)
+    role_assignment_pass = all(row["status"] == "PASS" for row in role_validation)
+    role_class_mismatch = []
+    for family in ("COMBO1", "COMBO2"):
+        for row in role_metadata["markets"]["KOSDAQ"][family]:
+            derived = classify_role_combo(row.get("role_1"), row.get("role_2")).warning_class
+            if derived != row.get("confirmation_type"):
+                role_class_mismatch.append(row["candidate_id"])
+    expected_default = operating_final.loc[
+        operating_final["model_family"].eq("COMBO2") & operating_final["display_slot"].eq(1), "candidate_id"
+    ].item()
     hard_pass = (
-        not immutable_drift
-        and contract["default_selected_candidate"] == "combo2_m7_k4_l3_58c1eaea19e6d371"
-        and contract["selection_semantics"] == "UI_INITIAL_DISPLAY_ONLY"
-        and contract["main_assignment"] is False
+        not frozen_drift
+        and not operating_file_drift
+        and set(operating_manifest["combo1_candidates"] + operating_manifest["combo2_candidates"]) == set(operating_final["candidate_id"].astype(str))
+        and operating_manifest["previous_combo2_removed"] == "combo2_m6_k3_l2_32c73aa82d8abc21"
+        and operating_manifest["combo2_added"] == "combo2_m7_k3_l2_1e7182522962de01"
+        and role_assignment_pass
+        and not role_class_mismatch
         and final_order == expected_order
         and len(snapshot) == 10
         and chart_parity == 0
@@ -105,8 +129,10 @@ def validate(*, live_payload: dict[str, Any] | None = None, presentation_payload
         and payload["invalid_component_as_risk_on_count"] == 0
     )
     return {
-        "gate": "PASS_KOSDAQ_MACRO7_D2_1_PRESENTATION_PAYLOAD_READY" if hard_pass else "FAIL_KOSDAQ_MACRO7_D2_1_PRESENTATION_PAYLOAD",
-        "immutable_drift": immutable_drift,
+        "gate": "PASS_KOSDAQ_MACRO7_D3_ROLE_AWARE_OPERATING" if hard_pass else "FAIL_KOSDAQ_MACRO7_D3_ROLE_AWARE_OPERATING",
+        "frozen_asset_drift": frozen_drift,
+        "operating_file_drift": operating_file_drift,
+        "role_class_mismatch": role_class_mismatch,
         "final10_count": len(snapshot),
         "final10_order_exact": final_order == expected_order,
         "chart_state_parity_mismatch": chart_parity,
@@ -117,9 +143,10 @@ def validate(*, live_payload: dict[str, Any] | None = None, presentation_payload
         "unavailable_as_risk_on_count": unavailable_as_risk_on,
         "forbidden_runtime_dependency_hits": forbidden_hits,
         "ui_side_model_calculation_count": payload["ui_side_model_calculation_count"],
-        "default_selected_candidate": contract["default_selected_candidate"],
-        "selection_semantics": contract["selection_semantics"],
-        "main_assignment": contract["main_assignment"],
+        "default_selected_candidate": expected_default,
+        "selection_semantics": "USER_LOCKED_MAIN_CONFIRM_ROLE_ASSIGNMENTS",
+        "main_assignment": True,
+        "role_assignment_validation": role_validation,
         "payload_shapes": {key: list(payload[key].shape) for key in ["candidate_history", "component_history", "component_chart_history", "benchmark_history", "performance_history", "frozen_display_metrics"]},
         "live_merge": payload["merge"],
     }
@@ -127,10 +154,10 @@ def validate(*, live_payload: dict[str, Any] | None = None, presentation_payload
 
 def _report(result: dict[str, Any]) -> str:
     lines = [
-        "# KOSDAQ Macro7 D2.1 Presentation Payload Validation",
+        "# KOSDAQ Final10 Role-Aware Operating Validation",
         "",
         f"- Gate: `{result['gate']}`",
-        "- Scope: chart-ready presentation payload only; Stage 3 state and Live semantics are unchanged.",
+        "- Scope: user-locked Final10, Official T+1 parity, presentation lineage, and role-aware stage mapping.",
         f"- Final10: `{result['final10_count']}`; exact D0 order: `{result['final10_order_exact']}`",
         f"- Default display candidate: `{result['default_selected_candidate']}`",
         f"- UI initial-display semantics: `{result['selection_semantics']}`; Main assignment: `{result['main_assignment']}`",
@@ -145,7 +172,9 @@ def _report(result: dict[str, Any]) -> str:
         f"- UNAVAILABLE interpreted as Risk-on: `{result['unavailable_as_risk_on_count']}`",
         f"- UI-side model calculation count: `{result['ui_side_model_calculation_count']}`",
         f"- Presentation runtime forbidden dependency hits: `{len(result['forbidden_runtime_dependency_hits'])}`",
-        f"- D0-D2 immutable drift: `{len(result['immutable_drift'])}`",
+        f"- Frozen baseline asset drift: `{len(result['frozen_asset_drift'])}`",
+        f"- Operating overlay manifest drift: `{len(result['operating_file_drift'])}`",
+        f"- Role / E-M-H confirmation mismatch: `{len(result['role_class_mismatch'])}`",
         "",
         "## Payload Shapes",
         "",

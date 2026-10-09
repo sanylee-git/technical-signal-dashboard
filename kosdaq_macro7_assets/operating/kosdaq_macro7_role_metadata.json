@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "authority": "user_explicitly_confirmed",
+  "confirmed_on": "2026-10-09",
+  "source_note": "KOSDAQ Final5 + Final5 roles and Main/Confirm assignments explicitly supplied by the user.",
+  "markets": {
+    "KOSDAQ": {
+      "COMBO1": [
+        {
+          "candidate_id": "combo1_n10_k8_l5_7d675fa2173be942",
+          "designation": "MAIN",
+          "confirmation_type": "H",
+          "role_1": "균형형",
+          "role_2": "추세지속형"
+        },
+        {
+          "candidate_id": "combo1_n9_k7_l5_ef47fc166183b7f0",
+          "designation": "CONFIRM",
+          "confirmation_type": "M",
+          "role_1": "균형형",
+          "role_2": "민감감지형"
+        },
+        {
+          "candidate_id": "combo1_n10_k7_l3_73a7886028ee8ceb",
+          "designation": "CONFIRM",
+          "confirmation_type": "H",
+          "role_1": "보수방어형",
+          "role_2": "추세지속형"
+        },
+        {
+          "candidate_id": "combo1_n9_k6_l3_eb2681f38d934aeb",
+          "designation": "CONFIRM",
+          "confirmation_type": "E",
+          "role_1": "보수방어형"
+        },
+        {
+          "candidate_id": "combo1_n8_k6_l3_68fad8e1263e8016",
+          "designation": "CONFIRM",
+          "confirmation_type": "M",
+          "role_1": "균형형"
+        }
+      ],
+      "COMBO2": [
+        {
+          "candidate_id": "combo2_m5_k3_l2_50e15ab10d6cba46",
+          "designation": "MAIN",
+          "confirmation_type": "M",
+          "role_1": "균형형"
+        },
+        {
+          "candidate_id": "combo2_m7_k4_l3_58c1eaea19e6d371",
+          "designation": "CONFIRM",
+          "confirmation_type": "M",
+          "role_1": "공격진입형",
+          "role_2": "민감감지형"
+        },
+        {
+          "candidate_id": "combo2_m8_k6_l5_9789467e69e7b1e9",
+          "designation": "CONFIRM",
+          "confirmation_type": "H",
+          "role_1": "공격진입형",
+          "role_2": "추세지속형"
+        },
+        {
+          "candidate_id": "combo2_m8_k6_l5_dc78b72794ed82f2",
+          "designation": "CONFIRM",
+          "confirmation_type": "H",
+          "role_1": "균형형",
+          "role_2": "추세지속형"
+        },
+        {
+          "candidate_id": "combo2_m7_k3_l2_1e7182522962de01",
+          "designation": "CONFIRM",
+          "confirmation_type": "H",
+          "role_1": "보수방어형",
+          "role_2": "추세지속형"
+        }
+      ]
+    }
+  }
+}

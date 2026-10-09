@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "authority": "user_explicitly_confirmed",
+  "confirmed_on": "2026-10-09",
+  "market": "KOSDAQ",
+  "selection_scope": "current operating Final10; frozen D0 baseline assets preserved read-only",
+  "combo1_candidates": [
+    "combo1_n10_k8_l5_7d675fa2173be942",
+    "combo1_n9_k7_l5_ef47fc166183b7f0",
+    "combo1_n10_k7_l3_73a7886028ee8ceb",
+    "combo1_n9_k6_l3_eb2681f38d934aeb",
+    "combo1_n8_k6_l3_68fad8e1263e8016"
+  ],
+  "combo2_candidates": [
+    "combo2_m5_k3_l2_50e15ab10d6cba46",
+    "combo2_m7_k4_l3_58c1eaea19e6d371",
+    "combo2_m8_k6_l5_9789467e69e7b1e9",
+    "combo2_m8_k6_l5_dc78b72794ed82f2",
+    "combo2_m7_k3_l2_1e7182522962de01"
+  ],
+  "previous_combo2_removed": "combo2_m6_k3_l2_32c73aa82d8abc21",
+  "combo2_added": "combo2_m7_k3_l2_1e7182522962de01",
+  "combo1_main": "combo1_n10_k8_l5_7d675fa2173be942",
+  "combo2_main": "combo2_m5_k3_l2_50e15ab10d6cba46",
+  "role_metadata_path": "kosdaq_macro7_assets/operating/kosdaq_macro7_role_metadata.json",
+  "new_combo2_authoritative_source": {
+    "candidate_id": "combo2_m7_k3_l2_1e7182522962de01",
+    "M": 7,
+    "K": 3,
+    "L": 2,
+    "source_artifact_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/validation/kosdaq_full_evaluation_20261007T141327Z/05_c2_full_evaluation.parquet",
+    "source_artifact_sha256": "0d58321de2b9baa4c69d3aaab3a068c8469d338028691e45a22bbe1b1200fd0f",
+    "candidate_hash": "a24d58f24cc79f570520e3581005b7a2867df9023ac248bd2626fe071bedc8d1",
+    "component_set_hash": "1e7182522962de01",
+    "official_t1_state_hash": "b845973aaa24137493e616c524f7e653bdc57552a29b1d7fffe07a84a536d78a",
+    "official_t1_risk_off_days": 2377,
+    "valid_day_count": 4518,
+    "official_t1_application_count": 1,
+    "additional_shift_count": 0,
+    "official_t1_reference_path": "/Users/ibaeksan/Documents/프로젝트/macro_dashboard_kosdaq/validation/kosdaq_incumbent_challenge_20261008T121750Z/official_t1_state_history.parquet"
+  },
+  "metrics": {
+    "CAGR": 0.18130767470140197,
+    "MDD": -0.14712460669471983,
+    "Calmar": 1.232340930416971,
+    "risk_off_ratio": 0.5263390880920762,
+    "cycle_count": 26,
+    "short_cycle_ratio": 0.12
+  },
+  "operating_files": {
+    "kosdaq_macro7_final10.csv": "2d09468ef5d0d890dac09a99ce4c1a9181196513f5658ff15565a61f72d4c8a2",
+    "kosdaq_macro7_combo2_child_mapping.csv": "b858a4bf6e72e24fd7743a021f5d5228bf907ffdddb5395e7634f8e7ae57329b",
+    "kosdaq_macro7_signal_definition_additions.csv": "49aa0b058f472838aaa0c291a8e0d58cf904e2da2b58c623e5530fff208945fe",
+    "final_t1_reference_additions.parquet": "ba6258578ffe084abc646beda136a0aecf4c75f932a4e594e390b25cff6858d4",
+    "kosdaq_macro7_role_metadata.json": "fca7feca762177f3ad59d762e01d011b944a2bb5337df0709d5807aefc4bd468"
+  }
+}

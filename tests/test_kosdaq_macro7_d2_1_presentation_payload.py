@@ -41,13 +41,14 @@ def test_presentation_payload_is_chart_ready_and_matches_stage3_state() -> None:
     live = run_live_runtime(as_of=datetime(2026, 8, 1, 8, tzinfo=timezone.utc), provider_frames=_frames())
     payload = build_presentation_payload(live)
     validation = validate(live_payload=live, presentation_payload=payload)
-    assert validation["gate"] == "PASS_KOSDAQ_MACRO7_D2_1_PRESENTATION_PAYLOAD_READY"
+    assert validation["gate"] == "PASS_KOSDAQ_MACRO7_D3_ROLE_AWARE_OPERATING"
+    assert validation["role_class_mismatch"] == []
     assert validation["chart_state_parity_mismatch"] == 0
     assert validation["candidate_history_after_basis_count"] == 0
     assert validation["component_history_after_basis_count"] == 0
     assert validation["benchmark_history_after_basis_count"] == 0
     assert validation["frozen_display_metric_max_abs_delta"] <= 5e-9
-    assert payload["snapshot"]["candidate_id"].tolist()[5] == "combo2_m7_k4_l3_58c1eaea19e6d371"
+    assert payload["snapshot"]["candidate_id"].tolist()[5] == "combo2_m5_k3_l2_50e15ab10d6cba46"
 
 
 def test_unavailable_stays_unavailable_in_presentation_payload() -> None:

@@ -15,10 +15,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from kosdaq_macro7_runtime.live_runtime import FROZEN_CUTOFF, run_live_runtime
+from kosdaq_macro7_runtime.operating_assets import load_frozen_display_states, load_operating_final_inputs
 
 
 ASSETS = ROOT / "kosdaq_macro7_assets"
-REPORT = ROOT / "reports/kosdaq_macro7_d2_live_runtime_validation.md"
+REPORT = ROOT / "reports/kosdaq_macro7_d3_role_aware_live_validation.md"
 IMMUTABLE = {
     "kosdaq_macro7_assets/kosdaq_macro7_final10.csv": "2048053e07be73fb76b6a8a6ee4b8ba0fe070ab13b52f66f4185db717c454551",
     "kosdaq_macro7_assets/kosdaq_macro7_combo2_child_mapping.csv": "0ab2fe1e202bad7014fe2c263dc0c60fc3247972511df95f446e2fafa2e7e5d3",
@@ -32,6 +33,7 @@ IMMUTABLE = {
     "kosdaq_macro7_assets/kosdaq_macro7_frozen_asset_manifest.json": "1f8db9dacb57d31744832964f86a86487892d8d692577c6cfb7c8adf86a1f10c",
     "reports/kosdaq_macro7_d1_frozen_replay_parity.md": "d2528f561a52f89e9d6ca2c0fc61384922f22329529e5ce142923babbccebba8",
 }
+FROZEN_IMMUTABLE = {path: digest for path, digest in IMMUTABLE.items() if path.startswith("kosdaq_macro7_assets/")}
 
 
 def _sha256(path: Path) -> str:
@@ -49,8 +51,29 @@ def _prefix_mismatch(actual: pd.DataFrame, reference_path: Path, keys: list[str]
         frame["date"] = pd.to_datetime(frame["date"]).dt.normalize()
     actual = actual.loc[actual["date"].le(FROZEN_CUTOFF)]
     expected = expected.loc[expected["date"].le(FROZEN_CUTOFF)]
+    id_column = keys[0]
+    common_ids = set(actual[id_column].astype(str)) & set(expected[id_column].astype(str))
+    actual = actual.loc[actual[id_column].astype(str).isin(common_ids)]
+    expected = expected.loc[expected[id_column].astype(str).isin(common_ids)]
     merged = actual.merge(expected, on=keys, how="outer", suffixes=("_actual", "_expected"), indicator=True)
     return int((merged["_merge"] != "both").sum()) + sum(int((merged[f"{column}_actual"] != merged[f"{column}_expected"]).sum()) for column in columns)
+
+
+def _operating_t1_addition_mismatch(actual: pd.DataFrame) -> int:
+    expected = load_frozen_display_states()
+    final, _definitions, _children = load_operating_final_inputs()
+    baseline_ids = set(pd.read_parquet(ASSETS / "frozen/final_t1_reference.parquet")["combo_id"].astype(str))
+    added_ids = set(final["candidate_id"].astype(str)) - baseline_ids
+    expected = expected.loc[expected["combo_id"].astype(str).isin(added_ids) & expected["date"].le(FROZEN_CUTOFF)]
+    observed = actual.loc[actual["combo_id"].astype(str).isin(added_ids)].copy()
+    observed["date"] = pd.to_datetime(observed["date"]).dt.normalize()
+    observed = observed.loc[observed["date"].le(FROZEN_CUTOFF), ["combo_id", "date", "risk_off_t1", "invest_position"]]
+    merged = observed.merge(expected, on=["combo_id", "date"], how="outer", suffixes=("_actual", "_expected"), indicator=True)
+    return (
+        int((merged["_merge"] != "both").sum())
+        + int((merged["risk_off_t1_actual"] != merged["risk_off_t1_expected"]).sum())
+        + int((merged["invest_position_actual"] != merged["invest_position_expected"]).sum())
+    )
 
 
 def _boundary_checks(result: dict[str, Any]) -> dict[str, int]:
@@ -84,7 +107,7 @@ def _boundary_checks(result: dict[str, Any]) -> dict[str, int]:
 def validate(*, live_result: dict[str, Any] | None = None) -> dict[str, Any]:
     result = live_result or run_live_runtime()
     contract = json.loads((ASSETS / "kosdaq_macro7_live_source_contract.json").read_text(encoding="utf-8"))
-    immutable_drift = [relative for relative, expected in IMMUTABLE.items() if _sha256(ROOT / relative) != expected]
+    immutable_drift = [relative for relative, expected in FROZEN_IMMUTABLE.items() if _sha256(ROOT / relative) != expected]
     source_coverage = sorted({family for source in contract["sources"] for family in source["required_by_indicator_families"]})
     prefix = {
         "core": _prefix_mismatch(result["core"], ASSETS / "frozen/core_signal_reference.parquet", ["candidate_id", "date"], ["valid_signal", "risk_state", "risk_start", "risk_end"]),
@@ -93,6 +116,7 @@ def validate(*, live_result: dict[str, Any] | None = None) -> dict[str, Any]:
         "final_combo2": _prefix_mismatch(result["final_combo2"], ASSETS / "frozen/final_combo2_raw_reference.parquet", ["combo_id", "date"], ["active_count", "valid", "raw_risk_state", "risk_start", "risk_end"]),
         "final_t1": _prefix_mismatch(result["t1"], ASSETS / "frozen/final_t1_reference.parquet", ["combo_id", "date"], ["risk_off_t1", "invest_position"]),
     }
+    operating_t1_addition_mismatch = _operating_t1_addition_mismatch(result["t1"])
     source_status = result["source_status"]
     boundary = _boundary_checks(result)
     freshness_bad = int((~source_status["freshness_status"].isin({"FRESH", "NO_NEW_RELEASE_EXPECTED", "EXPECTED_CADENCE_LAG"})).sum())
@@ -107,6 +131,7 @@ def validate(*, live_result: dict[str, Any] | None = None) -> dict[str, Any]:
         and result["merge"]["live_rows_on_or_before_cutoff_used_for_runtime"] == 0
         and result["merge"]["duplicate_date_count"] == 0
         and sum(prefix.values()) == 0
+        and operating_t1_addition_mismatch == 0
         and boundary["boundary_state_reset_count"] == 0
         and boundary["boundary_t1_reset_count"] == 0
         and result["invalid_component_as_risk_on_count"] == 0
@@ -124,6 +149,7 @@ def validate(*, live_result: dict[str, Any] | None = None) -> dict[str, Any]:
         "source_coverage": source_coverage,
         "freshness_bad_count": freshness_bad,
         "prefix_mismatch": prefix,
+        "operating_t1_addition_mismatch": operating_t1_addition_mismatch,
         "boundary": boundary,
         "isolation_hits": isolation_hits,
         "merge": result["merge"],
@@ -142,7 +168,7 @@ def _report(validation: dict[str, Any]) -> str:
     lines.extend(f"| {row['source_id']} | {row.get('observation_date') or '-'} | {row.get('available_through_date') or '-'} | {row.get('freshness_status')} |" for row in validation["source_status"])
     lines.extend(["", "## Final10 Snapshot", "", "| Candidate | Basis | Valid | Raw Risk-off |", "|---|---|---:|---:|"])
     lines.extend(f"| {row['candidate_id']} | {row.get('basis_date') or '-'} | {row.get('valid')} | {row.get('raw_risk_state', '-')} |" for row in validation["snapshot"])
-    lines.extend(["", "## Contract Checks", "", f"- Frozen prefix mismatch: `{sum(validation['prefix_mismatch'].values())}`", f"- Boundary state reset: `{validation['boundary']['boundary_state_reset_count']}`", f"- Boundary T+1 reset: `{validation['boundary']['boundary_t1_reset_count']}`", f"- Invalid interpreted as Risk-on: `{validation['invalid_component_as_risk_on_count']}`", f"- Combo2 input: `{validation['combo2_input_semantics']}`", f"- Final T+1 application count: `{validation['final_t1_application_count']}`", f"- KOSPI/research runtime isolation hits: `{validation['isolation_hits']}`", f"- Immutable baseline drift: `{len(validation['immutable_drift'])}`", "", "A source observation date is retained as source metadata. Live model rows are KRX calculation trading dates; current segment returns end at each candidate basis date."])
+    lines.extend(["", "## Contract Checks", "", f"- Frozen baseline candidate intersection mismatch: `{sum(validation['prefix_mismatch'].values())}`", f"- Added operating candidate Official T+1 mismatch: `{validation['operating_t1_addition_mismatch']}`", f"- Boundary state reset: `{validation['boundary']['boundary_state_reset_count']}`", f"- Boundary T+1 reset: `{validation['boundary']['boundary_t1_reset_count']}`", f"- Invalid interpreted as Risk-on: `{validation['invalid_component_as_risk_on_count']}`", f"- Combo2 input: `{validation['combo2_input_semantics']}`", f"- Final T+1 application count: `{validation['final_t1_application_count']}`", f"- KOSPI/research runtime isolation hits: `{validation['isolation_hits']}`", f"- Immutable baseline drift: `{len(validation['immutable_drift'])}`", "", "Historical frozen references remain unchanged; retained candidates are compared to their baseline references and added candidates to the separately pinned Official T+1 operating reference."])
     return "\n".join(lines) + "\n"
 
 

@@ -22,6 +22,7 @@ from .frozen_replay import (
     _rsi,
     _wilder_atr,
 )
+from .operating_assets import load_frozen_display_states, load_operating_final_inputs
 
 
 ASSETS = Path(__file__).resolve().parents[1] / "kosdaq_macro7_assets"
@@ -63,9 +64,8 @@ def _frame_with_date(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def _final_and_definitions() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    final = pd.read_csv(ASSETS / "kosdaq_macro7_final10.csv").sort_values(["model_family", "display_slot"])
-    definitions = pd.read_csv(ASSETS / "kosdaq_macro7_signal_definitions.csv")
-    children = pd.read_csv(ASSETS / "kosdaq_macro7_combo2_child_mapping.csv")
+    final, definitions, children = load_operating_final_inputs()
+    final = final.sort_values(["model_family", "display_slot"])
     return final.reset_index(drop=True), definitions.reset_index(drop=True), children.reset_index(drop=True)
 
 
@@ -298,7 +298,7 @@ def _frozen_display_metrics(final: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataF
     frozen["date"] = pd.to_datetime(frozen["date"]).dt.normalize()
     frozen = frozen.loc[frozen["kosdaq_performance_calendar_eligible"].astype(bool)].set_index("date").sort_index()
     close = pd.to_numeric(frozen["kosdaq_close"], errors="coerce")
-    t1 = pd.read_parquet(ASSETS / "frozen/final_t1_reference.parquet")
+    t1 = load_frozen_display_states()
     t1["date"] = pd.to_datetime(t1["date"]).dt.normalize()
     cutoff = pd.Timestamp(FROZEN_CUTOFF)
     start = pd.Timestamp(EVALUATION_START)
