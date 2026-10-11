@@ -19,6 +19,7 @@ import streamlit as st
 
 from dashboard_timepoints import (
     candidate_history_rows_at_offsets,
+    candidate_signal_position_rows_at_offsets,
     risk_state_short_label,
     timepoint_cell_date_html,
     timepoint_date_key,
@@ -128,15 +129,20 @@ def _decision_signal_html(active_count: object, k: object, l: object, risk_state
         stage = _stage(active_count, k, l, state)
     except (TypeError, ValueError, OverflowError):
         return "계산 불가"
-    return (
-        f"<span style='color:var(--text-color,#D6D6D6);font-weight:600'>{escape(count)}</span> · {_stage_html(stage)}"
-    )
+    return f"<span style='color:{STAGE_COLORS.get(stage, '#AFAFAF')};font-weight:700'>{escape(count)}</span>"
 
 
 def _applied_position_html(risk_off: object) -> str:
     label = risk_state_short_label(risk_off)
     color = RISK_OFF if label == "R-off" else RISK_ON if label == "R-on" else "#AFAFAF"
     return f"<span style='color:{color};font-weight:700'>{escape(label)}</span>"
+
+
+def _stage_position_html(active_count: object, k: object, l: object, signal_state: object, position_state: object) -> str:
+    stage = _stage(active_count, k, l, signal_state)
+    position = risk_state_short_label(position_state)
+    color = RISK_OFF if position == "R-off" else RISK_ON if position == "R-on" else "#AFAFAF"
+    return f"{_stage_html(stage)} <span style='color:{color};font-weight:700;'>({escape(position)})</span>"
 
 
 def _on_k_html(active_count: object, k: object, risk_off: object, component_count: object = None) -> str:
@@ -512,7 +518,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
     metrics = payload["frozen_display_metrics"]
     hold = payload["benchmark_display_metrics"].set_index("window")
     base_headers = ["역할 / 후보", "10Y 자산", _full_asset_header(payload["backtest_windows"]), "전체 CAGR", "10Y MDD", "전체 MDD", "전체 Risk-off", "전체 Cycle", "짧은 Cycle"]
-    widths = ["300px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["130px", "82px"] * 4
+    widths = ["300px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["100px", "106px"] * 4
     colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in widths) + "</colgroup>"
     style = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
     rows = []
@@ -523,15 +529,18 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
     for _, candidate in final.iterrows():
         candidate_id = str(candidate["candidate_id"])
         state = snapshot.loc[candidate_id]
-        historical = candidate_history_rows_at_offsets(
+        historical = candidate_signal_position_rows_at_offsets(
             history,
             candidate_id,
             state.get("basis_date"),
             offsets=offsets,
+            signal_state_col="raw_risk_state",
+            position_state_col="risk_off_t1",
             valid_col="valid_signal",
         )
         history_by_candidate[candidate_id] = historical
-        for offset, point in historical.items():
+        for offset, pair in historical.items():
+            point = pair["application_row"]
             if point is not None:
                 date = timepoint_date_key(point.get("date"))
                 if date is not None:
@@ -551,23 +560,28 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
         historical = history_by_candidate[cid]
         selected_style = "background:rgba(120,126,231,.16);border-top:1px solid rgba(120,126,231,.34);border-bottom:1px solid rgba(120,126,231,.34);" if cid == selected_id else ""
         cells = [
-            f"<td title='{escape(_candidate_label(candidate))}' style='padding:7px 8px;color:#EDEDED;font-weight:700;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{escape(_candidate_label(candidate))}</td>",
+            f"<td title='{escape(_candidate_label(candidate))}' style='padding:7px 8px;color:#EDEDED;font-weight:700;text-align:left;white-space:normal;overflow-wrap:anywhere'>{escape(_candidate_label(candidate))}</td>",
             f"<td style='{style}'>{_metric_html(ten.asset, ten_hold.asset, _fmt_asset, higher_is_better=True)}</td>", f"<td style='{style}'>{_metric_html(full.asset, full_hold.asset, _fmt_asset, higher_is_better=True)}</td>", f"<td style='{style}'>{_metric_html(full.cagr, full_hold.cagr, _fmt_pct, higher_is_better=True)}</td>",
             f"<td style='{style}'>{_metric_html(ten.mdd, ten_hold.mdd, _fmt_pct, higher_is_better=False)}</td>", f"<td style='{style}'>{_metric_html(full.mdd, full_hold.mdd, _fmt_pct, higher_is_better=False)}</td>", f"<td style='{style}'>{_fmt_pct(full.risk_off_ratio)}</td>",
             f"<td style='{style}'>{int(full.cycle)}</td>", f"<td style='{style}'>{int(full.short_cycle)}</td>",
         ]
         for offset in offsets:
-            point = historical[offset]
-            if point is None:
+            pair = historical[offset]
+            point = pair["signal_row"]
+            application = pair["application_row"]
+            if point is None or application is None or not pair["aligned"]:
                 signal_html, position_html = "계산 불가", _applied_position_html(None)
             else:
                 signal_html = _decision_signal_html(
                     point.get("active_count"), state.K, state.L,
                     point.get("raw_risk_state"), candidate.get("n_or_m"),
                 )
-                position_html = _applied_position_html(point.get("risk_off_t1"))
+                position_html = _stage_position_html(
+                    point.get("active_count"), state.K, state.L,
+                    point.get("raw_risk_state"), application.get("risk_off_t1"),
+                )
                 if len(timepoint_dates[offset]) > 1:
-                    signal_html = timepoint_cell_date_html(point.get("date")) + signal_html
+                    signal_html = timepoint_cell_date_html(application.get("date")) + signal_html
             cells.append(f"<td style='padding:5px 4px;text-align:center;line-height:1.35'>{signal_html}</td>")
             cells.append(f"<td style='padding:7px 4px;text-align:center'>{position_html}</td>")
         rows.append(f"<tr style='{selected_style}'>" + "".join(cells) + "</tr>")
@@ -582,12 +596,12 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
     )
     subheaders = "".join(
         f"<th style='text-align:center;padding:6px 4px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>{label}</th>"
-        for _ in range(4) for label in ("당일 확정 신호", "당시 포지션")
+        for _ in range(4) for label in ("근거 신호", "당시 포지션")
     )
     return (
-        "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:1792px;min-width:1792px;table-layout:fixed;border-collapse:collapse;font-size:11px'>"
+        "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:1768px;min-width:1768px;table-layout:fixed;border-collapse:collapse;font-size:11px'>"
         + colgroup + f"<thead><tr>{base_head}{groups}</tr><tr>{subheaders}</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>"
-        + "<div style='margin-top:5px;color:var(--secondary-text-color,#8F8F8F);font-size:10px'>당일 확정 신호는 해당 거래일 기준이며, 당시 포지션은 해당 날짜의 Official T+1 결과입니다.</div>"
+        + "<div style='margin-top:5px;color:var(--secondary-text-color,#8F8F8F);font-size:10px'>날짜는 포지션 적용일 기준이며, 근거 신호는 직전 거래일의 공식 신호입니다. 당시 포지션은 기존 Official T+1 결과입니다.</div>"
     )
 
 

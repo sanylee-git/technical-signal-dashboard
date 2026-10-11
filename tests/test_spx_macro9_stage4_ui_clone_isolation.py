@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from dashboard_timepoints import candidate_signal_position_rows_at_offsets
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -112,22 +113,23 @@ def test_spx_backtest_table_adds_four_grouped_timepoints_and_keeps_today_week_va
 
     html = _backtest_table(payload, "COMBO2", str(candidate["candidate_id"]), final)
 
-    assert "min-width:1792px" in html
+    assert "min-width:1768px" in html
+    assert "overflow-wrap:anywhere" in html
     assert html.count("<table ") == 1
     assert html.count("</table>") == 1
     assert "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table" in html
     assert "width:300px" in html
     assert html.count("<col style='width:87px'>") == 2
-    assert html.count("<col style='width:130px'>") == 4
-    assert html.count("<col style='width:82px'>") == 4
+    assert html.count("<col style='width:100px'>") == 4
+    assert html.count("<col style='width:106px'>") == 4
     assert all(label in html for label in ("1개월 전", "2주 전", "1주 전", "오늘"))
-    assert all(label in html for label in ("당일 확정 신호", "당시 포지션", "Official T+1 결과"))
+    assert all(label in html for label in ("근거 신호", "당시 포지션", "Official T+1 결과"))
     assert html.count("<th colspan='2'") == 4
     assert html.count("<th rowspan='2'") == 9
     history = payload["candidate_history"].loc[lambda frame: frame["candidate_id"].eq(candidate.candidate_id)]
     assert history["signal_risk_state"].isin([0, 1]).all()
     assert history["official_t1_risk_off"].isin([0, 1]).all()
-    assert "(R-off)" not in html and "(R-on)" not in html
+    assert "(R-off)" in html or "(R-on)" in html
     combo2_rows = final.loc[final["model_family"].eq("COMBO2")].set_index("candidate_id")
     combo2_ordered_ids = [
         "6b4595522bbed808d41be978",
@@ -154,16 +156,26 @@ def test_spx_backtest_table_adds_four_grouped_timepoints_and_keeps_today_week_va
 
 def test_spx_combo2_history_keeps_raw_signal_and_official_t1_parity(payload: dict[str, object]) -> None:
     final = _display_final(payload["final10"])
-    candidate_id = str(final.loc[final["model_family"].eq("COMBO2"), "candidate_id"].iloc[0])
-    history = payload["candidate_history"].loc[
-        payload["candidate_history"]["candidate_id"].eq(candidate_id)
-    ].sort_values("date")
-    signal = history["signal_risk_state"].astype(int).reset_index(drop=True)
-    position = history["official_t1_risk_off"].astype(int).reset_index(drop=True)
-
-    assert signal.isin([0, 1]).all()
-    assert position.isin([0, 1]).all()
-    assert position.iloc[1:].tolist() == signal.iloc[:-1].tolist()
+    snapshot = payload["snapshot"].set_index("candidate_id")
+    history = payload["candidate_history"]
+    for candidate in final.itertuples(index=False):
+        candidate_history = history.loc[history["candidate_id"].astype(str).eq(str(candidate.candidate_id))].sort_values("date")
+        signal = candidate_history["signal_risk_state"].astype(int).reset_index(drop=True)
+        position = candidate_history["official_t1_risk_off"].astype(int).reset_index(drop=True)
+        assert signal.isin([0, 1]).all()
+        assert position.isin([0, 1]).all()
+        if str(candidate.model_family).upper() == "COMBO1":
+            assert position.tolist() == signal.tolist()
+            signal_lag = 0
+        else:
+            assert position.iloc[1:].tolist() == signal.iloc[:-1].tolist()
+            signal_lag = 1
+        pairs = candidate_signal_position_rows_at_offsets(
+            history, candidate.candidate_id, snapshot.loc[candidate.candidate_id, "basis_date"],
+            signal_state_col="signal_risk_state", position_state_col="official_t1_risk_off",
+            offsets=(21, 10, 5, 0), valid_col="valid_signal", signal_lag_sessions=signal_lag,
+        )
+        assert all(pair["aligned"] for pair in pairs.values() if pair["application_row"] is not None)
 
 
 def test_spx_backtest_table_uses_signal_day_count_when_live_signal_count_is_present(payload: dict[str, object]) -> None:
@@ -172,7 +184,11 @@ def test_spx_backtest_table_uses_signal_day_count_when_live_signal_count_is_pres
     state = payload["snapshot"].set_index("candidate_id").loc[candidate["candidate_id"]]
     history = payload["candidate_history"].copy()
     history["signal_active_count"] = history["active_count"]
-    mask = history["candidate_id"].astype(str).eq(str(candidate["candidate_id"])) & pd.to_datetime(history["date"]).eq(pd.Timestamp(state["basis_date"]))
+    candidate_history = history.loc[history["candidate_id"].astype(str).eq(str(candidate["candidate_id"]))].sort_values("date")
+    candidate_history = candidate_history.reset_index(drop=True)
+    application_position = candidate_history.index[pd.to_datetime(candidate_history["date"]).eq(pd.Timestamp(state["basis_date"]))][0]
+    signal_date = pd.Timestamp(candidate_history.iloc[application_position - 1]["date"])
+    mask = history["candidate_id"].astype(str).eq(str(candidate["candidate_id"])) & pd.to_datetime(history["date"]).eq(signal_date)
     history.loc[mask, "active_count"] = int(state["K"])
     history.loc[mask, "signal_active_count"] = int(state["L"])
     adjusted_payload = {**payload, "candidate_history": history}

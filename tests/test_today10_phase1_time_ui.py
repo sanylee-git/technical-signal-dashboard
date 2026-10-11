@@ -4,6 +4,7 @@ import pandas as pd
 
 from dashboard_timepoints import (
     candidate_history_rows_at_offsets,
+    candidate_signal_position_rows_at_offsets,
     history_rows_at_offsets,
     risk_state_short_label,
     timepoint_header_html,
@@ -94,3 +95,85 @@ def test_single_history_selector_handles_missing_and_short_histories() -> None:
     assert actual[5]["value"] == 0
     assert actual[0]["value"] == 5
     assert all(value is None for value in history_rows_at_offsets(history, "not-a-date").values())
+
+
+def test_signal_position_pair_uses_prior_trading_row_and_existing_official_position() -> None:
+    dates = pd.to_datetime(["2026-03-06", "2026-03-09", "2026-03-10"])
+    history = pd.DataFrame({
+        "candidate_id": "c1",
+        "date": dates,
+        "signal_risk_state": [0, 1, 1],
+        "official_t1_risk_off": [pd.NA, 0, 1],
+        "active_count": [1, 3, 4],
+        "valid_signal": True,
+    })
+
+    paired = candidate_signal_position_rows_at_offsets(
+        history,
+        "c1",
+        dates[-1],
+        offsets=(1, 0),
+        signal_state_col="signal_risk_state",
+        position_state_col="official_t1_risk_off",
+        valid_col="valid_signal",
+    )
+
+    assert paired[1]["aligned"] is True
+    assert pd.Timestamp(paired[1]["signal_row"]["date"]) == pd.Timestamp("2026-03-06")
+    assert pd.Timestamp(paired[1]["application_row"]["date"]) == pd.Timestamp("2026-03-09")
+    assert int(paired[1]["application_row"]["official_t1_risk_off"]) == 0
+    assert paired[0]["aligned"] is True
+    assert pd.Timestamp(paired[0]["signal_row"]["date"]) == pd.Timestamp("2026-03-09")
+    assert pd.Timestamp(paired[0]["application_row"]["date"]) == pd.Timestamp("2026-03-10")
+    assert int(paired[0]["application_row"]["official_t1_risk_off"]) == 1
+
+
+def test_signal_position_pair_fails_closed_on_first_day_or_official_t1_mismatch() -> None:
+    dates = pd.to_datetime(["2026-03-06", "2026-03-09"])
+    history = pd.DataFrame({
+        "candidate_id": "c1",
+        "date": dates,
+        "signal_risk_state": [1, 1],
+        "official_t1_risk_off": [pd.NA, 0],
+        "active_count": [3, 4],
+        "valid_signal": True,
+    })
+
+    paired = candidate_signal_position_rows_at_offsets(
+        history,
+        "c1",
+        dates[-1],
+        offsets=(1, 0),
+        signal_state_col="signal_risk_state",
+        position_state_col="official_t1_risk_off",
+        valid_col="valid_signal",
+    )
+
+    assert paired[1]["aligned"] is False
+    assert paired[1]["reason"] == "NO_SOURCE_SIGNAL_ROW"
+    assert paired[0]["aligned"] is False
+    assert paired[0]["reason"] == "OFFICIAL_T1_MISMATCH_OR_MISSING"
+
+
+def test_signal_position_pair_supports_component_t1_applied_before_candidate_aggregation() -> None:
+    dates = pd.to_datetime(["2026-03-06", "2026-03-09"])
+    history = pd.DataFrame({
+        "candidate_id": "combo1",
+        "date": dates,
+        "signal_risk_state": [0, 1],
+        "official_t1_risk_off": [0, 1],
+        "active_count": [2, 4],
+        "valid_signal": True,
+    })
+    paired = candidate_signal_position_rows_at_offsets(
+        history,
+        "combo1",
+        dates[-1],
+        offsets=(0,),
+        signal_state_col="signal_risk_state",
+        position_state_col="official_t1_risk_off",
+        valid_col="valid_signal",
+        signal_lag_sessions=0,
+    )
+    assert paired[0]["aligned"] is True
+    assert pd.Timestamp(paired[0]["signal_row"]["date"]) == dates[-1]

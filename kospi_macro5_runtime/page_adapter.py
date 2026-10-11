@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -90,8 +91,13 @@ def load_macro5_live_page_data(as_of_utc: datetime | None = None) -> dict[str, A
             additional_metadata=component_additions,
         ),
     )
-    candidate_history = _candidate_signal_history(ctx, live["operating_final10"], metrics)
     component_history = _component_signal_history(ctx, live, operating_dictionary, metrics)
+    candidate_history = _candidate_signal_history(
+        ctx,
+        live["operating_final10"],
+        metrics,
+        component_history=component_history,
+    )
     official_history, official_snapshot, individual_timepoints, role_outputs, red_contract = _role_aware_outputs(
         candidate_freshness,
         candidate_history,
@@ -706,6 +712,8 @@ def _candidate_signal_history(
     ctx: D1C1Context,
     final9_live: pd.DataFrame,
     candidate_metrics: pd.DataFrame | None = None,
+    *,
+    component_history: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     frozen = _read_asset_frame(ctx, "kospi_final9_reference_signals.parquet")
     if "valid_signal" not in frozen.columns:
@@ -715,6 +723,14 @@ def _candidate_signal_history(
     metrics = candidate_metrics
     if metrics is None:
         metrics = pd.read_csv(ctx.asset_dir / "kospi_final9_candidate_metrics.csv")
+    if component_history is not None and not component_history.empty:
+        frozen, count_recovery_qa = _recover_combo2_frozen_counts(
+            frozen,
+            component_history,
+            final9_live,
+        )
+    else:
+        count_recovery_qa = pd.DataFrame()
     slot_by_id = dict(zip(metrics["candidate_id"], metrics["slot"]))
     live = final9_live.copy()
     live["date"] = pd.to_datetime(live["date"]).dt.normalize()
@@ -737,7 +753,92 @@ def _candidate_signal_history(
             "active_count",
         ]
     ].copy()
-    return _append_live_tail_and_new(frozen, live, ["candidate_id", "date"], "candidate_id")
+    history = _append_live_tail_and_new(frozen, live, ["candidate_id", "date"], "candidate_id")
+    history.attrs["combo2_count_recovery_qa"] = count_recovery_qa
+    return history
+
+
+def _recover_combo2_frozen_counts(
+    frozen: pd.DataFrame,
+    component_history: pd.DataFrame,
+    candidate_specs: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Fill absent frozen Combo2 count cells from their exact saved child states."""
+    out = frozen.copy()
+    if "on_count" not in out:
+        out["on_count"] = pd.NA
+    out["candidate_id"] = out["candidate_id"].astype(str)
+    out["date"] = pd.to_datetime(out["date"], errors="coerce").dt.normalize()
+
+    components = component_history.copy()
+    components["parent_candidate_id"] = components["parent_candidate_id"].astype(str)
+    components["date"] = pd.to_datetime(components["date"], errors="coerce").dt.normalize()
+    specs = candidate_specs.drop_duplicates("candidate_id").set_index("candidate_id", drop=False)
+    qa_rows: list[dict[str, Any]] = []
+
+    combo2_ids = set(
+        out.loc[out["model_type"].astype(str).str.lower().eq("combo2"), "candidate_id"]
+    )
+    for candidate_id in sorted(combo2_ids):
+        candidate_rows = out.loc[out["candidate_id"].eq(candidate_id)].copy()
+        spec = specs.loc[candidate_id] if candidate_id in specs.index else None
+        expected_ids: set[str] = set()
+        if spec is not None and "component_ids_json" in spec:
+            try:
+                expected_ids = {str(value) for value in json.loads(str(spec["component_ids_json"]))}
+            except (TypeError, ValueError, json.JSONDecodeError):
+                expected_ids = set()
+
+        parent_components = components.loc[components["parent_candidate_id"].eq(candidate_id)]
+        recovered: dict[pd.Timestamp, int] = {}
+        invalid_dates = 0
+        for date, rows in parent_components.groupby("date", sort=False):
+            states = pd.to_numeric(rows.get("component_risk_state"), errors="coerce")
+            component_ids = rows["component_id"].astype(str)
+            valid = (
+                bool(expected_ids)
+                and component_ids.is_unique
+                and set(component_ids) == expected_ids
+                and states.notna().all()
+                and states.isin([0, 1]).all()
+                and (
+                    "valid_signal" not in rows
+                    or rows["valid_signal"].fillna(False).astype(bool).all()
+                )
+            )
+            if valid:
+                recovered[pd.Timestamp(date)] = int(states.astype(int).sum())
+            else:
+                invalid_dates += 1
+
+        target = candidate_rows["date"].map(recovered)
+        target.index = candidate_rows.index
+        existing = pd.to_numeric(out.loc[candidate_rows.index, "on_count"], errors="coerce")
+        comparable = existing.notna() & target.notna()
+        mismatch_count = int((existing[comparable] != target[comparable]).sum())
+        fill = existing.isna() & target.notna()
+        out.loc[candidate_rows.index[fill], "on_count"] = target.loc[fill].astype(int)
+        recovered_rows = int(target.notna().sum())
+        qa_rows.append(
+            {
+                "candidate_id": candidate_id,
+                "expected_component_count": len(expected_ids),
+                "frozen_rows": int(len(candidate_rows)),
+                "recovered_count_rows": recovered_rows,
+                "remaining_count_missing": int(len(candidate_rows) - out.loc[candidate_rows.index, "on_count"].notna().sum()),
+                "invalid_component_dates": invalid_dates,
+                "existing_count_mismatch": mismatch_count,
+                "status": (
+                    "PASS"
+                    if expected_ids
+                    and recovered_rows == len(candidate_rows)
+                    and mismatch_count == 0
+                    and invalid_dates == 0
+                    else "PARTIAL_OR_MISMATCH"
+                ),
+            }
+        )
+    return out, pd.DataFrame(qa_rows)
 
 
 def _core15_component_history(core_live: pd.DataFrame) -> pd.DataFrame:

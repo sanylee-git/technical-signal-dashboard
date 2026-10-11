@@ -104,6 +104,93 @@ def candidate_history_rows_at_offsets(
     )
 
 
+def candidate_signal_position_rows_at_offsets(
+    history: pd.DataFrame | None,
+    candidate_id: object,
+    reference_date: object,
+    *,
+    signal_state_col: str,
+    position_state_col: str,
+    offsets: Iterable[int] = TIMEPOINT_OFFSETS,
+    candidate_col: str = "candidate_id",
+    date_col: str = "date",
+    valid_col: str | None = None,
+    signal_lag_sessions: int = 1,
+) -> dict[int, dict[str, object]]:
+    """Pair each application row with the source-exact signal history row.
+
+    This is presentation-only: the application row's official T+1 state is
+    never shifted or recomputed. ``signal_lag_sessions`` follows the existing
+    market/strategy history contract: 1 for raw signal histories whose T+1
+    position is stored on the next row, 0 when component T+1 has already been
+    applied before candidate aggregation. A pair is aligned only on an exact
+    binary-state match.
+    """
+    if signal_lag_sessions < 0:
+        raise ValueError("signal_lag_sessions must be non-negative")
+    selected = candidate_history_rows_at_offsets(
+        history,
+        candidate_id,
+        reference_date,
+        offsets=offsets,
+        candidate_col=candidate_col,
+        date_col=date_col,
+        valid_col=valid_col,
+    )
+    empty = {
+        offset: {"application_row": None, "signal_row": None, "aligned": False, "reason": "NO_APPLICATION_ROW"}
+        for offset in selected
+    }
+    if history is None or not isinstance(history, pd.DataFrame) or history.empty:
+        return empty
+    if not {candidate_col, date_col, signal_state_col, position_state_col}.issubset(history.columns):
+        return {
+            offset: {"application_row": row, "signal_row": None, "aligned": False, "reason": "MISSING_STATE_COLUMN"}
+            for offset, row in selected.items()
+        }
+
+    rows = history.loc[history[candidate_col].astype(str).eq(str(candidate_id))].copy()
+    dates = pd.to_datetime(rows[date_col], errors="coerce")
+    if dates.dt.tz is not None:
+        dates = dates.dt.tz_localize(None)
+    rows[date_col] = dates.dt.normalize()
+    rows = rows.dropna(subset=[date_col]).sort_values(date_col, kind="mergesort")
+    rows = rows.drop_duplicates(date_col, keep="last").reset_index(drop=True)
+
+    paired: dict[int, dict[str, object]] = {}
+    for offset, application in selected.items():
+        if application is None:
+            paired[offset] = empty[offset]
+            continue
+        application_date = pd.to_datetime(application.get(date_col), errors="coerce")
+        if pd.isna(application_date):
+            paired[offset] = {"application_row": application, "signal_row": None, "aligned": False, "reason": "INVALID_APPLICATION_DATE"}
+            continue
+        application_date = pd.Timestamp(application_date).normalize()
+        application_positions = rows.index[rows[date_col].eq(application_date)].tolist()
+        if not application_positions:
+            paired[offset] = {"application_row": application, "signal_row": None, "aligned": False, "reason": "APPLICATION_ROW_NOT_IN_HISTORY"}
+            continue
+        signal_position = application_positions[-1] - signal_lag_sessions
+        if signal_position < 0:
+            paired[offset] = {"application_row": application, "signal_row": None, "aligned": False, "reason": "NO_SOURCE_SIGNAL_ROW"}
+            continue
+        signal = rows.iloc[signal_position].copy()
+        if valid_col and valid_col in signal and not _truthy_valid(signal[valid_col]):
+            paired[offset] = {"application_row": application, "signal_row": signal, "aligned": False, "reason": "PRIOR_SIGNAL_INVALID"}
+            continue
+        signal_state = _binary_state(signal.get(signal_state_col))
+        applied_state = _binary_state(application.get(position_state_col))
+        aligned = signal_state is not None and applied_state is not None and signal_state == applied_state
+        paired[offset] = {
+            "application_row": application,
+            "signal_row": signal,
+            "aligned": aligned,
+            "reason": "PASS" if aligned else "OFFICIAL_T1_MISMATCH_OR_MISSING",
+        }
+    return paired
+
+
 def risk_state_short_label(value: object) -> str:
     """Render only an authoritative binary state; never infer it from stage text."""
     try:
@@ -123,3 +210,13 @@ def _truthy_valid(value: object) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "y"}
     return bool(value)
+
+
+def _binary_state(value: object) -> int | None:
+    try:
+        if pd.isna(value):
+            return None
+        state = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return state if state in (0, 1) else None

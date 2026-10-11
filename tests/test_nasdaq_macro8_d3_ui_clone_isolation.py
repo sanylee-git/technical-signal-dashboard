@@ -5,6 +5,7 @@ import sys
 import json
 
 import pandas as pd
+from dashboard_timepoints import candidate_signal_position_rows_at_offsets
 import pytest
 from streamlit.testing.v1 import AppTest
 
@@ -15,7 +16,7 @@ if str(ROOT) not in sys.path:
 
 from nasdaq_macro8_runtime.frozen_runtime import run_frozen_runtime
 from nasdaq_macro8_runtime.presentation_payload import build_presentation_payload
-from nasdaq_macro8_ui import STAGE_COLORS, _applied_position_html, _backtest_table, _candidate_label, _component_chart, _decision_signal_html, _group_stage, _group_summary, _main_chart, _operational_display_final, _practical_final, _snapshot_row
+from nasdaq_macro8_ui import STAGE_COLORS, _applied_position_html, _backtest_table, _candidate_label, _component_chart, _decision_signal_html, _group_stage, _group_summary, _main_chart, _operational_display_final, _practical_final, _snapshot_row, _stage_position_html
 
 
 def _macro8_smoke_app() -> None:
@@ -160,12 +161,13 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     table = _backtest_table(payload, "COMBO2", candidate_id)
     assert "NASDAQ 100 홀드" in table
     assert "전체 자산 (18Y)" in table
-    assert "min-width:1792px" in table
+    assert "min-width:1768px" in table
+    assert "overflow-wrap:anywhere" in table
     assert "width:300px" in table
     assert table.count("<col style='width:87px'>") == 2
-    assert table.count("<col style='width:130px'>") == 4
-    assert table.count("<col style='width:82px'>") == 4
-    assert all(label in table for label in ("1개월 전", "2주 전", "1주 전", "오늘", "당일 확정 신호", "당시 포지션"))
+    assert table.count("<col style='width:100px'>") == 4
+    assert table.count("<col style='width:106px'>") == 4
+    assert all(label in table for label in ("1개월 전", "2주 전", "1주 전", "오늘", "근거 신호", "당시 포지션"))
     assert "판단 신호" not in table and "적용 포지션" not in table
     assert "Official T+1 결과" in table
     assert table.count("<th colspan='2'") == 4
@@ -213,30 +215,41 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
 
 
 def test_nasdaq_0925_0928_signal_and_official_position_are_separate() -> None:
-    signal_0925 = _decision_signal_html(2, 4, 2, 0, 7)
-    position_0925 = _applied_position_html(1)
-    signal_0928 = _decision_signal_html(2, 4, 2, 0, 7)
-    position_0928 = _applied_position_html(0)
+    evidence = _decision_signal_html(2, 4, 2, 0, 7)
+    risk_off_position = _stage_position_html(2, 4, 2, 0, 1)
+    risk_on_position = _stage_position_html(2, 4, 2, 0, 0)
 
-    assert "2026-09-25" not in signal_0925 and "2/K4/7" in signal_0925 and "매수" in signal_0925
-    assert "2026-09-28" not in signal_0928 and "2/K4/7" in signal_0928 and "매수" in signal_0928
-    assert "R-off" in position_0925
-    assert "R-on" in position_0928
-    assert "R-off" not in signal_0925 and "R-on" not in signal_0928
+    assert "2/K4/7" in evidence and "매수" not in evidence
+    assert "매수" in risk_off_position and "(R-off)" in risk_off_position
+    assert "매수" in risk_on_position and "(R-on)" in risk_on_position
 
 
 def test_nasdaq_combo2_history_keeps_raw_signal_and_official_t1_parity(payload: dict) -> None:
     final = _operational_display_final(payload)
-    candidate_id = str(final.loc[final["model_family"].eq("COMBO2"), "candidate_id"].iloc[0])
-    history = payload["candidate_history"].loc[
-        payload["candidate_history"]["candidate_id"].eq(candidate_id)
-    ].sort_values("date")
-    signal = history["signal_risk_state"].astype(int).reset_index(drop=True)
-    position = history["official_t1_risk_off"].astype(int).reset_index(drop=True)
-
-    assert signal.isin([0, 1]).all()
-    assert position.isin([0, 1]).all()
-    assert position.iloc[1:].tolist() == signal.iloc[:-1].tolist()
+    snapshot = payload["snapshot"].set_index("candidate_id")
+    history = payload["candidate_history"]
+    for candidate in final.itertuples(index=False):
+        candidate_history = history.loc[history["candidate_id"].astype(str).eq(str(candidate.candidate_id))].sort_values("date")
+        signal = candidate_history["signal_risk_state"].astype(int).reset_index(drop=True)
+        position = candidate_history["official_t1_risk_off"].astype(int).reset_index(drop=True)
+        assert signal.isin([0, 1]).all()
+        assert position.isin([0, 1]).all()
+        if str(candidate.model_family).upper() == "COMBO1":
+            assert position.tolist() == signal.tolist()
+            signal_lag = 0
+        else:
+            assert position.iloc[1:].tolist() == signal.iloc[:-1].tolist()
+            signal_lag = 1
+        pairs = candidate_signal_position_rows_at_offsets(
+            history, candidate.candidate_id, snapshot.loc[candidate.candidate_id, "basis_date"],
+            signal_state_col="signal_risk_state", position_state_col="official_t1_risk_off",
+            offsets=(21, 10, 5, 0), valid_col="valid_signal", signal_lag_sessions=signal_lag,
+        )
+        assert all(pair["aligned"] for pair in pairs.values() if pair["application_row"] is not None)
+    for family in ("COMBO1", "COMBO2"):
+        table = _backtest_table(payload, family, str(final.loc[final["model_family"].eq(family), "candidate_id"].iloc[0]), final)
+        assert table.count("<th colspan='2'") == 4
+        assert "근거 신호" in table and "당시 포지션" in table
 
 
 def test_mixed_group_stage_is_valid_and_not_unavailable(payload: dict) -> None:

@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 import technical_signal_dashboard as dash
+from dashboard_timepoints import candidate_signal_position_rows_at_offsets
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -102,6 +103,18 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
             })
     history = pd.DataFrame(history_rows)
 
+    display_history = history.copy()
+    display_history["signal_active_count"] = display_history["on_count"]
+    display_history["signal_risk_state"] = display_history["raw_risk_state"]
+    display_history["official_t1_risk_off"] = 1 - pd.to_numeric(display_history["t1_position"], errors="coerce")
+    for candidate_id in metrics["candidate_id"].astype(str):
+        pairs = candidate_signal_position_rows_at_offsets(
+            display_history, candidate_id, dates[-1],
+            signal_state_col="signal_risk_state", position_state_col="official_t1_risk_off",
+            offsets=(21, 10, 5, 0), valid_col="valid_signal",
+        )
+        assert all(pair["aligned"] for pair in pairs.values() if pair["application_row"] is not None and pd.notna(pair["application_row"].get("official_t1_risk_off")))
+
     combo2 = dash._macro5_kospi_build_backtest_panel(metrics, live_map, metrics.iloc[4]["candidate_id"], "combo2", stats, history)
     combo1 = dash._macro5_kospi_build_backtest_panel(metrics, live_map, metrics.iloc[0]["candidate_id"], "combo1", stats, history)
 
@@ -119,17 +132,18 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
         "2주 전",
         "1주 전",
         "오늘",
-        "당일 확정 신호",
+        "근거 신호",
         "당시 포지션",
     ]
     for html in (combo2, combo1):
         for column in required:
             assert column in html
-        assert "min-width:1792px" in html
+        assert "min-width:1768px" in html
         assert "width:300px" in html
+        assert "overflow-wrap:anywhere" in html
         assert html.count("<col style='width:87px'>") == 2
-        assert html.count("<col style='width:130px'>") == 4
-        assert html.count("<col style='width:82px'>") == 4
+        assert html.count("<col style='width:100px'>") == 4
+        assert html.count("<col style='width:106px'>") == 4
         assert "Official T+1 결과" in html
         assert html.count("<th colspan='2'") == 4
         assert html.count("<th rowspan='2'") == 9
@@ -167,7 +181,7 @@ def test_b2t_current_column_uses_live_active_count_over_entry_k() -> None:
 
     html = dash._macro5_kospi_build_backtest_panel(metrics.iloc[[0]], live_map, selected_id, "combo1", stats)
 
-    assert "9/K9/11" in html
+    assert "계산 불가" in html
     assert "Risk-off</span>" not in html
 
 
@@ -192,16 +206,28 @@ def test_backtest_table_adds_model_size_to_signal_and_widens_only_candidate_colu
             "basis_date": "2026-10-08",
         }
     }
-    history = pd.DataFrame([{
-        "candidate_id": candidate_id,
-        "date": pd.Timestamp("2026-10-08"),
-        "on_count": 7,
-        "active_count": 7,
-        "raw_risk_state": 1,
-        "t1_position": 0,
-        "t1_valid": True,
-        "valid_signal": True,
-    }])
+    history = pd.DataFrame([
+        {
+            "candidate_id": candidate_id,
+            "date": pd.Timestamp("2026-10-07"),
+            "on_count": 6,
+            "active_count": 6,
+            "raw_risk_state": 1,
+            "t1_position": pd.NA,
+            "t1_valid": False,
+            "valid_signal": True,
+        },
+        {
+            "candidate_id": candidate_id,
+            "date": pd.Timestamp("2026-10-08"),
+            "on_count": 7,
+            "active_count": 7,
+            "raw_risk_state": 1,
+            "t1_position": 0,
+            "t1_valid": True,
+            "valid_signal": True,
+        },
+    ])
     html = dash._macro5_kospi_build_backtest_panel(
         metrics,
         live_rows,
@@ -211,10 +237,10 @@ def test_backtest_table_adds_model_size_to_signal_and_widens_only_candidate_colu
         candidate_history=history,
     )
 
-    assert "width:1792px;min-width:1792px" in html
+    assert "width:1768px;min-width:1768px" in html
     assert "<col style='width:300px'>" in html
     assert "2026-10-08" in html
-    assert "7/K7/10" in html
+    assert "6/K7/10" in html
     assert "R-off" in html
     assert "[조합2 · main · M] 균형형" in html
 
@@ -240,16 +266,28 @@ def test_kospi_n11_keeps_unvalidated_performance_hidden_and_uses_original_count(
             "basis_date": "2026-10-08",
         }
     }
-    history = pd.DataFrame([{
-        "candidate_id": candidate_id,
-        "date": "2026-10-08",
-        "on_count": 6,
-        "active_count": 8,
-        "raw_risk_state": 0,
-        "t1_position": 1,
-        "t1_valid": True,
-        "valid_signal": True,
-    }])
+    history = pd.DataFrame([
+        {
+            "candidate_id": candidate_id,
+            "date": "2026-10-07",
+            "on_count": 6,
+            "active_count": 6,
+            "raw_risk_state": 0,
+            "t1_position": pd.NA,
+            "t1_valid": False,
+            "valid_signal": True,
+        },
+        {
+            "candidate_id": candidate_id,
+            "date": "2026-10-08",
+            "on_count": 8,
+            "active_count": 8,
+            "raw_risk_state": 0,
+            "t1_position": 1,
+            "t1_valid": True,
+            "valid_signal": True,
+        },
+    ])
 
     html = dash._macro5_kospi_build_backtest_panel(
         metrics,

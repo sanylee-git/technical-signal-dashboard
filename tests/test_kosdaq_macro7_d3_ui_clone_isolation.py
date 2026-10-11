@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+from dashboard_timepoints import candidate_signal_position_rows_at_offsets
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -143,12 +144,12 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     assert "KOSDAQ 홀드" in table
     assert "전체 자산" in table
     assert "전체 자산 (18Y)" in table
-    assert "min-width:1792px" in table
+    assert "min-width:1768px" in table
     assert "width:300px" in table
     assert table.count("<col style=") == 17
     assert table.count("<col style='width:87px'>") == 2
-    assert table.count("<col style='width:130px'>") == 4
-    assert table.count("<col style='width:82px'>") == 4
+    assert table.count("<col style='width:100px'>") == 4
+    assert table.count("<col style='width:106px'>") == 4
     assert table.count("<th colspan='2'") == 4
     assert table.count("<th rowspan='2'") == 9
     assert "전체 CAGR" in table
@@ -156,7 +157,7 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     selected = payload["final10"].set_index("candidate_id").loc[DEFAULT_CANDIDATE]
     state = payload["snapshot"].set_index("candidate_id").loc[DEFAULT_CANDIDATE]
     assert "/K" + str(int(state["K"])) + "/" + str(int(selected["n_or_m"])) in table
-    assert "(R-off)" not in table and "(R-on)" not in table
+    assert "(R-off)" in table or "(R-on)" in table
     assert table.index("KOSDAQ 홀드") < table.index("[조합2 · main · M] 균형형") < table.index("[조합2 · Confirm 1 · M] 공격진입형 + 민감감지형")
     combo2_labels = [
         "[조합2 · main · M] 균형형",
@@ -180,16 +181,25 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
 
 def test_kosdaq_candidate_history_keeps_raw_stage_and_official_t1_position() -> None:
     payload = _payload()
-    candidate_id = DEFAULT_CANDIDATE
-    history = payload["candidate_history"].loc[
-        payload["candidate_history"]["candidate_id"].eq(candidate_id)
-    ].sort_values("date")
-    raw = history["raw_risk_state"].astype(int).reset_index(drop=True)
-    position = history["risk_off_t1"].astype(int).reset_index(drop=True)
-
-    assert raw.isin([0, 1]).all()
-    assert position.isin([0, 1]).all()
-    assert position.iloc[1:].tolist() == raw.iloc[:-1].tolist()
+    snapshot = payload["snapshot"].set_index("candidate_id")
+    history = payload["candidate_history"]
+    for candidate_id in payload["final10"]["candidate_id"].astype(str):
+        candidate_history = history.loc[history["candidate_id"].astype(str).eq(candidate_id)].sort_values("date")
+        raw = candidate_history["raw_risk_state"].astype(int).reset_index(drop=True)
+        position = candidate_history["risk_off_t1"].astype(int).reset_index(drop=True)
+        assert raw.isin([0, 1]).all()
+        assert position.isin([0, 1]).all()
+        assert position.iloc[1:].tolist() == raw.iloc[:-1].tolist()
+        pairs = candidate_signal_position_rows_at_offsets(
+            history, candidate_id, snapshot.loc[candidate_id, "basis_date"],
+            signal_state_col="raw_risk_state", position_state_col="risk_off_t1",
+            offsets=(21, 10, 5, 0), valid_col="valid_signal",
+        )
+        assert all(pair["aligned"] for pair in pairs.values() if pair["application_row"] is not None)
+    for family in ("COMBO1", "COMBO2"):
+        table = _backtest_table(payload, family, DEFAULT_CANDIDATE)
+        assert table.count("<th colspan='2'") == 4
+        assert "근거 신호" in table and "당시 포지션" in table
 
 
 def test_role_aware_stages_use_official_t1_and_user_role_classes() -> None:
@@ -260,5 +270,9 @@ def test_kosdaq_table_headers_follow_macro5_alignment_contract() -> None:
     assert "text-align:center;padding:6px 4px" in backtest
     assert "1개월 전" in backtest and "2주 전" in backtest and "1주 전" in backtest and "오늘" in backtest
     assert backtest.count(">당시 포지션</th>") == 4
-    assert backtest.count(">당일 확정 신호</th>") == 4
+    assert backtest.count(">근거 신호</th>") == 4
+    assert "min-width:1768px" in backtest
+    assert "overflow-wrap:anywhere" in backtest
+    assert backtest.count("<col style='width:100px'>") == 4
+    assert backtest.count("<col style='width:106px'>") == 4
     assert "text-align:center;padding:6px 8px" in status

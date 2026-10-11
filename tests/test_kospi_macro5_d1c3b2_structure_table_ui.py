@@ -103,10 +103,12 @@ def test_macro5_b1_backtest_panel_splits_models_and_hides_internal_fields() -> N
 
     assert "균형" in combo2_html
     assert "방어" not in combo2_html
-    assert "4/K4" in combo2_html
+    assert "4/K4/6" not in combo2_html
+    assert "계산 불가" in combo2_html
     assert "방어" in combo1_html
     assert "균형" not in combo1_html
-    assert "7/K9" in combo1_html
+    assert "7/K9/11" not in combo1_html
+    assert "계산 불가" in combo1_html
     for html in (combo2_html, combo1_html):
         assert "source_signal_parity" not in html
         assert "hidden_suffix" not in html
