@@ -113,12 +113,12 @@ def test_spx_backtest_table_adds_four_grouped_timepoints_and_keeps_today_week_va
 
     html = _backtest_table(payload, "COMBO2", str(candidate["candidate_id"]), final)
 
-    assert "min-width:1768px" in html
-    assert "overflow-wrap:anywhere" in html
+    assert "min-width:2128px" in html
+    assert "white-space:nowrap;overflow-wrap:normal" in html
     assert html.count("<table ") == 1
     assert html.count("</table>") == 1
     assert "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table" in html
-    assert "width:300px" in html
+    assert "width:660px" in html
     assert html.count("<col style='width:87px'>") == 2
     assert html.count("<col style='width:100px'>") == 4
     assert html.count("<col style='width:106px'>") == 4
@@ -151,6 +151,8 @@ def test_spx_backtest_table_adds_four_grouped_timepoints_and_keeps_today_week_va
     ]
     combo1_labels = [_candidate_label(combo1_rows.loc[candidate_id]) for candidate_id in combo1_ordered_ids]
     combo1_html = _backtest_table(payload, "COMBO1", combo1_ordered_ids[0], final)
+    assert "min-width:2128px" in combo1_html and "width:660px" in combo1_html
+    assert "white-space:nowrap;overflow-wrap:normal" in combo1_html
     assert [combo1_html.index(label) for label in combo1_labels] == sorted(combo1_html.index(label) for label in combo1_labels)
 
 

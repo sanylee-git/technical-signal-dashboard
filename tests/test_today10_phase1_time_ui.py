@@ -17,8 +17,11 @@ def test_timepoint_header_shows_shared_date_once_and_flags_varying_dates() -> No
 
     assert "1개월 전" in shared and "2026-09-10" in shared
     assert shared.count("2026-09-10") == 1
+    assert "1개월 전<span" in shared and "· 2026-09-10</span>" in shared
+    assert "<br>" not in shared
     assert "2주 전" in varying and "기준일 상이" in varying
     assert "2026-09-25, 2026-09-26" in varying
+    assert "<br>" not in varying
 
 
 def test_timepoint_selector_uses_valid_trading_rows_at_or_before_candidate_basis() -> None:

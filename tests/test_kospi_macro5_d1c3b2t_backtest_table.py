@@ -138,9 +138,9 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
     for html in (combo2, combo1):
         for column in required:
             assert column in html
-        assert "min-width:1768px" in html
-        assert "width:300px" in html
-        assert "overflow-wrap:anywhere" in html
+        assert "min-width:2128px" in html
+        assert "width:660px" in html
+        assert "white-space:nowrap;overflow-wrap:normal" in html
         assert html.count("<col style='width:87px'>") == 2
         assert html.count("<col style='width:100px'>") == 4
         assert html.count("<col style='width:106px'>") == 4
@@ -237,8 +237,8 @@ def test_backtest_table_adds_model_size_to_signal_and_widens_only_candidate_colu
         candidate_history=history,
     )
 
-    assert "width:1768px;min-width:1768px" in html
-    assert "<col style='width:300px'>" in html
+    assert "width:2128px;min-width:2128px" in html
+    assert "<col style='width:660px'>" in html
     assert "2026-10-08" in html
     assert "6/K7/10" in html
     assert "R-off" in html

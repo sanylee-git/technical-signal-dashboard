@@ -12,6 +12,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard_timepoints import (
+    BACKTEST_CANDIDATE_COLUMN_WIDTH,
+    BACKTEST_COMPARISON_TABLE_WIDTH,
     candidate_history_rows_at_offsets,
     candidate_signal_position_rows_at_offsets,
     risk_state_short_label,
@@ -483,7 +485,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str, fina
     metrics = payload["frozen_display_metrics"]
     hold = payload["benchmark_display_metrics"].set_index("window")
     base_headers = ["역할 / 후보", "10Y 자산", _full_asset_header(payload["backtest_windows"]), "전체 CAGR", "10Y MDD", "전체 MDD", "전체 Risk-off", "전체 Cycle", "짧은 Cycle"]
-    widths = ["300px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["100px", "106px"] * 4
+    widths = [BACKTEST_CANDIDATE_COLUMN_WIDTH, "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["100px", "106px"] * 4
     colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in widths) + "</colgroup>"
     numeric = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
     ten_hold, full_hold = hold.loc["10Y"], hold.loc["FULL"]
@@ -524,7 +526,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str, fina
         historical = history_by_candidate[candidate_id]
         selected = "background:rgba(120,126,231,.16);border-top:1px solid rgba(120,126,231,.34);border-bottom:1px solid rgba(120,126,231,.34);" if candidate_id == selected_id else ""
         cells = [
-            f"<td title='{escape(_candidate_label(candidate))}' style='padding:7px 8px;color:#EDEDED;font-weight:700;text-align:left;white-space:normal;overflow-wrap:anywhere'>{escape(_candidate_label(candidate))}</td>",
+            f"<td title='{escape(_candidate_label(candidate))}' style='padding:7px 8px;color:#EDEDED;font-weight:700;text-align:left;white-space:nowrap;overflow-wrap:normal'>{escape(_candidate_label(candidate))}</td>",
             f"<td style='{numeric}'>{_metric_html(ten.asset, ten_hold.asset, _fmt_asset, higher_is_better=True)}</td>", f"<td style='{numeric}'>{_metric_html(full.asset, full_hold.asset, _fmt_asset, higher_is_better=True)}</td>", f"<td style='{numeric}'>{_metric_html(full.cagr, full_hold.cagr, _fmt_pct, higher_is_better=True)}</td>",
             f"<td style='{numeric}'>{_metric_html(ten.mdd, ten_hold.mdd, _fmt_pct, higher_is_better=False)}</td>", f"<td style='{numeric}'>{_metric_html(full.mdd, full_hold.mdd, _fmt_pct, higher_is_better=False)}</td>", f"<td style='{numeric}'>{_fmt_pct(full.risk_off_ratio)}</td>",
             f"<td style='{numeric}'>{int(full.completed_cycle_count)}</td>", f"<td style='{numeric}'>{int(full.short_cycle_20d_ratio * full.completed_cycle_count)}</td>",
@@ -563,7 +565,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str, fina
         for _ in range(4) for label in ("근거 신호", "당시 포지션")
     )
     return (
-        "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:1768px;min-width:1768px;table-layout:fixed;border-collapse:collapse;font-size:11px'>"
+        f"<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:{BACKTEST_COMPARISON_TABLE_WIDTH};min-width:{BACKTEST_COMPARISON_TABLE_WIDTH};table-layout:fixed;border-collapse:collapse;font-size:11px'>"
         + colgroup + f"<thead><tr>{base_head}{groups}</tr><tr>{subheaders}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
         + "<div style='margin-top:5px;color:var(--secondary-text-color,#8F8F8F);font-size:10px'>날짜는 포지션 적용일 기준이며, 근거 신호는 직전 거래일의 공식 신호입니다. 당시 포지션은 기존 Official T+1 결과입니다.</div>"
     )

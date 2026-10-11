@@ -161,9 +161,9 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     table = _backtest_table(payload, "COMBO2", candidate_id)
     assert "NASDAQ 100 홀드" in table
     assert "전체 자산 (18Y)" in table
-    assert "min-width:1768px" in table
-    assert "overflow-wrap:anywhere" in table
-    assert "width:300px" in table
+    assert "min-width:2128px" in table
+    assert "white-space:nowrap;overflow-wrap:normal" in table
+    assert "width:660px" in table
     assert table.count("<col style='width:87px'>") == 2
     assert table.count("<col style='width:100px'>") == 4
     assert table.count("<col style='width:106px'>") == 4
@@ -204,6 +204,8 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
         )
     ]
     combo1_table = _backtest_table(payload, "COMBO1", str(combo1_final.iloc[0]["candidate_id"]))
+    assert "min-width:2128px" in combo1_table and "width:660px" in combo1_table
+    assert "white-space:nowrap;overflow-wrap:normal" in combo1_table
     assert [combo1_table.index(label) for label in combo1_ordered_labels] == sorted(combo1_table.index(label) for label in combo1_ordered_labels)
     dashboard = (ROOT / "technical_signal_dashboard.py").read_text(encoding="utf-8")
     assert '"macro8_nasdaq": ("NASDAQ MACRO INDICATORS", "🇺🇸 나스닥지표")' in dashboard

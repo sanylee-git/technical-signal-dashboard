@@ -29,6 +29,8 @@ import traceback
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 from dashboard_timepoints import (
+    BACKTEST_CANDIDATE_COLUMN_WIDTH,
+    BACKTEST_COMPARISON_TABLE_WIDTH,
     candidate_history_rows_at_offsets,
     candidate_signal_position_rows_at_offsets,
     risk_state_short_label,
@@ -15180,8 +15182,8 @@ def _macro5_kospi_build_backtest_panel(
         ("전체 Cycle", "right"),
         ("짧은 Cycle", "right"),
     ]
-    widths = ["300px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["100px", "106px"] * 4
-    candidate_label_style = "padding:7px 8px;color:#EDEDED;font-weight:700;line-height:1.28;text-align:left;white-space:normal;overflow-wrap:anywhere;"
+    widths = [BACKTEST_CANDIDATE_COLUMN_WIDTH, "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["100px", "106px"] * 4
+    candidate_label_style = "padding:7px 8px;color:#EDEDED;font-weight:700;line-height:1.28;text-align:left;white-space:nowrap;overflow-wrap:normal;"
     colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in widths) + "</colgroup>"
     subset = _macro5_kospi_sort_metrics(metrics[metrics["model_type"].map(_macro5_kospi_model_type).eq(model_type)])
     role_records = _macro5_kospi_role_records()
@@ -15314,7 +15316,7 @@ def _macro5_kospi_build_backtest_panel(
         return ""
     return (
         _MACRO_BACKTEST_TABLE_WRAP_OPEN
-        + "<table style='width:1768px;min-width:1768px;table-layout:fixed;border-collapse:collapse;font-size:11px;'>"
+        + f"<table style='width:{BACKTEST_COMPARISON_TABLE_WIDTH};min-width:{BACKTEST_COMPARISON_TABLE_WIDTH};table-layout:fixed;border-collapse:collapse;font-size:11px;'>"
         + colgroup
         + "<thead><tr>"
         + "".join(

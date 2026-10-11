@@ -9,6 +9,8 @@ import pandas as pd
 
 
 TIMEPOINT_OFFSETS = (21, 10, 5, 0)
+BACKTEST_CANDIDATE_COLUMN_WIDTH = "660px"
+BACKTEST_COMPARISON_TABLE_WIDTH = "2128px"
 
 
 def timepoint_date_key(value: object) -> str | None:
@@ -27,8 +29,8 @@ def timepoint_header_html(label: str, dates: Iterable[object]) -> str:
         date_label = "기준일 없음"
     title = f" title='{escape(', '.join(formatted))}'" if len(formatted) > 1 else ""
     return (
-        f"{escape(label)}<br>"
-        f"<span{title} style='font-size:9px;font-weight:400;color:var(--secondary-text-color,#8F8F8F)'>{escape(date_label)}</span>"
+        f"{escape(label)}"
+        f"<span{title} style='margin-left:6px;font-size:9px;font-weight:400;color:var(--secondary-text-color,#8F8F8F)'>· {escape(date_label)}</span>"
     )
 
 
