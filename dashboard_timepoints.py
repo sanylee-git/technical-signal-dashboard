@@ -3,11 +3,41 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from html import escape
 
 import pandas as pd
 
 
 TIMEPOINT_OFFSETS = (21, 10, 5, 0)
+
+
+def timepoint_date_key(value: object) -> str | None:
+    date = pd.to_datetime(value, errors="coerce")
+    return None if pd.isna(date) else pd.Timestamp(date).strftime("%Y-%m-%d")
+
+
+def timepoint_header_html(label: str, dates: Iterable[object]) -> str:
+    """Render a grouped timepoint heading with its shared or varying date."""
+    formatted = sorted({date for value in dates if (date := timepoint_date_key(value)) is not None})
+    if len(formatted) == 1:
+        date_label = formatted[0]
+    elif formatted:
+        date_label = "기준일 상이"
+    else:
+        date_label = "기준일 없음"
+    title = f" title='{escape(', '.join(formatted))}'" if len(formatted) > 1 else ""
+    return (
+        f"{escape(label)}<br>"
+        f"<span{title} style='font-size:9px;font-weight:400;color:var(--secondary-text-color,#8F8F8F)'>{escape(date_label)}</span>"
+    )
+
+
+def timepoint_cell_date_html(value: object) -> str:
+    """Keep an exceptional candidate-specific date visible when a group varies."""
+    label = timepoint_date_key(value)
+    if label is None:
+        return ""
+    return f"<span style='color:var(--secondary-text-color,#8F8F8F);font-size:9px'>{escape(label)}</span><br>"
 
 
 def history_rows_at_offsets(

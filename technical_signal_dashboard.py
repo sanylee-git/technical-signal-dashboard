@@ -28,7 +28,13 @@ import warnings
 import traceback
 from functools import lru_cache
 from zoneinfo import ZoneInfo
-from dashboard_timepoints import candidate_history_rows_at_offsets, risk_state_short_label
+from dashboard_timepoints import (
+    candidate_history_rows_at_offsets,
+    risk_state_short_label,
+    timepoint_cell_date_html,
+    timepoint_date_key,
+    timepoint_header_html,
+)
 from dashboard_role_aware_market_stage import (
     format_role_stage_sequence,
     load_role_metadata,
@@ -6287,8 +6293,6 @@ def _macro_backtest_decision_signal_html(row: dict | pd.Series | None, start_k: 
     if row is None or len(row) == 0:
         return _macro_market_stage_value_html("계산 불가")
     try:
-        raw_date = row.get("date")
-        day = "" if raw_date is None or pd.isna(raw_date) else pd.Timestamp(raw_date).strftime("%Y-%m-%d")
         active_count = int(row.get("signal_active_count"))
         risk_state = int(row.get("signal_risk_state"))
         if risk_state not in (0, 1):
@@ -6297,9 +6301,8 @@ def _macro_backtest_decision_signal_html(row: dict | pd.Series | None, start_k: 
         stage = _macro_market_stage_label(active_count, start_k, end_l, risk_state)
     except (TypeError, ValueError, OverflowError):
         return _macro_market_stage_value_html("계산 불가")
-    date_html = f"<span style='color:var(--secondary-text-color,#8F8F8F);font-size:9px'>{_macro5_kospi_escape(day)}</span><br>" if day else ""
     count_html = f"<span style='color:var(--text-color,#D6D6D6);font-weight:600'>{count}</span>"
-    return date_html + count_html + " · " + _macro_market_stage_html(stage)
+    return count_html + " · " + _macro_market_stage_html(stage)
 
 
 def _macro_backtest_applied_position_html(risk_off: object) -> str:
@@ -15160,7 +15163,7 @@ def _macro5_kospi_build_backtest_panel(
         ("전체 Cycle", "right"),
         ("짧은 Cycle", "right"),
     ]
-    widths = ["300px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["150px", "90px"] * 4
+    widths = ["300px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["130px", "82px"] * 4
     colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in widths) + "</colgroup>"
     subset = _macro5_kospi_sort_metrics(metrics[metrics["model_type"].map(_macro5_kospi_model_type).eq(model_type)])
     role_records = _macro5_kospi_role_records()
@@ -15173,6 +15176,32 @@ def _macro5_kospi_build_backtest_panel(
         subset["candidate_id"].tolist(), main_ids, _macro5_kospi_role_warning_classes()
     )
     subset = subset.set_index("candidate_id").loc[candidate_order].reset_index()
+    offsets = (21, 10, 5, 0)
+    history_by_candidate = {}
+    timepoint_dates = {offset: set() for offset in offsets}
+    for _, row in subset.iterrows():
+        candidate_id = str(row["candidate_id"])
+        live_row = live_row_map.get(candidate_id, {})
+        historical = candidate_history_rows_at_offsets(
+            display_history,
+            candidate_id,
+            live_row.get("basis_date"),
+            offsets=offsets,
+            valid_col="valid_signal",
+        )
+        history_by_candidate[candidate_id] = historical
+        for offset, point in historical.items():
+            if offset == 0 and not bool(live_row.get("calculable")):
+                continue
+            date_value = point.get("date") if point is not None else None
+            if offset == 0 and point is None and bool(live_row.get("calculable")):
+                live_count = live_row.get("active_count")
+                live_raw_state = live_row.get("raw_risk_state")
+                if live_count is not None and live_raw_state is not None and not pd.isna(live_count) and not pd.isna(live_raw_state):
+                    date_value = live_row.get("basis_date")
+            date = timepoint_date_key(date_value)
+            if date is not None:
+                timepoint_dates[offset].add(date)
     if len(subset):
         rows_html.append(
             "<tr style='background:rgba(255,255,255,0.035);border-top:1px solid rgba(255,255,255,0.12);'>"
@@ -15227,15 +15256,9 @@ def _macro5_kospi_build_backtest_panel(
         )
         live_row = live_row_map.get(candidate_id, {})
         component_count = int(row.get("m_or_n", 0))
-        historical = candidate_history_rows_at_offsets(
-            display_history,
-            candidate_id,
-            live_row.get("basis_date"),
-            offsets=(21, 10, 5, 0),
-            valid_col="valid_signal",
-        )
+        historical = history_by_candidate[candidate_id]
         time_cells = []
-        for offset in (21, 10, 5, 0):
+        for offset in offsets:
             state = historical[offset]
             if offset == 0 and state is None and bool(live_row.get("calculable")):
                 try:
@@ -15265,9 +15288,11 @@ def _macro5_kospi_build_backtest_panel(
                     state, int(row.get("K", 1)), int(row.get("L", 0)), component_count
                 )
                 position_cell = _macro_backtest_applied_position_html(state.get("official_t1_risk_off"))
+                if len(timepoint_dates[offset]) > 1:
+                    signal_cell = timepoint_cell_date_html(state.get("date")) + signal_cell
             time_cells.extend([
-                f"<td style='{_MACRO_BACKTEST_CELL_CURRENT};line-height:1.35'>{signal_cell}</td>",
-                f"<td style='{_MACRO_BACKTEST_CELL_CURRENT}'>{position_cell}</td>",
+                f"<td style='{_MACRO_BACKTEST_CELL_CURRENT};padding:5px 4px;line-height:1.35'>{signal_cell}</td>",
+                f"<td style='{_MACRO_BACKTEST_CELL_CURRENT};padding:7px 4px'>{position_cell}</td>",
             ])
         rows_html.append(
             f"<tr style='background:{bg};border-top:{border};border-bottom:{border};'>"
@@ -15287,7 +15312,7 @@ def _macro5_kospi_build_backtest_panel(
         return ""
     return (
         _MACRO_BACKTEST_TABLE_WRAP_OPEN
-        + "<table style='width:1904px;min-width:1904px;table-layout:fixed;border-collapse:collapse;font-size:11px;'>"
+        + "<table style='width:1792px;min-width:1792px;table-layout:fixed;border-collapse:collapse;font-size:11px;'>"
         + colgroup
         + "<thead><tr>"
         + "".join(
@@ -15295,17 +15320,17 @@ def _macro5_kospi_build_backtest_panel(
             for label, align in base_labels
         )
         + "".join(
-            f"<th colspan='2' style='text-align:center;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap;'>{label}</th>"
-            for label in ("1개월 전", "2주 전", "1주 전", "오늘")
+            f"<th colspan='2' style='text-align:center;padding:6px 4px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap;'>{timepoint_header_html(label, timepoint_dates[offset])}</th>"
+            for offset, label in zip(offsets, ("1개월 전", "2주 전", "1주 전", "오늘"), strict=True)
         )
         + "</tr><tr>"
         + "".join(
-            f"<th style='text-align:center;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap;'>{label}</th>"
-            for _ in range(4) for label in ("판단 신호", "적용 포지션")
+            f"<th style='text-align:center;padding:6px 4px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap;'>{label}</th>"
+            for _ in range(4) for label in ("당일 확정 신호", "당시 포지션")
         )
         + "</tr></thead>"
         + f"<tbody>{''.join(rows_html)}</tbody></table></div>"
-        + "<div style='margin-top:5px;color:var(--secondary-text-color,#8F8F8F);font-size:10px'>판단 신호는 해당 거래일 데이터 기준이며, 적용 포지션은 해당 날짜의 Official T+1 결과입니다.</div>"
+        + "<div style='margin-top:5px;color:var(--secondary-text-color,#8F8F8F);font-size:10px'>당일 확정 신호는 해당 거래일 기준이며, 당시 포지션은 해당 날짜의 Official T+1 결과입니다.</div>"
     )
 
 

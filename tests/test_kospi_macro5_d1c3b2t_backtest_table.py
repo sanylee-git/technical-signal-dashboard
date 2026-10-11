@@ -119,17 +119,17 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
         "2주 전",
         "1주 전",
         "오늘",
-        "판단 신호",
-        "적용 포지션",
+        "당일 확정 신호",
+        "당시 포지션",
     ]
     for html in (combo2, combo1):
         for column in required:
             assert column in html
-        assert "min-width:1904px" in html
+        assert "min-width:1792px" in html
         assert "width:300px" in html
         assert html.count("<col style='width:87px'>") == 2
-        assert html.count("<col style='width:150px'>") == 4
-        assert html.count("<col style='width:90px'>") == 4
+        assert html.count("<col style='width:130px'>") == 4
+        assert html.count("<col style='width:82px'>") == 4
         assert "Official T+1 결과" in html
         assert html.count("<th colspan='2'") == 4
         assert html.count("<th rowspan='2'") == 9
@@ -143,8 +143,8 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
 
     assert combo2.count("<tr") == 8
     assert combo1.count("<tr") == 7
-    assert combo2.find("KOSPI 홀드") < combo2.find("[조합2]")
-    assert combo1.find("KOSPI 홀드") < combo1.find("[조합1]")
+    assert combo2.find("KOSPI 홀드") < combo2.find("[조합2 · main · M]")
+    assert combo1.find("KOSPI 홀드") < combo1.find("[조합1 · main · M]")
 
 
 def test_b2t_full_asset_header_uses_frozen_window_duration() -> None:
@@ -211,7 +211,7 @@ def test_backtest_table_adds_model_size_to_signal_and_widens_only_candidate_colu
         candidate_history=history,
     )
 
-    assert "width:1904px;min-width:1904px" in html
+    assert "width:1792px;min-width:1792px" in html
     assert "<col style='width:300px'>" in html
     assert "2026-10-08" in html
     assert "7/K7/10" in html

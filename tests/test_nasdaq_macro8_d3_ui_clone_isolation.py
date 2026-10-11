@@ -160,12 +160,13 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     table = _backtest_table(payload, "COMBO2", candidate_id)
     assert "NASDAQ 100 홀드" in table
     assert "전체 자산 (18Y)" in table
-    assert "min-width:1904px" in table
+    assert "min-width:1792px" in table
     assert "width:300px" in table
     assert table.count("<col style='width:87px'>") == 2
-    assert table.count("<col style='width:150px'>") == 4
-    assert table.count("<col style='width:90px'>") == 4
-    assert all(label in table for label in ("1개월 전", "2주 전", "1주 전", "오늘", "판단 신호", "적용 포지션"))
+    assert table.count("<col style='width:130px'>") == 4
+    assert table.count("<col style='width:82px'>") == 4
+    assert all(label in table for label in ("1개월 전", "2주 전", "1주 전", "오늘", "당일 확정 신호", "당시 포지션"))
+    assert "판단 신호" not in table and "적용 포지션" not in table
     assert "Official T+1 결과" in table
     assert table.count("<th colspan='2'") == 4
     assert table.count("<th rowspan='2'") == 9
@@ -212,13 +213,13 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
 
 
 def test_nasdaq_0925_0928_signal_and_official_position_are_separate() -> None:
-    signal_0925 = _decision_signal_html("2026-09-25", 2, 4, 2, 0, 7)
+    signal_0925 = _decision_signal_html(2, 4, 2, 0, 7)
     position_0925 = _applied_position_html(1)
-    signal_0928 = _decision_signal_html("2026-09-28", 2, 4, 2, 0, 7)
+    signal_0928 = _decision_signal_html(2, 4, 2, 0, 7)
     position_0928 = _applied_position_html(0)
 
-    assert "2026-09-25" in signal_0925 and "2/K4/7" in signal_0925 and "매수" in signal_0925
-    assert "2026-09-28" in signal_0928 and "2/K4/7" in signal_0928 and "매수" in signal_0928
+    assert "2026-09-25" not in signal_0925 and "2/K4/7" in signal_0925 and "매수" in signal_0925
+    assert "2026-09-28" not in signal_0928 and "2/K4/7" in signal_0928 and "매수" in signal_0928
     assert "R-off" in position_0925
     assert "R-on" in position_0928
     assert "R-off" not in signal_0925 and "R-on" not in signal_0928

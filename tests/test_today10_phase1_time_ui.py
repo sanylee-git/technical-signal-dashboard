@@ -2,7 +2,22 @@ from __future__ import annotations
 
 import pandas as pd
 
-from dashboard_timepoints import candidate_history_rows_at_offsets, history_rows_at_offsets, risk_state_short_label
+from dashboard_timepoints import (
+    candidate_history_rows_at_offsets,
+    history_rows_at_offsets,
+    risk_state_short_label,
+    timepoint_header_html,
+)
+
+
+def test_timepoint_header_shows_shared_date_once_and_flags_varying_dates() -> None:
+    shared = timepoint_header_html("1개월 전", ["2026-09-10", pd.Timestamp("2026-09-10")])
+    varying = timepoint_header_html("2주 전", ["2026-09-25", "2026-09-26"])
+
+    assert "1개월 전" in shared and "2026-09-10" in shared
+    assert shared.count("2026-09-10") == 1
+    assert "2주 전" in varying and "기준일 상이" in varying
+    assert "2026-09-25, 2026-09-26" in varying
 
 
 def test_timepoint_selector_uses_valid_trading_rows_at_or_before_candidate_basis() -> None:

@@ -143,12 +143,12 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     assert "KOSDAQ 홀드" in table
     assert "전체 자산" in table
     assert "전체 자산 (18Y)" in table
-    assert "min-width:1904px" in table
+    assert "min-width:1792px" in table
     assert "width:300px" in table
     assert table.count("<col style=") == 17
     assert table.count("<col style='width:87px'>") == 2
-    assert table.count("<col style='width:150px'>") == 4
-    assert table.count("<col style='width:90px'>") == 4
+    assert table.count("<col style='width:130px'>") == 4
+    assert table.count("<col style='width:82px'>") == 4
     assert table.count("<th colspan='2'") == 4
     assert table.count("<th rowspan='2'") == 9
     assert "전체 CAGR" in table
@@ -257,8 +257,8 @@ def test_kosdaq_table_headers_follow_macro5_alignment_contract() -> None:
     backtest = _backtest_table(payload, "COMBO2", DEFAULT_CANDIDATE)
     status = _component_status_table(payload, DEFAULT_CANDIDATE)
 
-    assert "text-align:center;padding:6px 8px" in backtest
+    assert "text-align:center;padding:6px 4px" in backtest
     assert "1개월 전" in backtest and "2주 전" in backtest and "1주 전" in backtest and "오늘" in backtest
-    assert backtest.count(">적용 포지션</th>") == 4
-    assert backtest.count(">판단 신호</th>") == 4
+    assert backtest.count(">당시 포지션</th>") == 4
+    assert backtest.count(">당일 확정 신호</th>") == 4
     assert "text-align:center;padding:6px 8px" in status

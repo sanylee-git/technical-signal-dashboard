@@ -112,16 +112,16 @@ def test_spx_backtest_table_adds_four_grouped_timepoints_and_keeps_today_week_va
 
     html = _backtest_table(payload, "COMBO2", str(candidate["candidate_id"]), final)
 
-    assert "min-width:1904px" in html
+    assert "min-width:1792px" in html
     assert html.count("<table ") == 1
     assert html.count("</table>") == 1
     assert "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table" in html
     assert "width:300px" in html
     assert html.count("<col style='width:87px'>") == 2
-    assert html.count("<col style='width:150px'>") == 4
-    assert html.count("<col style='width:90px'>") == 4
+    assert html.count("<col style='width:130px'>") == 4
+    assert html.count("<col style='width:82px'>") == 4
     assert all(label in html for label in ("1개월 전", "2주 전", "1주 전", "오늘"))
-    assert all(label in html for label in ("판단 신호", "적용 포지션", "Official T+1 결과"))
+    assert all(label in html for label in ("당일 확정 신호", "당시 포지션", "Official T+1 결과"))
     assert html.count("<th colspan='2'") == 4
     assert html.count("<th rowspan='2'") == 9
     history = payload["candidate_history"].loc[lambda frame: frame["candidate_id"].eq(candidate.candidate_id)]
