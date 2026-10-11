@@ -161,9 +161,9 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     table = _backtest_table(payload, "COMBO2", candidate_id)
     assert "NASDAQ 100 홀드" in table
     assert "전체 자산 (18Y)" in table
-    assert "min-width:1868px" in table
+    assert "min-width:1848px" in table
     assert "white-space:nowrap;overflow-wrap:normal" in table
-    assert "width:400px" in table
+    assert "width:380px" in table
     assert table.count("<col style='width:87px'>") == 2
     assert table.count("<col style='width:100px'>") == 4
     assert table.count("<col style='width:106px'>") == 4
@@ -176,7 +176,7 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     assert table.count("<tr style=") == 5
     selected = _operational_display_final(payload).set_index("candidate_id").loc[candidate_id]
     state = payload["snapshot"].set_index("candidate_id").loc[candidate_id]
-    assert f">{int(state['active_count'])}/K{int(state['K'])}/{int(selected['n_or_m'])}<" in table
+    assert f">{int(state['active_count'])}/K{int(state['K'])}/L{int(state['L'])}/{int(selected['n_or_m'])}<" in table
     assert "Return / Calmar" not in table
     assert "균형형 + 추세지속형" in table
     combo2_final = _operational_display_final(payload).loc[lambda frame: frame["model_family"].eq("COMBO2")]
@@ -204,7 +204,7 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
         )
     ]
     combo1_table = _backtest_table(payload, "COMBO1", str(combo1_final.iloc[0]["candidate_id"]))
-    assert "min-width:1868px" in combo1_table and "width:400px" in combo1_table
+    assert "min-width:1848px" in combo1_table and "width:380px" in combo1_table
     assert "white-space:nowrap;overflow-wrap:normal" in combo1_table
     assert [combo1_table.index(label) for label in combo1_ordered_labels] == sorted(combo1_table.index(label) for label in combo1_ordered_labels)
     dashboard = (ROOT / "technical_signal_dashboard.py").read_text(encoding="utf-8")
@@ -221,7 +221,7 @@ def test_nasdaq_0925_0928_signal_and_official_position_are_separate() -> None:
     risk_off_position = _stage_position_html(2, 4, 2, 0, 1)
     risk_on_position = _stage_position_html(2, 4, 2, 0, 0)
 
-    assert "2/K4/7" in evidence and "매수" not in evidence
+    assert "2/K4/L2/7" in evidence and "매수" not in evidence
     assert "매수" in risk_off_position and "(R-off)" in risk_off_position
     assert "매수" in risk_on_position and "(R-on)" in risk_on_position
 

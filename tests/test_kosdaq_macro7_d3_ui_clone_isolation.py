@@ -144,8 +144,8 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     assert "KOSDAQ 홀드" in table
     assert "전체 자산" in table
     assert "전체 자산 (18Y)" in table
-    assert "min-width:1868px" in table
-    assert "width:400px" in table
+    assert "min-width:1848px" in table
+    assert "width:380px" in table
     assert "white-space:nowrap;overflow-wrap:normal" in table
     assert table.count("<col style=") == 17
     assert table.count("<col style='width:87px'>") == 2
@@ -157,7 +157,8 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     assert "x)</span>" in table
     selected = payload["final10"].set_index("candidate_id").loc[DEFAULT_CANDIDATE]
     state = payload["snapshot"].set_index("candidate_id").loc[DEFAULT_CANDIDATE]
-    assert "/K" + str(int(state["K"])) + "/" + str(int(selected["n_or_m"])) in table
+    assert f">{int(state['active_count'])}/K{int(state['K'])}/L{int(state['L'])}/{int(selected['n_or_m'])}<" in table
+    assert "/K" + str(int(state["K"])) + "/L" + str(int(state["L"])) + "/" + str(int(selected["n_or_m"])) in table
     assert "(R-off)" in table or "(R-on)" in table
     assert table.index("KOSDAQ 홀드") < table.index("[조합2 · main · M] 균형형") < table.index("[조합2 · Confirm 1 · M] 공격진입형 + 민감감지형")
     combo2_labels = [
@@ -170,7 +171,7 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     assert [table.index(label) for label in combo2_labels] == sorted(table.index(label) for label in combo2_labels)
 
     combo1_table = _backtest_table(payload, "COMBO1", str(payload["final10"].loc[payload["final10"]["model_family"].eq("COMBO1") & payload["final10"]["display_slot"].eq(1), "candidate_id"].iloc[0]))
-    assert "min-width:1868px" in combo1_table and "width:400px" in combo1_table
+    assert "min-width:1848px" in combo1_table and "width:380px" in combo1_table
     assert "white-space:nowrap;overflow-wrap:normal" in combo1_table
     combo1_labels = [
         "[조합1 · main · H] 균형형 + 추세지속형",
@@ -274,8 +275,8 @@ def test_kosdaq_table_headers_follow_macro5_alignment_contract() -> None:
     assert "1개월 전" in backtest and "2주 전" in backtest and "1주 전" in backtest and "오늘" in backtest
     assert backtest.count(">당시 포지션</th>") == 4
     assert backtest.count(">근거 신호</th>") == 4
-    assert "min-width:1868px" in backtest
-    assert "width:400px" in backtest
+    assert "min-width:1848px" in backtest
+    assert "width:380px" in backtest
     assert "white-space:nowrap;overflow-wrap:normal" in backtest
     assert backtest.count("<col style='width:100px'>") == 4
     assert backtest.count("<col style='width:106px'>") == 4

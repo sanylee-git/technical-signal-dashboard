@@ -110,7 +110,7 @@ def _decision_signal_html(active_count: object, k: object, l: object, risk_state
         state = int(risk_state)
         if state not in (0, 1) or pd.isna(active_count):
             raise ValueError("invalid signal row")
-        count = f"{max(0, int(active_count))}/K{max(1, int(k))}"
+        count = f"{max(0, int(active_count))}/K{max(1, int(k))}/L{max(0, int(l))}"
         if component_count is not None and not pd.isna(component_count):
             count += f"/{max(0, int(component_count))}"
         stage = _stage(active_count, k, l, state)

@@ -138,8 +138,8 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
     for html in (combo2, combo1):
         for column in required:
             assert column in html
-        assert "min-width:1868px" in html
-        assert "width:400px" in html
+        assert "min-width:1848px" in html
+        assert "width:380px" in html
         assert "white-space:nowrap;overflow-wrap:normal" in html
         assert html.count("<col style='width:87px'>") == 2
         assert html.count("<col style='width:100px'>") == 4
@@ -237,10 +237,10 @@ def test_backtest_table_adds_model_size_to_signal_and_widens_only_candidate_colu
         candidate_history=history,
     )
 
-    assert "width:1868px;min-width:1868px" in html
-    assert "<col style='width:400px'>" in html
+    assert "width:1848px;min-width:1848px" in html
+    assert "<col style='width:380px'>" in html
     assert "2026-10-08" in html
-    assert "6/K7/10" in html
+    assert "6/K7/L4/10" in html
     assert "R-off" in html
     assert "[조합2 · main · M] 균형형" in html
 
@@ -299,8 +299,8 @@ def test_kospi_n11_keeps_unvalidated_performance_hidden_and_uses_original_count(
     )
 
     assert "2026-10-08" in html
-    assert "6/K8/11" in html
-    assert "8/K8/11" not in html
+    assert "6/K8/L5/11" in html
+    assert "8/K8/L5/11" not in html
     assert "73.1%" not in html and "-41.1%" not in html and "93.0%" not in html
 
 

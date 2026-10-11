@@ -6300,7 +6300,7 @@ def _macro_backtest_decision_signal_html(row: dict | pd.Series | None, start_k: 
         risk_state = int(row.get("signal_risk_state"))
         if risk_state not in (0, 1):
             raise ValueError("invalid raw state")
-        count = f"{_macro_on_k_text(max(0, active_count), int(start_k))}/{int(component_count)}"
+        count = f"{_macro_on_k_text(max(0, active_count), int(start_k))}/L{max(0, int(end_l))}/{int(component_count)}"
         stage = _macro_market_stage_label(active_count, start_k, end_l, risk_state)
     except (TypeError, ValueError, OverflowError):
         return _macro_market_stage_value_html("계산 불가")

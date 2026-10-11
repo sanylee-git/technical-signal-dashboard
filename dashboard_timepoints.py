@@ -9,8 +9,8 @@ import pandas as pd
 
 
 TIMEPOINT_OFFSETS = (21, 10, 5, 0)
-BACKTEST_CANDIDATE_COLUMN_WIDTH = "400px"
-BACKTEST_COMPARISON_TABLE_WIDTH = "1868px"
+BACKTEST_CANDIDATE_COLUMN_WIDTH = "380px"
+BACKTEST_COMPARISON_TABLE_WIDTH = "1848px"
 
 
 def timepoint_date_key(value: object) -> str | None:
