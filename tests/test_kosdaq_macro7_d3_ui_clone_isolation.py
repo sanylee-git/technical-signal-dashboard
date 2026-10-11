@@ -143,18 +143,20 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
     assert "KOSDAQ 홀드" in table
     assert "전체 자산" in table
     assert "전체 자산 (18Y)" in table
-    assert "min-width:1779px" in table
+    assert "min-width:1904px" in table
     assert "width:300px" in table
     assert table.count("<col style=") == 17
     assert table.count("<col style='width:87px'>") == 2
-    assert table.count("<col style='width:104.4px'>") == 8
+    assert table.count("<col style='width:150px'>") == 4
+    assert table.count("<col style='width:90px'>") == 4
     assert table.count("<th colspan='2'") == 4
     assert table.count("<th rowspan='2'") == 9
     assert "전체 CAGR" in table
     assert "x)</span>" in table
     selected = payload["final10"].set_index("candidate_id").loc[DEFAULT_CANDIDATE]
     state = payload["snapshot"].set_index("candidate_id").loc[DEFAULT_CANDIDATE]
-    assert f">{int(state['active_count'])}/K{int(state['K'])}/{int(selected['n_or_m'])}<" in table
+    assert "/K" + str(int(state["K"])) + "/" + str(int(selected["n_or_m"])) in table
+    assert "(R-off)" not in table and "(R-on)" not in table
     assert table.index("KOSDAQ 홀드") < table.index("[조합2 · main · M] 균형형") < table.index("[조합2 · Confirm 1 · M] 공격진입형 + 민감감지형")
     combo2_labels = [
         "[조합2 · main · M] 균형형",
@@ -174,6 +176,20 @@ def test_kosdaq_summary_and_backtest_table_are_display_only_kospi_parity_element
         "[조합1 · Confirm 2 · H] 보수방어형 + 추세지속형",
     ]
     assert [combo1_table.index(label) for label in combo1_labels] == sorted(combo1_table.index(label) for label in combo1_labels)
+
+
+def test_kosdaq_candidate_history_keeps_raw_stage_and_official_t1_position() -> None:
+    payload = _payload()
+    candidate_id = DEFAULT_CANDIDATE
+    history = payload["candidate_history"].loc[
+        payload["candidate_history"]["candidate_id"].eq(candidate_id)
+    ].sort_values("date")
+    raw = history["raw_risk_state"].astype(int).reset_index(drop=True)
+    position = history["risk_off_t1"].astype(int).reset_index(drop=True)
+
+    assert raw.isin([0, 1]).all()
+    assert position.isin([0, 1]).all()
+    assert position.iloc[1:].tolist() == raw.iloc[:-1].tolist()
 
 
 def test_role_aware_stages_use_official_t1_and_user_role_classes() -> None:
@@ -243,5 +259,6 @@ def test_kosdaq_table_headers_follow_macro5_alignment_contract() -> None:
 
     assert "text-align:center;padding:6px 8px" in backtest
     assert "1개월 전" in backtest and "2주 전" in backtest and "1주 전" in backtest and "오늘" in backtest
-    assert backtest.count(">시장단계</th>") == 4
+    assert backtest.count(">적용 포지션</th>") == 4
+    assert backtest.count(">판단 신호</th>") == 4
     assert "text-align:center;padding:6px 8px" in status

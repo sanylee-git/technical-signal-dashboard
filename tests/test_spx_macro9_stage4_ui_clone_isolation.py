@@ -112,20 +112,22 @@ def test_spx_backtest_table_adds_four_grouped_timepoints_and_keeps_today_week_va
 
     html = _backtest_table(payload, "COMBO2", str(candidate["candidate_id"]), final)
 
-    assert "min-width:1779px" in html
+    assert "min-width:1904px" in html
     assert html.count("<table ") == 1
     assert html.count("</table>") == 1
     assert "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table" in html
     assert "width:300px" in html
     assert html.count("<col style='width:87px'>") == 2
-    assert html.count("<col style='width:104.4px'>") == 8
+    assert html.count("<col style='width:150px'>") == 4
+    assert html.count("<col style='width:90px'>") == 4
     assert all(label in html for label in ("1개월 전", "2주 전", "1주 전", "오늘"))
+    assert all(label in html for label in ("판단 신호", "적용 포지션", "Official T+1 결과"))
     assert html.count("<th colspan='2'") == 4
     assert html.count("<th rowspan='2'") == 9
-    assert _on_k_html(state.week_ago_active_count, state.K, state.week_ago_raw_risk_state, candidate.n_or_m) in html
-    assert _on_k_html(state.active_count, state.K, state.raw_risk_state, candidate.n_or_m) in html
-    expected_r = "R-off" if int(state.raw_risk_state) == 1 else "R-on"
-    assert f"({expected_r})" in html
+    history = payload["candidate_history"].loc[lambda frame: frame["candidate_id"].eq(candidate.candidate_id)]
+    assert history["signal_risk_state"].isin([0, 1]).all()
+    assert history["official_t1_risk_off"].isin([0, 1]).all()
+    assert "(R-off)" not in html and "(R-on)" not in html
     combo2_rows = final.loc[final["model_family"].eq("COMBO2")].set_index("candidate_id")
     combo2_ordered_ids = [
         "6b4595522bbed808d41be978",
@@ -148,3 +150,35 @@ def test_spx_backtest_table_adds_four_grouped_timepoints_and_keeps_today_week_va
     combo1_labels = [_candidate_label(combo1_rows.loc[candidate_id]) for candidate_id in combo1_ordered_ids]
     combo1_html = _backtest_table(payload, "COMBO1", combo1_ordered_ids[0], final)
     assert [combo1_html.index(label) for label in combo1_labels] == sorted(combo1_html.index(label) for label in combo1_labels)
+
+
+def test_spx_combo2_history_keeps_raw_signal_and_official_t1_parity(payload: dict[str, object]) -> None:
+    final = _display_final(payload["final10"])
+    candidate_id = str(final.loc[final["model_family"].eq("COMBO2"), "candidate_id"].iloc[0])
+    history = payload["candidate_history"].loc[
+        payload["candidate_history"]["candidate_id"].eq(candidate_id)
+    ].sort_values("date")
+    signal = history["signal_risk_state"].astype(int).reset_index(drop=True)
+    position = history["official_t1_risk_off"].astype(int).reset_index(drop=True)
+
+    assert signal.isin([0, 1]).all()
+    assert position.isin([0, 1]).all()
+    assert position.iloc[1:].tolist() == signal.iloc[:-1].tolist()
+
+
+def test_spx_backtest_table_uses_signal_day_count_when_live_signal_count_is_present(payload: dict[str, object]) -> None:
+    final = _display_final(payload["final10"])
+    candidate = final.loc[final["model_family"].eq("COMBO2")].sort_values("display_order").iloc[0]
+    state = payload["snapshot"].set_index("candidate_id").loc[candidate["candidate_id"]]
+    history = payload["candidate_history"].copy()
+    history["signal_active_count"] = history["active_count"]
+    mask = history["candidate_id"].astype(str).eq(str(candidate["candidate_id"])) & pd.to_datetime(history["date"]).eq(pd.Timestamp(state["basis_date"]))
+    history.loc[mask, "active_count"] = int(state["K"])
+    history.loc[mask, "signal_active_count"] = int(state["L"])
+    adjusted_payload = {**payload, "candidate_history": history}
+
+    html = _backtest_table(adjusted_payload, "COMBO2", str(candidate["candidate_id"]), final)
+    candidate_row = next(row for row in html.split("<tr") if _candidate_label(candidate) in row)
+
+    assert f"{int(state['L'])}/K{int(state['K'])}/{int(candidate['n_or_m'])}" in candidate_row
+    assert f"{int(state['K'])}/K{int(state['K'])}/{int(candidate['n_or_m'])}" not in candidate_row

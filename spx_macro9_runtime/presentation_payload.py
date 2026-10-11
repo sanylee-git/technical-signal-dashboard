@@ -88,6 +88,7 @@ def _final10(final: pd.DataFrame) -> pd.DataFrame:
 def _candidate_history(runtime: dict[str, Any]) -> pd.DataFrame:
     out = _normalized(runtime["history"])
     out = out.rename(columns={"strategy_risk_state": "raw_risk_state", "valid": "valid_signal"})
+    out["official_t1_risk_off"] = out["raw_risk_state"]
     return out
 
 

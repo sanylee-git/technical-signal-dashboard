@@ -94,7 +94,11 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
                 "candidate_id": row["candidate_id"],
                 "date": date,
                 "active_count": max(0, int(row["K"]) - (1 if idx == 0 else 0)),
+                "on_count": max(0, int(row["K"]) - (1 if idx == 0 else 0)),
                 "raw_risk_state": int(idx > 0),
+                "t1_position": pd.NA if idx == 0 else int(idx < 2),
+                "t1_valid": idx > 0,
+                "valid_signal": True,
             })
     history = pd.DataFrame(history_rows)
 
@@ -115,22 +119,26 @@ def test_b2t_combo2_and_combo1_tables_have_required_columns_and_hold_rows() -> N
         "2주 전",
         "1주 전",
         "오늘",
-        "신호",
-        "시장단계",
+        "판단 신호",
+        "적용 포지션",
     ]
     for html in (combo2, combo1):
         for column in required:
             assert column in html
-        assert "min-width:1779px" in html
+        assert "min-width:1904px" in html
         assert "width:300px" in html
         assert html.count("<col style='width:87px'>") == 2
-        assert html.count("<col style='width:104.4px'>") == 8
+        assert html.count("<col style='width:150px'>") == 4
+        assert html.count("<col style='width:90px'>") == 4
+        assert "Official T+1 결과" in html
         assert html.count("<th colspan='2'") == 4
         assert html.count("<th rowspan='2'") == 9
         assert "전체 자산 (18Y)" in html
         assert "20Y" not in html
         assert "연 전환" not in html
         assert "KOSPI 홀드" in html
+        assert "2026-08-03" in html
+        assert "R-계산 불가" in html
         assert "(2." in html or "(1." in html or "(0." in html
 
     assert combo2.count("<tr") == 8
@@ -184,19 +192,78 @@ def test_backtest_table_adds_model_size_to_signal_and_widens_only_candidate_colu
             "basis_date": "2026-10-08",
         }
     }
+    history = pd.DataFrame([{
+        "candidate_id": candidate_id,
+        "date": pd.Timestamp("2026-10-08"),
+        "on_count": 7,
+        "active_count": 7,
+        "raw_risk_state": 1,
+        "t1_position": 0,
+        "t1_valid": True,
+        "valid_signal": True,
+    }])
     html = dash._macro5_kospi_build_backtest_panel(
         metrics,
         live_rows,
         candidate_id,
         "combo2",
         backtest_stats={},
-        candidate_history=pd.DataFrame(),
+        candidate_history=history,
     )
 
-    assert "width:1779px;min-width:1779px" in html
+    assert "width:1904px;min-width:1904px" in html
     assert "<col style='width:300px'>" in html
+    assert "2026-10-08" in html
     assert "7/K7/10" in html
+    assert "R-off" in html
     assert "[조합2 · main · M] 균형형" in html
+
+
+def test_kospi_n11_keeps_unvalidated_performance_hidden_and_uses_original_count() -> None:
+    candidate_id = "combo1_n11_k8_l5_78b918eadc42fa16"
+    metrics = pd.DataFrame([{
+        "candidate_id": candidate_id,
+        "model_type": "combo1",
+        "slot": 5,
+        "m_or_n": 11,
+        "K": 8,
+        "L": 5,
+        "cagr": 0.731,
+        "mdd": -0.411,
+        "risk_off_ratio": 0.93,
+    }])
+    live_rows = {
+        candidate_id: {
+            "calculable": True,
+            "raw_risk_state": 0,
+            "active_count": 8,
+            "basis_date": "2026-10-08",
+        }
+    }
+    history = pd.DataFrame([{
+        "candidate_id": candidate_id,
+        "date": "2026-10-08",
+        "on_count": 6,
+        "active_count": 8,
+        "raw_risk_state": 0,
+        "t1_position": 1,
+        "t1_valid": True,
+        "valid_signal": True,
+    }])
+
+    html = dash._macro5_kospi_build_backtest_panel(
+        metrics,
+        live_rows,
+        candidate_id,
+        "combo1",
+        backtest_stats={},
+        candidate_history=history,
+    )
+
+    assert "2026-10-08" in html
+    assert "6/K8/11" in html
+    assert "8/K8/11" not in html
+    assert "73.1%" not in html and "-41.1%" not in html and "93.0%" not in html
 
 
 def test_kospi_backtest_rows_put_main_first_then_confirmation_class_order() -> None:

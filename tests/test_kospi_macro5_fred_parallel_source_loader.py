@@ -31,6 +31,17 @@ def _contracts() -> dict[str, SourceContract]:
 def _install_source_loader_stubs(monkeypatch, contracts: dict[str, SourceContract], selected_attempt: int = 1) -> list[dict[str, object]]:
     calls: list[dict[str, object]] = []
     monkeypatch.setattr(page_adapter, "SOURCE_CONTRACTS", contracts)
+    resolver_contracts = {
+        "resolver_t10y2y": SourceContract("resolver_t10y2y", "fred", "T10Y2Y", 0, "value", ("resolver_10y2y",)),
+        "resolver_cboe_vix3m": SourceContract("resolver_cboe_vix3m", "cboe", "VIX3M", 0, "close", ("resolver_vix3m",)),
+    }
+    monkeypatch.setattr(page_adapter, "RESOLVER_SOURCE_CONTRACTS", resolver_contracts)
+
+    def fake_load_resolver_source_frame(*, contract, as_of_utc):
+        frame = pd.DataFrame({"source_id": [contract.source_id], "valid": [True]})
+        return frame, {"source_id": contract.source_id}
+
+    monkeypatch.setattr(page_adapter, "_load_resolver_source_frame", fake_load_resolver_source_frame)
     # This fixture intentionally stops one session before latest_krx. Keep the
     # fallback path offline and empty so the loader-contract test remains about
     # ordering/parallelism rather than making a provider request.
@@ -105,7 +116,7 @@ def test_fred_source_parallel_loader_preserves_canonical_order_and_contract(monk
     contracts = _contracts()
     calls = _install_source_loader_stubs(monkeypatch, contracts)
 
-    selected_frames, source_rows = page_adapter._load_source_frames(
+    selected_frames, source_rows, resolver_frames = page_adapter._load_source_frames(
         as_of_utc=AS_OF_UTC,
         sessions=pd.DatetimeIndex(pd.to_datetime(["2026-08-11"])),
         latest_krx=pd.Timestamp("2026-08-11"),
@@ -113,6 +124,8 @@ def test_fred_source_parallel_loader_preserves_canonical_order_and_contract(monk
     )
 
     assert list(selected_frames) == list(contracts)
+    assert list(resolver_frames) == ["resolver_t10y2y", "resolver_cboe_vix3m"]
+    assert all(frame["valid"].all() for frame in resolver_frames.values())
     assert [row["source_id"] for row in source_rows] == list(contracts)
     assert [call["source_id"] for call in calls].count("kospi_ohlcv") == 1
     assert sorted(call["source_id"] for call in calls if call["source_id"] != "kospi_ohlcv") == ["nfci", "us_10y_yield", "vix"]
@@ -155,7 +168,8 @@ def test_fred_source_parallel_loader_uses_max_workers_four(monkeypatch) -> None:
         latest_kospi_live=pd.Timestamp("2026-08-11"),
     )
 
-    assert observed_workers == [4]
+    # Primary inputs and source-resolver candidates use separate bounded pools.
+    assert observed_workers == [4, 4]
 
 
 def test_fred_source_parallel_loader_propagates_unexpected_failure(monkeypatch) -> None:

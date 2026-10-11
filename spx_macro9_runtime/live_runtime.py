@@ -200,10 +200,27 @@ def _append_history(frozen_runtime: dict[str, Any], panel: pd.DataFrame, *, core
         for candidate_id, group in history.groupby("candidate_id", sort=False)
     }
     rows: list[dict[str, object]] = []
-    tail_positions = {pd.Timestamp(date).normalize(): position for position, date in enumerate(pd.to_datetime(panel["date"]).dt.normalize())}
+    panel_dates = pd.to_datetime(panel["date"]).dt.normalize()
+    tail_positions = {pd.Timestamp(date).normalize(): position for position, date in enumerate(panel_dates)}
+    cutoff_positions = np.flatnonzero(panel_dates.eq(FROZEN_CUTOFF).to_numpy())
+    if len(cutoff_positions) != 1:
+        return history
+    cutoff_position = int(cutoff_positions[0])
+
+    # The frozen strategy row already represents the prior session's signal.
+    # Apply the frozen cutoff's same-day count once to seed the first live
+    # session, then keep the applied position and current signal separate.
+    for item in candidates.loc[candidates["family"].eq("Combo1")].itertuples(index=False):
+        cid = str(item.candidate_id)
+        ids = str(item.component_ids_key).split("|")
+        if not all(core[value]["valid"][cutoff_position] and core[value]["raw"][cutoff_position] >= 0 for value in ids):
+            return history
+        cutoff_active = int(sum(core[value]["raw"][cutoff_position] for value in ids))
+        c1_raw[cid] = _next_state(c1_raw[cid], cutoff_active, int(item.K), int(item.L))
+        c1_active[cid] = cutoff_active
+
     for date in pd.to_datetime(tail["date"]).dt.normalize():
         position = tail_positions[pd.Timestamp(date)]
-        c1_current: dict[str, tuple[int, int]] = {}
         for item in candidates.loc[candidates["family"].eq("Combo1")].itertuples(index=False):
             cid = str(item.candidate_id)
             ids = str(item.component_ids_key).split("|")
@@ -213,11 +230,11 @@ def _append_history(frozen_runtime: dict[str, Any], panel: pd.DataFrame, *, core
                 return history
             active = int(np.sum(values))
             state = int(c1_raw[cid])
-            rows.append({"candidate_id": cid, "date": date, "strategy_risk_state": state, "previous_strategy_risk_state": last_strategy[cid], "active_count": int(c1_active[cid]), "valid": True})
+            signal_state = _next_state(state, active, int(item.K), int(item.L))
+            rows.append({"candidate_id": cid, "date": date, "strategy_risk_state": state, "signal_risk_state": signal_state, "signal_active_count": active, "previous_strategy_risk_state": last_strategy[cid], "active_count": int(c1_active[cid]), "valid": True})
             last_strategy[cid] = state
-            c1_raw[cid] = _next_state(state, active, int(item.K), int(item.L))
+            c1_raw[cid] = signal_state
             c1_active[cid] = active
-            c1_current[cid] = (c1_raw[cid], active)
         for child in children.drop_duplicates("child_canonical_parent_id").itertuples(index=False):
             ids = str(child.child_component_ids_key).split("|")
             values = [core[value]["raw"][position] for value in ids]
@@ -230,9 +247,10 @@ def _append_history(frozen_runtime: dict[str, Any], panel: pd.DataFrame, *, core
             child = children.loc[children["parent_candidate_id"].eq(cid)].sort_values("child_order", kind="mergesort")
             active = int(sum(child_raw[str(value)] for value in child["child_canonical_parent_id"]))
             state = int(c2_raw[cid])
-            rows.append({"candidate_id": cid, "date": date, "strategy_risk_state": state, "previous_strategy_risk_state": last_strategy[cid], "active_count": int(c2_active[cid]), "valid": True})
+            signal_state = _next_state(state, active, int(item.K), int(item.L))
+            rows.append({"candidate_id": cid, "date": date, "strategy_risk_state": state, "signal_risk_state": signal_state, "signal_active_count": active, "previous_strategy_risk_state": last_strategy[cid], "active_count": int(c2_active[cid]), "valid": True})
             last_strategy[cid] = state
-            c2_raw[cid] = _next_state(state, active, int(item.K), int(item.L))
+            c2_raw[cid] = signal_state
             c2_active[cid] = active
     appended = pd.DataFrame(rows)
     history = pd.concat([history, appended], ignore_index=True)

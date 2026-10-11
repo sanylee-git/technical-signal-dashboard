@@ -397,6 +397,7 @@ def _replay_final20(
         if record.family == "Combo1":
             component_ids = str(record.component_ids_key).split("|")
             state, history_start, active_full = _build_combo1_state(component_ids, int(record.K), int(record.L), canonical, canonical_valid)
+            signal_state = state
             evaluation_state = state[eval_start : eval_end + 1]
             prior = float(~state[eval_start - 1].astype(bool))
             semantic = "CORE_CANONICAL_T1_DIRECT_NO_SECOND_SHIFT"
@@ -412,6 +413,8 @@ def _replay_final20(
             ordered_child_ids = list(child_raw)
             active = np.vstack([child_raw[item][history_start : eval_end + 1] for item in ordered_child_ids]).sum(axis=0, dtype=np.int16)
             combo_raw = _hysteresis(active, int(record.K), int(record.L)).astype(np.int8)
+            signal_state = np.full(len(dates), -1, dtype=np.int8)
+            signal_state[history_start : eval_end + 1] = combo_raw
             final_state = np.full(len(dates), -1, dtype=np.int8)
             active_full = np.full(len(dates), -1, dtype=np.int16)
             final_state[history_start + 1 : eval_end + 1] = combo_raw[:-1]
@@ -436,12 +439,14 @@ def _replay_final20(
         })
         rows.append(values)
         state_history = state[eval_start : eval_end + 1].astype(np.int8)
+        signal_history = signal_state[eval_start : eval_end + 1].astype(np.int8)
         active_history = active_full[eval_start : eval_end + 1].astype(np.int16)
         previous = np.r_[state[eval_start - 1], state_history[:-1]]
         history_parts.append(pd.DataFrame({
             "candidate_id": candidate_id,
             "date": dates[eval_start : eval_end + 1],
             "strategy_risk_state": state_history,
+            "signal_risk_state": signal_history,
             "previous_strategy_risk_state": previous,
             "active_count": active_history,
             "risk_start": (state_history == 1) & (previous == 0),

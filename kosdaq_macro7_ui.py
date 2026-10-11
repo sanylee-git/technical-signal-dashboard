@@ -111,6 +111,30 @@ def _stage_with_risk_html(active_count: object, k: object, l: object, risk_off: 
     return f"{_stage_html(stage)} <span style='color:{state_color};font-weight:700;'>({escape(state_label)})</span>"
 
 
+def _decision_signal_html(date: object, active_count: object, k: object, l: object, risk_state: object, component_count: object) -> str:
+    try:
+        day = pd.Timestamp(date).strftime("%Y-%m-%d")
+        state = int(risk_state)
+        if state not in (0, 1) or pd.isna(active_count):
+            raise ValueError("invalid signal row")
+        count = f"{max(0, int(active_count))}/K{max(1, int(k))}"
+        if component_count is not None and not pd.isna(component_count):
+            count += f"/{max(0, int(component_count))}"
+        stage = _stage(active_count, k, l, state)
+    except (TypeError, ValueError, OverflowError):
+        return "계산 불가"
+    return (
+        f"<span style='color:var(--secondary-text-color,#8F8F8F);font-size:9px'>{escape(day)}</span><br>"
+        f"<span style='color:var(--text-color,#D6D6D6);font-weight:600'>{escape(count)}</span> · {_stage_html(stage)}"
+    )
+
+
+def _applied_position_html(risk_off: object) -> str:
+    label = risk_state_short_label(risk_off)
+    color = RISK_OFF if label == "R-off" else RISK_ON if label == "R-on" else "#AFAFAF"
+    return f"<span style='color:{color};font-weight:700'>{escape(label)}</span>"
+
+
 def _on_k_html(active_count: object, k: object, risk_off: object, component_count: object = None) -> str:
     try:
         label = f"{max(0, int(active_count))}/K{max(1, int(k))}"
@@ -484,7 +508,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
     metrics = payload["frozen_display_metrics"]
     hold = payload["benchmark_display_metrics"].set_index("window")
     base_headers = ["역할 / 후보", "10Y 자산", _full_asset_header(payload["backtest_windows"]), "전체 CAGR", "10Y MDD", "전체 MDD", "전체 Risk-off", "전체 Cycle", "짧은 Cycle"]
-    widths = ["300px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["104.4px"] * 8
+    widths = ["300px", "92.22px", "92.22px", "78.30px", "87px", "87px", "78.30px", "64.38px", "64.38px"] + ["150px", "90px"] * 4
     colgroup = "<colgroup>" + "".join(f"<col style='width:{width}'>" for width in widths) + "</colgroup>"
     style = "padding:7px 8px;color:#D6D6D6;text-align:right;white-space:nowrap;"
     rows = []
@@ -505,7 +529,7 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
             history,
             cid,
             state.get("basis_date"),
-            offsets=(21, 10),
+            offsets=(21, 10, 5, 0),
             valid_col="valid_signal",
         )
         selected_style = "background:rgba(120,126,231,.16);border-top:1px solid rgba(120,126,231,.34);border-bottom:1px solid rgba(120,126,231,.34);" if cid == selected_id else ""
@@ -515,17 +539,18 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
             f"<td style='{style}'>{_metric_html(ten.mdd, ten_hold.mdd, _fmt_pct, higher_is_better=False)}</td>", f"<td style='{style}'>{_metric_html(full.mdd, full_hold.mdd, _fmt_pct, higher_is_better=False)}</td>", f"<td style='{style}'>{_fmt_pct(full.risk_off_ratio)}</td>",
             f"<td style='{style}'>{int(full.cycle)}</td>", f"<td style='{style}'>{int(full.short_cycle)}</td>",
         ]
-        time_states = [
-            (historical[21], None, None),
-            (historical[10], None, None),
-            (None, state["week_ago_active_count"], state["week_ago_raw_risk_state"]),
-            (None, state["active_count"], state["raw_risk_state"]),
-        ]
-        for historical_row, legacy_active, legacy_risk in time_states:
-            active = historical_row.get("active_count") if historical_row is not None else legacy_active
-            risk = historical_row.get("raw_risk_state") if historical_row is not None else legacy_risk
-            cells.append(f"<td style='padding:7px 8px;text-align:center'>{_on_k_html(active, state.K, risk, candidate['n_or_m'])}</td>")
-            cells.append(f"<td style='padding:7px 8px;text-align:center'>{_stage_with_risk_html(active, state.K, state.L, risk)}</td>")
+        for offset in (21, 10, 5, 0):
+            point = historical[offset]
+            if point is None:
+                signal_html, position_html = "계산 불가", _applied_position_html(None)
+            else:
+                signal_html = _decision_signal_html(
+                    point.get("date"), point.get("active_count"), state.K, state.L,
+                    point.get("raw_risk_state"), candidate.get("n_or_m"),
+                )
+                position_html = _applied_position_html(point.get("risk_off_t1"))
+            cells.append(f"<td style='padding:5px 8px;text-align:center;line-height:1.35'>{signal_html}</td>")
+            cells.append(f"<td style='padding:7px 8px;text-align:center'>{position_html}</td>")
         rows.append(f"<tr style='{selected_style}'>" + "".join(cells) + "</tr>")
     base_alignments = ["left"] + ["right"] * 8
     base_head = "".join(
@@ -538,11 +563,12 @@ def _backtest_table(payload: dict[str, Any], family: str, selected_id: str) -> s
     )
     subheaders = "".join(
         f"<th style='text-align:center;padding:6px 8px;color:#8F8F8F;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap'>{label}</th>"
-        for _ in range(4) for label in ("신호", "시장단계")
+        for _ in range(4) for label in ("판단 신호", "적용 포지션")
     )
     return (
-        "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:1779px;min-width:1779px;table-layout:fixed;border-collapse:collapse;font-size:11px'>"
+        "<div class='macro-backtest-table-wrap' style='width:100%;overflow-x:auto'><table style='width:1904px;min-width:1904px;table-layout:fixed;border-collapse:collapse;font-size:11px'>"
         + colgroup + f"<thead><tr>{base_head}{groups}</tr><tr>{subheaders}</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>"
+        + "<div style='margin-top:5px;color:var(--secondary-text-color,#8F8F8F);font-size:10px'>판단 신호는 해당 거래일 데이터 기준이며, 적용 포지션은 해당 날짜의 Official T+1 결과입니다.</div>"
     )
 
 

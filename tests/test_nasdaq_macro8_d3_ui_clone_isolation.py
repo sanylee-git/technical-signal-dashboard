@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 
 from nasdaq_macro8_runtime.frozen_runtime import run_frozen_runtime
 from nasdaq_macro8_runtime.presentation_payload import build_presentation_payload
-from nasdaq_macro8_ui import STAGE_COLORS, _backtest_table, _candidate_label, _component_chart, _group_stage, _group_summary, _main_chart, _operational_display_final, _practical_final, _snapshot_row
+from nasdaq_macro8_ui import STAGE_COLORS, _applied_position_html, _backtest_table, _candidate_label, _component_chart, _decision_signal_html, _group_stage, _group_summary, _main_chart, _operational_display_final, _practical_final, _snapshot_row
 
 
 def _macro8_smoke_app() -> None:
@@ -160,11 +160,13 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     table = _backtest_table(payload, "COMBO2", candidate_id)
     assert "NASDAQ 100 홀드" in table
     assert "전체 자산 (18Y)" in table
-    assert "min-width:1779px" in table
+    assert "min-width:1904px" in table
     assert "width:300px" in table
     assert table.count("<col style='width:87px'>") == 2
-    assert table.count("<col style='width:104.4px'>") == 8
-    assert all(label in table for label in ("1개월 전", "2주 전", "1주 전", "오늘", "신호", "시장단계"))
+    assert table.count("<col style='width:150px'>") == 4
+    assert table.count("<col style='width:90px'>") == 4
+    assert all(label in table for label in ("1개월 전", "2주 전", "1주 전", "오늘", "판단 신호", "적용 포지션"))
+    assert "Official T+1 결과" in table
     assert table.count("<th colspan='2'") == 4
     assert table.count("<th rowspan='2'") == 9
     assert table.count("<tbody><tr") == 1
@@ -207,6 +209,33 @@ def test_backtest_table_and_dashboard_wiring_are_presentation_only(payload: dict
     assert contract["gate"] == "PASS_NASDAQ_MACRO8_D3_UI_CLONE_ISOLATION_READY"
     assert contract["presentation_payload_cache"]["candidate_selection_causing_runtime_refetch"] == 0
     assert contract["chart_contract"]["combo2"] == "CHILD_COMBO1_RAW_STATE plus NASDAQ 100 benchmark only"
+
+
+def test_nasdaq_0925_0928_signal_and_official_position_are_separate() -> None:
+    signal_0925 = _decision_signal_html("2026-09-25", 2, 4, 2, 0, 7)
+    position_0925 = _applied_position_html(1)
+    signal_0928 = _decision_signal_html("2026-09-28", 2, 4, 2, 0, 7)
+    position_0928 = _applied_position_html(0)
+
+    assert "2026-09-25" in signal_0925 and "2/K4/7" in signal_0925 and "매수" in signal_0925
+    assert "2026-09-28" in signal_0928 and "2/K4/7" in signal_0928 and "매수" in signal_0928
+    assert "R-off" in position_0925
+    assert "R-on" in position_0928
+    assert "R-off" not in signal_0925 and "R-on" not in signal_0928
+
+
+def test_nasdaq_combo2_history_keeps_raw_signal_and_official_t1_parity(payload: dict) -> None:
+    final = _operational_display_final(payload)
+    candidate_id = str(final.loc[final["model_family"].eq("COMBO2"), "candidate_id"].iloc[0])
+    history = payload["candidate_history"].loc[
+        payload["candidate_history"]["candidate_id"].eq(candidate_id)
+    ].sort_values("date")
+    signal = history["signal_risk_state"].astype(int).reset_index(drop=True)
+    position = history["official_t1_risk_off"].astype(int).reset_index(drop=True)
+
+    assert signal.isin([0, 1]).all()
+    assert position.isin([0, 1]).all()
+    assert position.iloc[1:].tolist() == signal.iloc[:-1].tolist()
 
 
 def test_mixed_group_stage_is_valid_and_not_unavailable(payload: dict) -> None:
